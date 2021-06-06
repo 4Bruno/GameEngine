@@ -14,6 +14,9 @@ struct game_state
 
     memory_arena TemporaryArena;
     memory_arena ShadersArena;
+
+    int32 PipelineIndex;
+    VkShaderModule TriangleShaders[2];
 };
 
 
@@ -101,14 +104,31 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
             file_contents GetFileResult = GetFileContents(Memory, &GameState->ShadersArena,Shaders[ShaderIndex]);
             if (GetFileResult.Success)
             {
-                LoadShaderModule((char *)GetFileResult.Base,(size_t)GetFileResult.Size);
+                int32 Result = RenderCreateShaderModule((char *)GetFileResult.Base,
+                                                         (size_t)GetFileResult.Size,
+                                                         &GameState->TriangleShaders[ShaderIndex]);
+                if (Result)
+                {
+                    Log("Error during creation of shader module %s\n",Shaders[ShaderIndex]);
+                }
             }
         }
+
+        GameState->PipelineIndex = 
+            RenderCreatePipeline(GameState->TriangleShaders[0], GameState->TriangleShaders[1]);
+
+        if (GameState->PipelineIndex < 0)
+        {
+            Log("Error during creation of main pipeline\n");
+        }
+
         GameState->IsInitialized = true;
     }
 
     /* ------------------------- GAME UPDATE ------------------------- */
 
     /* ------------------------- GAME RENDER ------------------------- */
+    WaitForRender();
 
+    RenderLoop(DtTime,GameState->PipelineIndex);
 }

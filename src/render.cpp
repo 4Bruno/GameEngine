@@ -7,14 +7,26 @@
  * the function/data which is to be called in order to
  * create OS specific window
  *
+ * - VulkanOnWindowResize
+ *   Must be called from the OS on window resize event
+ *
+ * - Convention value returns
+ *   Function names with as actions ('VulkanCreate..')
+ *   _always_ return int32 which is:
+ *    - Non-zero for error. Where the value is an error-code
+ *    - Zero for success
+ *   This is _not_ always the case for external API.
+ *   Exceptions:
+ *    - RenderCreatePipeline
+ *    Will return the internal index in array of the pipeline
  */
 
 #include "render.h"
 
 #define VK_FAILS(result) (result != VK_SUCCESS)
 #define VK_SUCCESS(result) (result == VK_SUCCESS)
-#define VK_VALID_HANDLE(handle) (handle != VK_NULL_HANDLE)
-#define VK_INVALID_HANDLE(handle) (handle == VK_NULL_HANDLE)
+#define VK_VALID_HANDLE(handle) ((handle) != VK_NULL_HANDLE)
+#define VK_INVALID_HANDLE(handle) ((handle) == VK_NULL_HANDLE)
 
 #define VK_GLOBAL_LEVEL_FN( fun ) fun = (PFN_##fun)vkGetInstanceProcAddr(0,#fun)
 // watch out for the convention name of instance as "Instance"
@@ -25,10 +37,93 @@
 #define ENGINE_VERSION      VK_MAKE_VERSION(1,0,0)
 #define VULKAN_API_VERSION  VK_MAKE_VERSION(1,0,0)
 
+
+PFN_vkGetInstanceProcAddr                     vkGetInstanceProcAddr                   = 0;
+
+// INSTANCE VULKAN
+PFN_vkCreateInstance                          vkCreateInstance                        = 0;
+PFN_vkEnumerateInstanceExtensionProperties    vkEnumerateInstanceExtensionProperties  = 0;
+PFN_vkEnumerateInstanceLayerProperties        vkEnumerateInstanceLayerProperties      = 0;
+
+
+// PHYSICAL DEVICES
+// SWAP CHAIN API
+PFN_vkDestroySurfaceKHR                       vkDestroySurfaceKHR                       = 0;
+PFN_vkGetPhysicalDeviceSurfaceSupportKHR      vkGetPhysicalDeviceSurfaceSupportKHR      = 0;
+PFN_vkGetPhysicalDeviceSurfaceCapabilitiesKHR vkGetPhysicalDeviceSurfaceCapabilitiesKHR = 0;
+PFN_vkGetPhysicalDeviceSurfaceFormatsKHR      vkGetPhysicalDeviceSurfaceFormatsKHR      = 0;
+PFN_vkGetPhysicalDeviceSurfacePresentModesKHR vkGetPhysicalDeviceSurfacePresentModesKHR = 0;
+
+PFN_vkCreateSwapchainKHR                      vkCreateSwapchainKHR                      = 0;
+PFN_vkDestroySwapchainKHR                     vkDestroySwapchainKHR                     = 0;
+PFN_vkGetSwapchainImagesKHR                   vkGetSwapchainImagesKHR                   = 0;
+PFN_vkAcquireNextImageKHR                     vkAcquireNextImageKHR                     = 0;
+PFN_vkQueuePresentKHR                         vkQueuePresentKHR                         = 0;
+
+
+PFN_vkEnumeratePhysicalDevices                vkEnumeratePhysicalDevices                = 0;
+PFN_vkEnumerateDeviceExtensionProperties      vkEnumerateDeviceExtensionProperties      = 0;
+PFN_vkGetPhysicalDeviceProperties             vkGetPhysicalDeviceProperties             = 0;
+PFN_vkGetPhysicalDeviceFeatures               vkGetPhysicalDeviceFeatures               = 0;
+PFN_vkGetPhysicalDeviceQueueFamilyProperties  vkGetPhysicalDeviceQueueFamilyProperties  = 0;
+PFN_vkCreateDevice                            vkCreateDevice                            = 0;
+PFN_vkGetDeviceProcAddr                       vkGetDeviceProcAddr                       = 0;
+PFN_vkDestroyInstance                         vkDestroyInstance                         = 0;
+PFN_vkCreateCommandPool                       vkCreateCommandPool                       = 0;
+PFN_vkDestroyCommandPool                      vkDestroyCommandPool                      = 0;
+PFN_vkResetCommandPool                        vkResetCommandPool                        = 0;
+PFN_vkResetCommandBuffer                      vkResetCommandBuffer                      = 0;
+PFN_vkAllocateCommandBuffers                  vkAllocateCommandBuffers                  = 0;  
+PFN_vkFreeCommandBuffers                      vkFreeCommandBuffers                      = 0;  
+PFN_vkBeginCommandBuffer                      vkBeginCommandBuffer                      = 0;
+PFN_vkEndCommandBuffer                        vkEndCommandBuffer                        = 0;
+PFN_vkCmdBeginRenderPass                      vkCmdBeginRenderPass                      = 0;
+PFN_vkCmdEndRenderPass                        vkCmdEndRenderPass                        = 0;
+PFN_vkCmdPipelineBarrier                      vkCmdPipelineBarrier                      = 0;
+PFN_vkCmdClearColorImage                      vkCmdClearColorImage                      = 0;
+PFN_vkCmdBindPipeline                         vkCmdBindPipeline                         = 0;
+PFN_vkCmdDraw                                 vkCmdDraw                                 = 0;
+PFN_vkQueueSubmit                             vkQueueSubmit                             = 0;
+PFN_vkCreateShaderModule                      vkCreateShaderModule                      = 0;
+PFN_vkDestroyShaderModule                     vkDestroyShaderModule                     = 0;
+
+// LOGICAL DEVICE
+PFN_vkGetDeviceQueue                          vkGetDeviceQueue                          = 0;
+PFN_vkDestroyDevice                           vkDestroyDevice                           = 0;
+PFN_vkDeviceWaitIdle                          vkDeviceWaitIdle                          = 0;
+PFN_vkCreateFence                             vkCreateFence                             = 0;
+PFN_vkDestroyFence                            vkDestroyFence                            = 0;
+PFN_vkWaitForFences                           vkWaitForFences                           = 0;
+PFN_vkResetFences                             vkResetFences                             = 0;
+PFN_vkCreateSemaphore                         vkCreateSemaphore                         = 0;
+PFN_vkDestroySemaphore                        vkDestroySemaphore                        = 0;
+PFN_vkCreateRenderPass                        vkCreateRenderPass                        = 0;
+PFN_vkDestroyRenderPass                       vkDestroyRenderPass                       = 0;
+PFN_vkCreateImageView                         vkCreateImageView                         = 0;
+PFN_vkDestroyImageView                        vkDestroyImageView                        = 0;
+PFN_vkCreateFramebuffer                       vkCreateFramebuffer                       = 0; 
+PFN_vkDestroyFramebuffer                      vkDestroyFramebuffer                      = 0; 
+PFN_vkCreateGraphicsPipelines                 vkCreateGraphicsPipelines                 = 0;
+PFN_vkCreatePipelineLayout                    vkCreatePipelineLayout                    = 0;
+PFN_vkDestroyPipeline                         vkDestroyPipeline                         = 0;
+PFN_vkDestroyPipelineLayout                   vkDestroyPipelineLayout                   = 0;
+
+
+// vulkan is verbose
+// all func calls that return VkResult follow this logic
+#define VK_CHECK(FunCall) \
+    if (VK_FAILS(FunCall)) \
+    { \
+        Log("Error during function %s\n",#FunCall); \
+        return 1; \
+    } \
+
 struct vk_version
 {
     uint32 Major,Minor,Patch;
 };
+
+
 
 struct vulkan_pipeline
 {
@@ -47,6 +142,60 @@ struct vulkan_pipeline
 
     VkPipelineLayout PipelineLayout;
 };
+
+struct vulkan
+{
+    bool32 Initialized;
+
+    VkInstance       Instance;
+
+    // Primary GPU
+    VkPhysicalDevice PrimaryGPU;
+    VkDevice         PrimaryDevice;
+
+    uint32  GraphicsQueueFamilyIndex;
+    VkQueue GraphicsQueue;
+    uint32  PresentationQueueFamilyIndex;
+    VkQueue PresentationQueue;
+
+    VkCommandPool   CommandPool;
+    VkCommandBuffer PrimaryCommandBuffer[3];
+
+    VkRenderPass  RenderPass;
+    VkFramebuffer Framebuffers[3];
+
+    VkFence     RenderFence;
+    VkSemaphore ImageAvailableSemaphore;
+    VkSemaphore RenderSemaphore;
+
+    // Secondary GPU if available
+    VkPhysicalDevice SecondaryGPU;
+    VkDevice         SecondaryDevice;
+
+    // Presentation
+    VkSurfaceKHR   Surface;
+    VkSwapchainKHR Swapchain;
+    VkFormat       SwapchainImageFormat;
+    VkExtent2D     WindowExtension;
+    VkImage        SwapchainImages[3];
+    VkImageView    SwapchainImageViews[3];
+    uint32         SwapchainImageCount;
+
+    // NOTE: is this app specific?
+    VkPipelineLayout PipelineLayout;
+
+
+    VkPipeline      Pipelines[1];
+    vulkan_pipeline PipelinesDefinition[1];
+    uint32          PipelinesCount;
+
+    VkShaderModule ShaderModules[2];
+    uint32         ShaderModulesCount;
+};
+
+global_variable vulkan        GlobalVulkan    = {};
+global_variable bool32        GlobalWindowIsMinimized = false;
+
 
 VkPipelineShaderStageCreateInfo
 VulkanCreateShaderStageInfo(VkShaderStageFlagBits Stage, VkShaderModule Module)
@@ -151,51 +300,177 @@ VulkanCreatePipelineColorBlendAttachmentState()
     return PipelineColorBlendAttachmentState;
 };
 
-struct vulkan
+VkPipelineLayoutCreateInfo
+VulkanCreatePipelineLayoutCreateInfo()
 {
-    bool32 Initialized;
 
-    VkInstance       Instance;
+    VkPipelineLayoutCreateInfo PipelineLayoutCreateInfo;
+    PipelineLayoutCreateInfo.sType                  = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO; // VkStructureType sType;
+    PipelineLayoutCreateInfo.pNext                  = 0; // Void * pNext;
+    PipelineLayoutCreateInfo.flags                  = 0; // VkPipelineLayoutCreateFlags flags;
+    PipelineLayoutCreateInfo.setLayoutCount         = 0; // uint32_t setLayoutCount;
+    PipelineLayoutCreateInfo.pSetLayouts            = 0; // Typedef * pSetLayouts;
+    PipelineLayoutCreateInfo.pushConstantRangeCount = 0; // uint32_t pushConstantRangeCount;
+    PipelineLayoutCreateInfo.pPushConstantRanges    = 0; // Typedef * pPushConstantRanges;
 
-    // Primary GPU
-    VkPhysicalDevice PrimaryGPU;
-    VkDevice         PrimaryDevice;
+    return PipelineLayoutCreateInfo;
+}
 
-    uint32  GraphicsQueueFamilyIndex;
-    VkQueue GraphicsQueue;
-    uint32  PresentationQueueFamilyIndex;
-    VkQueue PresentationQueue;
+VkPipeline
+VulkanPipelineBuilder(vulkan_pipeline * VulkanPipeline,VkDevice Device, VkRenderPass RenderPass)
+{
 
-    VkCommandPool   CommandPool;
-    VkCommandBuffer PrimaryCommandBuffer[3];
+    VkPipelineViewportStateCreateInfo ViewportState = {};
+    ViewportState.sType         = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO; // VkStructureType sType;
+    ViewportState.pNext         = 0;                                                     // Void * pNext;
+    ViewportState.flags         = 0;                                                     // VkPipelineViewportStateCreateFlags flags;
+    ViewportState.viewportCount = 1;                                                     // uint32_t viewportCount;
+    ViewportState.pViewports    = &VulkanPipeline->Viewport;                                    // Typedef * pViewports;
+    ViewportState.scissorCount  = 1;                                                     // uint32_t scissorCount;
+    ViewportState.pScissors     = &VulkanPipeline->Scissor;                                     // Typedef * pScissors;
 
-    VkRenderPass  RenderPass;
-    VkFramebuffer Framebuffers[3];
+    VkPipelineColorBlendStateCreateInfo ColorBlending = {};
+    ColorBlending.sType           = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO; // VkStructureType sType;
+    ColorBlending.pNext           = 0;                                                        // Void * pNext;
+    ColorBlending.flags           = 0;                                                        // VkPipelineColorBlendStateCreateFlags flags;
+    ColorBlending.logicOpEnable   = VK_FALSE;                                                 // VkBool32 logicOpEnable;
+    ColorBlending.logicOp         = VK_LOGIC_OP_COPY;                                         // VkLogicOp logicOp;
+    ColorBlending.attachmentCount = 1;                                                        // uint32_t attachmentCount;
+    ColorBlending.pAttachments    = &VulkanPipeline->ColorBlendAttachment;                           // Typedef * pAttachments;
+    //ColorBlending.blendConstants  = 0;                                                        // CONSTANTARRAY blendConstants;
 
-    VkFence     RenderFence;
-    VkSemaphore ImageAvailableSemaphore;
-    VkSemaphore RenderSemaphore;
+    VkGraphicsPipelineCreateInfo PipelineInfo = {};
+    PipelineInfo.sType               = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO; // VkStructureType sType;
+    PipelineInfo.pNext               = 0;                                               // Void * pNext;
+    PipelineInfo.flags               = 0;                                               // VkPipelineCreateFlags flags;
+    PipelineInfo.stageCount          = VulkanPipeline->ShaderStagesCount;               // uint32_t stageCount;
+    PipelineInfo.pStages             = VulkanPipeline->ShaderStages;                     // Typedef * pStages;
+    PipelineInfo.pVertexInputState   = &VulkanPipeline->VertexInputInfo;                 // Typedef * pVertexInputState;
+    PipelineInfo.pInputAssemblyState = &VulkanPipeline->InputAssembly;                   // Typedef * pInputAssemblyState;
+    PipelineInfo.pTessellationState  = 0;                                               // Typedef * pTessellationState;
+    PipelineInfo.pViewportState      = &ViewportState;                                  // Typedef * pViewportState;
+    PipelineInfo.pRasterizationState = &VulkanPipeline->Rasterizer;                      // Typedef * pRasterizationState;
+    PipelineInfo.pMultisampleState   = &VulkanPipeline->Multisampling;                   // Typedef * pMultisampleState;
+    PipelineInfo.pDepthStencilState  = 0;                                               // Typedef * pDepthStencilState;
+    PipelineInfo.pColorBlendState    = &ColorBlending;                                  // Typedef * pColorBlendState;
+    PipelineInfo.pDynamicState       = 0;                                               // Typedef * pDynamicState;
+    PipelineInfo.layout              = VulkanPipeline->PipelineLayout;                   // VkPipelineLayout layout;
+    PipelineInfo.renderPass          = RenderPass;                                      // VkRenderPass renderPass;
+    PipelineInfo.subpass             = 0;                                               // uint32_t subpass;
+    PipelineInfo.basePipelineHandle  = VK_NULL_HANDLE;                                  // VkPipeline basePipelineHandle;
+    PipelineInfo.basePipelineIndex   = 0;                                               // int32_t basePipelineIndex;
 
-    VkShaderModule TriangleVertexShader;
-    VkShaderModule TriangleFragmentShader;
+    VkPipeline Pipeline;
 
-    // Secondary GPU if available
-    VkPhysicalDevice SecondaryGPU;
-    VkDevice         SecondaryDevice;
+    if (VK_FAILS(vkCreateGraphicsPipelines(Device,VK_NULL_HANDLE,1,&PipelineInfo, 0, &Pipeline)))
+    {
+        Log("Failed to create pipeline\n");
+        return VK_NULL_HANDLE;
+    }
 
-    // Presentation
-    VkSurfaceKHR   Surface;
-    VkSwapchainKHR Swapchain;
-    VkFormat       SwapchainImageFormat;
-    VkExtent2D     WindowExtension;
-    VkImage        SwapchainImages[3];
-    VkImageView    SwapchainImageViews[3];
-    uint32         SwapchainImageCount;
+    return Pipeline;
+}
+
+VkViewport
+VulkanCreateDefaultViewport(VkExtent2D WindowExtent)
+{
+    VkViewport Viewport;
+    Viewport.x        = 0; // FLOAT   x;
+    Viewport.y        = 0; // FLOAT   y;
+    Viewport.width    = (real32)WindowExtent.width; // FLOAT   width;
+    Viewport.height   = (real32)WindowExtent.height; // FLOAT   height;
+    Viewport.minDepth = 0; // FLOAT   minDepth;
+    Viewport.maxDepth = 1; // FLOAT   maxDepth;
+
+    return Viewport;
+}
 
 
-    VkShaderModule ShaderModules[2];
-    uint32         ShaderModulesCount;
-};
+int32
+VulkanReCreatePipelinesOnWindowResize()
+{
+    int32 Result = 0;
+
+    for (uint32 PipelineIndex = 0;
+            PipelineIndex < GlobalVulkan.PipelinesCount;
+            ++PipelineIndex)
+    {
+        if (VK_VALID_HANDLE(GlobalVulkan.Pipelines[PipelineIndex]))
+        {
+            vkDestroyPipeline(GlobalVulkan.PrimaryDevice,GlobalVulkan.Pipelines[PipelineIndex],0);
+
+            GlobalVulkan.Pipelines[PipelineIndex] = VK_NULL_HANDLE;
+
+            vulkan_pipeline * VulkanPipeline = (GlobalVulkan.PipelinesDefinition + PipelineIndex);
+
+            VulkanPipeline->Viewport       = VulkanCreateDefaultViewport(GlobalVulkan.WindowExtension); // VkViewport Viewport;
+
+            VulkanPipeline->Scissor.offset = {0,0};
+            VulkanPipeline->Scissor.extent = GlobalVulkan.WindowExtension;
+
+            VkPipeline Pipeline = VulkanPipelineBuilder(VulkanPipeline, GlobalVulkan.PrimaryDevice, GlobalVulkan.RenderPass);
+
+            if (VK_VALID_HANDLE(Pipeline))
+            {
+                GlobalVulkan.Pipelines[PipelineIndex] = Pipeline;
+            }
+            else
+            {
+                Log("Failed to re-create pipeline '%i' after window resize\n",PipelineIndex);
+                Result = 1;
+            }
+        }
+    }
+
+    return Result;
+}
+
+/*
+ * Returns internal index array of pipeline handler
+ * In case of failure during creation, index is < 0
+ */
+int32
+RenderCreatePipeline(VkShaderModule VertexShader,
+                     VkShaderModule FragmentShader)
+{
+    int32 IndexPipeline = -1; // signal error creation pipeline
+
+    vulkan_pipeline VulkanPipeline;
+
+    VulkanPipeline.ShaderStagesCount = 2; // uint32 ShaderStagesCount;
+    VulkanPipeline.ShaderStages[0]   = VulkanCreateShaderStageInfo(VK_SHADER_STAGE_VERTEX_BIT,VertexShader);
+    VulkanPipeline.ShaderStages[1]   = VulkanCreateShaderStageInfo(VK_SHADER_STAGE_FRAGMENT_BIT,FragmentShader);
+
+    VulkanPipeline.VertexInputInfo      = VulkanCreateVertexInputStateInfo(); // VkPipelineVertexInputStateCreateInfo   VertexInputInfo;
+
+    VulkanPipeline.InputAssembly        = 
+        VulkanCreatePipelineInputAssemblyStateCreateInfo(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST); // VkPipelineInputAssemblyStateCreateInfo   InputAssembly;
+
+    VulkanPipeline.Viewport             = VulkanCreateDefaultViewport(GlobalVulkan.WindowExtension); // VkViewport   Viewport;
+
+    VulkanPipeline.Scissor.offset = {0,0};
+    VulkanPipeline.Scissor.extent = GlobalVulkan.WindowExtension;
+
+    VulkanPipeline.Rasterizer           = 
+        VulkanCreatePipelineRasterizationStateCreateInfo(VK_POLYGON_MODE_FILL); // VkPipelineRasterizationStateCreateInfo   Rasterizer;
+
+    VulkanPipeline.ColorBlendAttachment = VulkanCreatePipelineColorBlendAttachmentState();  // VkPipelineColorBlendAttachmentState ColorBlendAttachment;
+    VulkanPipeline.Multisampling        = VulkanCreatePipelineMultisampleStateCreateInfo(); // VkPipelineMultisampleStateCreateInfo Multisampling;
+    VulkanPipeline.PipelineLayout       = GlobalVulkan.PipelineLayout;                      // VkPipelineLayout PipelineLayout;
+
+    VkPipeline Pipeline = VulkanPipelineBuilder(&VulkanPipeline, GlobalVulkan.PrimaryDevice, GlobalVulkan.RenderPass);
+
+    if (VK_VALID_HANDLE(Pipeline))
+    {
+        Assert((GlobalVulkan.PipelinesCount+1) <= ArrayCount(GlobalVulkan.Pipelines));
+        IndexPipeline = GlobalVulkan.PipelinesCount++;
+        GlobalVulkan.PipelinesDefinition[IndexPipeline] = VulkanPipeline;
+        GlobalVulkan.Pipelines[IndexPipeline]= Pipeline;
+    }
+
+    return IndexPipeline;
+}
+
 
 int
 strcmp(const char *p1, const char *p2)
@@ -216,82 +491,7 @@ strcmp(const char *p1, const char *p2)
 
 
 
-PFN_vkGetInstanceProcAddr                     vkGetInstanceProcAddr                   = 0;
 
-// INSTANCE VULKAN
-PFN_vkCreateInstance                          vkCreateInstance                        = 0;
-PFN_vkEnumerateInstanceExtensionProperties    vkEnumerateInstanceExtensionProperties  = 0;
-PFN_vkEnumerateInstanceLayerProperties        vkEnumerateInstanceLayerProperties      = 0;
-
-
-// PHYSICAL DEVICES
-// SWAP CHAIN API
-PFN_vkDestroySurfaceKHR                       vkDestroySurfaceKHR                       = 0;
-PFN_vkGetPhysicalDeviceSurfaceSupportKHR      vkGetPhysicalDeviceSurfaceSupportKHR      = 0;
-PFN_vkGetPhysicalDeviceSurfaceCapabilitiesKHR vkGetPhysicalDeviceSurfaceCapabilitiesKHR = 0;
-PFN_vkGetPhysicalDeviceSurfaceFormatsKHR      vkGetPhysicalDeviceSurfaceFormatsKHR      = 0;
-PFN_vkGetPhysicalDeviceSurfacePresentModesKHR vkGetPhysicalDeviceSurfacePresentModesKHR = 0;
-
-PFN_vkCreateSwapchainKHR                      vkCreateSwapchainKHR                      = 0;
-PFN_vkDestroySwapchainKHR                     vkDestroySwapchainKHR                     = 0;
-PFN_vkGetSwapchainImagesKHR                   vkGetSwapchainImagesKHR                   = 0;
-PFN_vkAcquireNextImageKHR                     vkAcquireNextImageKHR                     = 0;
-PFN_vkQueuePresentKHR                         vkQueuePresentKHR                         = 0;
-
-
-PFN_vkEnumeratePhysicalDevices                vkEnumeratePhysicalDevices                = 0;
-PFN_vkEnumerateDeviceExtensionProperties      vkEnumerateDeviceExtensionProperties      = 0;
-PFN_vkGetPhysicalDeviceProperties             vkGetPhysicalDeviceProperties             = 0;
-PFN_vkGetPhysicalDeviceFeatures               vkGetPhysicalDeviceFeatures               = 0;
-PFN_vkGetPhysicalDeviceQueueFamilyProperties  vkGetPhysicalDeviceQueueFamilyProperties  = 0;
-PFN_vkCreateDevice                            vkCreateDevice                            = 0;
-PFN_vkGetDeviceProcAddr                       vkGetDeviceProcAddr                       = 0;
-PFN_vkDestroyInstance                         vkDestroyInstance                         = 0;
-PFN_vkCreateCommandPool                       vkCreateCommandPool                       = 0;
-PFN_vkDestroyCommandPool                      vkDestroyCommandPool                      = 0;
-PFN_vkResetCommandPool                        vkResetCommandPool                        = 0;
-PFN_vkResetCommandBuffer                      vkResetCommandBuffer                      = 0;
-PFN_vkAllocateCommandBuffers                  vkAllocateCommandBuffers                  = 0;  
-PFN_vkFreeCommandBuffers                      vkFreeCommandBuffers                      = 0;  
-PFN_vkBeginCommandBuffer                      vkBeginCommandBuffer                      = 0;
-PFN_vkEndCommandBuffer                        vkEndCommandBuffer                        = 0;
-PFN_vkCmdBeginRenderPass                      vkCmdBeginRenderPass                      = 0;
-PFN_vkCmdEndRenderPass                        vkCmdEndRenderPass                        = 0;
-PFN_vkCmdPipelineBarrier                      vkCmdPipelineBarrier                      = 0;
-PFN_vkCmdClearColorImage                      vkCmdClearColorImage                      = 0;
-PFN_vkQueueSubmit                             vkQueueSubmit                             = 0;
-PFN_vkCreateShaderModule                      vkCreateShaderModule                      = 0;
-PFN_vkDestroyShaderModule                     vkDestroyShaderModule                     = 0;
-
-// LOGICAL DEVICE
-PFN_vkGetDeviceQueue                          vkGetDeviceQueue                          = 0;
-PFN_vkDestroyDevice                           vkDestroyDevice                           = 0;
-PFN_vkDeviceWaitIdle                          vkDeviceWaitIdle                          = 0;
-PFN_vkCreateFence                             vkCreateFence                             = 0;
-PFN_vkDestroyFence                            vkDestroyFence                            = 0;
-PFN_vkWaitForFences                           vkWaitForFences                           = 0;
-PFN_vkResetFences                             vkResetFences                             = 0;
-PFN_vkCreateSemaphore                         vkCreateSemaphore                         = 0;
-PFN_vkDestroySemaphore                        vkDestroySemaphore                        = 0;
-PFN_vkCreateRenderPass                        vkCreateRenderPass                        = 0;
-PFN_vkDestroyRenderPass                       vkDestroyRenderPass                       = 0;
-PFN_vkCreateImageView                         vkCreateImageView                         = 0;
-PFN_vkDestroyImageView                        vkDestroyImageView                        = 0;
-PFN_vkCreateFramebuffer                       vkCreateFramebuffer                       = 0; 
-PFN_vkDestroyFramebuffer                      vkDestroyFramebuffer                      = 0; 
-
-// vulkan is verbose
-// all func calls that return VkResult follow this logic
-#define VK_CHECK(FunCall) \
-    if (VK_FAILS(FunCall)) \
-    { \
-        Log("Error during function %s\n",#FunCall); \
-        return 1; \
-    } \
-
-
-global_variable vulkan        GlobalVulkan    = {};
-global_variable bool32        GlobalWindowIsMinimized = false;
 
 
 struct vulkan_device_extensions
@@ -705,12 +905,10 @@ WaitForRender()
 }
 
 int32
-LoadShaderModule(char * Buffer, size_t Size)
+RenderCreateShaderModule(char * Buffer, size_t Size, VkShaderModule * ShaderModule)
 {
 
     Assert((GlobalVulkan.ShaderModulesCount + 1) <= ArrayCount(GlobalVulkan.ShaderModules));
-
-    VkShaderModule ShaderModule;
 
     VkShaderModuleCreateInfo ShaderModuleCreateInfo;
     ShaderModuleCreateInfo.sType    = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO; // VkStructureType sType;
@@ -719,18 +917,23 @@ LoadShaderModule(char * Buffer, size_t Size)
     ShaderModuleCreateInfo.codeSize = Size;                                        // size_t codeSize;
     ShaderModuleCreateInfo.pCode    = (uint32 *)Buffer;                            // Typedef * pCode;
 
-    VK_CHECK(vkCreateShaderModule(GlobalVulkan.PrimaryDevice, &ShaderModuleCreateInfo, 0, &ShaderModule));
+    VK_CHECK(vkCreateShaderModule(GlobalVulkan.PrimaryDevice, &ShaderModuleCreateInfo, 0, ShaderModule));
 
-    GlobalVulkan.ShaderModules[GlobalVulkan.ShaderModulesCount++] = ShaderModule;
+    GlobalVulkan.ShaderModules[GlobalVulkan.ShaderModulesCount++] = *ShaderModule;
 
     return 0;
 
 }
 
 int32
-RenderLoop(real32 TimeElapsed)
+RenderLoop(real32 TimeElapsed, int32 PipelineIndex)
 {
     if (GlobalWindowIsMinimized) return 0;
+
+    Assert((PipelineIndex >= 0) && ((uint32)PipelineIndex < GlobalVulkan.PipelinesCount));
+    Assert(VK_VALID_HANDLE(GlobalVulkan.Pipelines[PipelineIndex]));
+
+    VkPipeline Pipeline = GlobalVulkan.Pipelines[PipelineIndex];
 
     uint32 SwapchainImageIndex;
     VK_CHECK(vkAcquireNextImageKHR(GlobalVulkan.PrimaryDevice, GlobalVulkan.Swapchain, 1000000000, GlobalVulkan.ImageAvailableSemaphore, 0 , &SwapchainImageIndex));
@@ -762,6 +965,10 @@ RenderLoop(real32 TimeElapsed)
     RenderPassBeginInfo.pClearValues    = &ClearValue;                                    // Typedef * pClearValues;
 
     vkCmdBeginRenderPass(cmd, &RenderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
+
+    // Actual shit
+    vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, Pipeline);
+    vkCmdDraw(cmd, 3, 1, 0, 0);
 
     vkCmdEndRenderPass(cmd);
 
@@ -833,14 +1040,10 @@ FreeSwapchain()
 
 }
 int32
-VulkanRenewSwapChain(int32 Width,int32 Height)
+VulkanOnWindowResize(int32 Width,int32 Height)
 {
     if (GlobalVulkan.Initialized)
     {
-        if (GlobalWindowIsMinimized && Width > 0)
-        {
-            GlobalWindowIsMinimized = true;
-        }
 
         VulkanWaitForDevices();
 
@@ -860,6 +1063,8 @@ VulkanRenewSwapChain(int32 Width,int32 Height)
         if (VulkanInitDefaultRenderPass()) return 1;
 
         if (VulkanInitFramebuffers()) return 1;
+
+        VulkanReCreatePipelinesOnWindowResize();
     }
 
     return 0;
@@ -943,6 +1148,11 @@ VulkanCreateLogicaDevice()
 
     VK_DEVICE_LEVEL_FN(GlobalVulkan.PrimaryDevice,vkCreateShaderModule);
     VK_DEVICE_LEVEL_FN(GlobalVulkan.PrimaryDevice,vkDestroyShaderModule);
+
+    VK_DEVICE_LEVEL_FN(GlobalVulkan.PrimaryDevice,vkCreateGraphicsPipelines);
+    VK_DEVICE_LEVEL_FN(GlobalVulkan.PrimaryDevice,vkCreatePipelineLayout);
+    VK_DEVICE_LEVEL_FN(GlobalVulkan.PrimaryDevice,vkDestroyPipeline);
+    VK_DEVICE_LEVEL_FN(GlobalVulkan.PrimaryDevice,vkDestroyPipelineLayout);
 
     VkFenceCreateInfo FenceCreateInfo;
     FenceCreateInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO; // VkStructureType   sType;
@@ -1280,6 +1490,8 @@ VulkanGetInstance(bool32 EnableValidationLayer,
     VK_INSTANCE_LEVEL_FN(Instance,vkCmdEndRenderPass);
     VK_INSTANCE_LEVEL_FN(Instance,vkCmdPipelineBarrier);
     VK_INSTANCE_LEVEL_FN(Instance,vkCmdClearColorImage);
+    VK_INSTANCE_LEVEL_FN(Instance,vkCmdBindPipeline);
+    VK_INSTANCE_LEVEL_FN(Instance,vkCmdDraw);
     VK_INSTANCE_LEVEL_FN(Instance,vkQueueSubmit);
 
     return 0;
@@ -1322,11 +1534,29 @@ InitializeVulkan(int32 Width, int32 Height,
 
     if (VulkanInitFramebuffers()) return 1;
 
+    VkPipelineLayoutCreateInfo PipelineLayoutCreateInfo = VulkanCreatePipelineLayoutCreateInfo();
+
+    VK_CHECK(vkCreatePipelineLayout(GlobalVulkan.PrimaryDevice, &PipelineLayoutCreateInfo, 0, &GlobalVulkan.PipelineLayout));
+
     GlobalVulkan.Initialized = true;
 
     return 0;
 }
 
+void
+VulkanDestroyPipeline()
+{
+    for (uint32 PipelineIndex = 0;
+                PipelineIndex < GlobalVulkan.PipelinesCount;
+                ++PipelineIndex)
+    {
+        if (VK_VALID_HANDLE(GlobalVulkan.Pipelines[PipelineIndex]))
+        {
+            vkDestroyPipeline(GlobalVulkan.PrimaryDevice,GlobalVulkan.Pipelines[PipelineIndex],0);
+            GlobalVulkan.Pipelines[PipelineIndex] = VK_NULL_HANDLE;
+        }
+    }
+}
 
 void
 CloseVulkan()
@@ -1335,6 +1565,12 @@ CloseVulkan()
     VulkanWaitForDevices();
 
     /* ALWAYS AFTER WAIT IDLE */
+    VulkanDestroyPipeline();
+
+    if (VK_VALID_HANDLE(GlobalVulkan.PipelineLayout))
+    {
+        vkDestroyPipelineLayout(GlobalVulkan.PrimaryDevice,GlobalVulkan.PipelineLayout,0);
+    }
 
     FreeSwapchain();
 

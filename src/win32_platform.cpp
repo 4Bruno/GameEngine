@@ -84,7 +84,7 @@ WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
             GetWindowRect(hWnd, &Rect);
             int32 Height =  Rect.bottom - Rect.top;
             int32 Width = Rect.right - Rect.left;
-            if (VulkanRenewSwapChain(Width,Height))
+            if (VulkanOnWindowResize(Width,Height))
             {
                 Log("Error during swap chain creation\n");
                 GlobalAppRunning = false;
@@ -283,10 +283,7 @@ int main()
 
             GameState.pfnGameUpdateAndRender(&GameMemory,&Input,R32TimeElapsed);
 
-            WaitForRender();
-
             //Log("Time elapsed %f\n",(real32)(TimeElapsed.QuadPart * (1.0f / 1000000.0f)));
-            RenderLoop(R32TimeElapsed);
 
         } // AppRunning loop
 

@@ -29,7 +29,7 @@ CloseVulkan();
 
 RENDER_API
 int32
-VulkanRenewSwapChain(int32 Width,int32 Height);
+VulkanOnWindowResize(int32 Width,int32 Height);
 
 RENDER_API
 int32
@@ -37,11 +37,16 @@ WaitForRender();
 
 RENDER_API
 int32
-RenderLoop(real32 TimeElapsed);
+RenderLoop(real32 TimeElapsed, int32 PipelineIndex);
 
 RENDER_API
 int32
-LoadShaderModule(char * Buffer, size_t Size);
+RenderCreateShaderModule(char * Buffer, size_t Size, VkShaderModule * ShaderModule);
+
+RENDER_API
+int32
+RenderCreatePipeline(VkShaderModule VertexShader,
+                     VkShaderModule FragmentShader);
 
 #define RENDER_H
 #endif
