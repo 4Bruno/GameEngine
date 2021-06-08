@@ -18,10 +18,13 @@
  *   This is _not_ always the case for external API.
  *   Exceptions:
  *    - RenderCreatePipeline
+ *    - RenderCreateShaderModule
  *    Will return the internal index in array of the pipeline
  */
 
 #include "render.h"
+// TODO: memcpy. How can we avoid this?
+#include <memory.h>
 
 #define VK_FAILS(result) (result != VK_SUCCESS)
 #define VK_SUCCESS(result) (result == VK_SUCCESS)
@@ -53,6 +56,7 @@ PFN_vkGetPhysicalDeviceSurfaceSupportKHR      vkGetPhysicalDeviceSurfaceSupportK
 PFN_vkGetPhysicalDeviceSurfaceCapabilitiesKHR vkGetPhysicalDeviceSurfaceCapabilitiesKHR = 0;
 PFN_vkGetPhysicalDeviceSurfaceFormatsKHR      vkGetPhysicalDeviceSurfaceFormatsKHR      = 0;
 PFN_vkGetPhysicalDeviceSurfacePresentModesKHR vkGetPhysicalDeviceSurfacePresentModesKHR = 0;
+PFN_vkGetPhysicalDeviceMemoryProperties       vkGetPhysicalDeviceMemoryProperties       = 0;
 
 PFN_vkCreateSwapchainKHR                      vkCreateSwapchainKHR                      = 0;
 PFN_vkDestroySwapchainKHR                     vkDestroySwapchainKHR                     = 0;
@@ -83,6 +87,7 @@ PFN_vkCmdPipelineBarrier                      vkCmdPipelineBarrier              
 PFN_vkCmdClearColorImage                      vkCmdClearColorImage                      = 0;
 PFN_vkCmdBindPipeline                         vkCmdBindPipeline                         = 0;
 PFN_vkCmdDraw                                 vkCmdDraw                                 = 0;
+PFN_vkCmdBindVertexBuffers                    vkCmdBindVertexBuffers                    = 0;
 PFN_vkQueueSubmit                             vkQueueSubmit                             = 0;
 PFN_vkCreateShaderModule                      vkCreateShaderModule                      = 0;
 PFN_vkDestroyShaderModule                     vkDestroyShaderModule                     = 0;
@@ -107,6 +112,15 @@ PFN_vkCreateGraphicsPipelines                 vkCreateGraphicsPipelines         
 PFN_vkCreatePipelineLayout                    vkCreatePipelineLayout                    = 0;
 PFN_vkDestroyPipeline                         vkDestroyPipeline                         = 0;
 PFN_vkDestroyPipelineLayout                   vkDestroyPipelineLayout                   = 0;
+
+PFN_vkAllocateMemory                          vkAllocateMemory                          = 0;
+PFN_vkFreeMemory                              vkFreeMemory                              = 0;
+PFN_vkCreateBuffer                            vkCreateBuffer                            = 0;
+PFN_vkDestroyBuffer                           vkDestroyBuffer                           = 0;
+PFN_vkGetBufferMemoryRequirements             vkGetBufferMemoryRequirements             = 0;
+PFN_vkMapMemory                               vkMapMemory                               = 0;
+PFN_vkUnmapMemory                             vkUnmapMemory                             = 0;
+PFN_vkBindBufferMemory                        vkBindBufferMemory                        = 0;
 
 
 // vulkan is verbose
@@ -161,6 +175,9 @@ struct vulkan
     VkCommandPool   CommandPool;
     VkCommandBuffer PrimaryCommandBuffer[3];
 
+    VkDeviceMemory VertexDeviceMemory;
+    VkBuffer       VertexBuffer;
+
     VkRenderPass  RenderPass;
     VkFramebuffer Framebuffers[3];
 
@@ -180,6 +197,7 @@ struct vulkan
     VkImage        SwapchainImages[3];
     VkImageView    SwapchainImageViews[3];
     uint32         SwapchainImageCount;
+    uint32         CurrentSwapchainImageIndex;
 
     // NOTE: is this app specific?
     VkPipelineLayout PipelineLayout;
@@ -212,16 +230,59 @@ VulkanCreateShaderStageInfo(VkShaderStageFlagBits Stage, VkShaderModule Module)
     return PipelineShaderStageCreateInfo;
 }
 
+struct vertex_inputs_description
+{
+    VkVertexInputBindingDescription   Bindings[1];
+    VkVertexInputAttributeDescription Attributes[3];
+};
+
+vertex_inputs_description
+RenderGetVertexInputsDescription()
+{
+    vertex_inputs_description InputsDescription;
+
+    VkVertexInputBindingDescription Binding;
+
+    Binding.binding   = 0;                           // uint32_t binding;
+    Binding.stride    = sizeof(vertex_point);        // uint32_t stride;
+    Binding.inputRate = VK_VERTEX_INPUT_RATE_VERTEX; // VkVertexInputRate inputRate;
+
+    VkVertexInputAttributeDescription * Attribute = (InputsDescription.Attributes + 0);
+
+    Attribute->location = 0;                          // uint32_t location;
+    Attribute->binding  = 0;                          // uint32_t binding;
+    Attribute->format   = VK_FORMAT_R32G32B32_SFLOAT; // VkFormat format;
+    Attribute->offset   = offsetof(vertex_point,P);   // uint32_t offset;
+
+    Attribute = (InputsDescription.Attributes + 1);
+    
+    Attribute->location = 1;                          // uint32_t location;
+    Attribute->binding  = 0;                          // uint32_t binding;
+    Attribute->format   = VK_FORMAT_R32G32B32_SFLOAT; // VkFormat format;
+    Attribute->offset   = offsetof(vertex_point,N);   // uint32_t offset;
+
+    Attribute = (InputsDescription.Attributes + 2);
+
+    Attribute->location = 2;                             // uint32_t location;
+    Attribute->binding  = 0;                             // uint32_t binding;
+    Attribute->format   = VK_FORMAT_R32G32B32A32_SFLOAT; // VkFormat format;
+    Attribute->offset   = offsetof(vertex_point,Color);  // uint32_t offset;
+
+    InputsDescription.Bindings[0] = Binding; // CONSTANTARRAY   Bindings;
+
+    return InputsDescription;
+}
+
 VkPipelineVertexInputStateCreateInfo
 VulkanCreateVertexInputStateInfo()
 {
     VkPipelineVertexInputStateCreateInfo PipelineVertexInputStateCreateInfo;
     PipelineVertexInputStateCreateInfo.sType                           = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO; // VkStructureType   sType;
     PipelineVertexInputStateCreateInfo.pNext                           = 0; // Void * pNext;
-    PipelineVertexInputStateCreateInfo.flags                           = 0; // VkPipelineVertexInputStateCreateFlags   flags;
-    PipelineVertexInputStateCreateInfo.vertexBindingDescriptionCount   = 0; // uint32_t   vertexBindingDescriptionCount;
+    PipelineVertexInputStateCreateInfo.flags                           = 0; // VkPipelineVertexInputStateCreateFlags flags;
+    PipelineVertexInputStateCreateInfo.vertexBindingDescriptionCount   = 0; // uint32_t vertexBindingDescriptionCount;
     PipelineVertexInputStateCreateInfo.pVertexBindingDescriptions      = 0; // Typedef * pVertexBindingDescriptions;
-    PipelineVertexInputStateCreateInfo.vertexAttributeDescriptionCount = 0; // uint32_t   vertexAttributeDescriptionCount;
+    PipelineVertexInputStateCreateInfo.vertexAttributeDescriptionCount = 0; // uint32_t vertexAttributeDescriptionCount;
     PipelineVertexInputStateCreateInfo.pVertexAttributeDescriptions    = 0; // Typedef * pVertexAttributeDescriptions;
 
     return PipelineVertexInputStateCreateInfo;
@@ -375,12 +436,16 @@ VkViewport
 VulkanCreateDefaultViewport(VkExtent2D WindowExtent)
 {
     VkViewport Viewport;
-    Viewport.x        = 0; // FLOAT   x;
-    Viewport.y        = 0; // FLOAT   y;
-    Viewport.width    = (real32)WindowExtent.width; // FLOAT   width;
-    Viewport.height   = (real32)WindowExtent.height; // FLOAT   height;
-    Viewport.minDepth = 0; // FLOAT   minDepth;
-    Viewport.maxDepth = 1; // FLOAT   maxDepth;
+
+    Viewport.x        = 0;                                 // FLOAT x;
+    Viewport.width    = (real32)WindowExtent.width;        // FLOAT width;
+    
+    // Invertex Axis Y as vulkan by default is top bottom
+    Viewport.height   = (real32)WindowExtent.height*-1.0f; // FLOAT height;
+    Viewport.y        = (real32)WindowExtent.height;       // FLOAT y;
+    
+    Viewport.minDepth = 0;                                 // FLOAT minDepth;
+    Viewport.maxDepth = 1;                                 // FLOAT maxDepth;
 
     return Viewport;
 }
@@ -430,9 +495,15 @@ VulkanReCreatePipelinesOnWindowResize()
  * In case of failure during creation, index is < 0
  */
 int32
-RenderCreatePipeline(VkShaderModule VertexShader,
-                     VkShaderModule FragmentShader)
+RenderCreatePipeline(int32 VertexShaderIndex,
+                     int32 FragmentShaderIndex)
 {
+    Assert((VertexShaderIndex >= 0) && (ArrayCount(GlobalVulkan.ShaderModules) > VertexShaderIndex));
+    Assert((FragmentShaderIndex >= 0) && (ArrayCount(GlobalVulkan.ShaderModules) > FragmentShaderIndex));
+
+    VkShaderModule VertexShader = GlobalVulkan.ShaderModules[VertexShaderIndex];
+    VkShaderModule FragmentShader = GlobalVulkan.ShaderModules[FragmentShaderIndex];
+
     int32 IndexPipeline = -1; // signal error creation pipeline
 
     vulkan_pipeline VulkanPipeline;
@@ -442,6 +513,12 @@ RenderCreatePipeline(VkShaderModule VertexShader,
     VulkanPipeline.ShaderStages[1]   = VulkanCreateShaderStageInfo(VK_SHADER_STAGE_FRAGMENT_BIT,FragmentShader);
 
     VulkanPipeline.VertexInputInfo      = VulkanCreateVertexInputStateInfo(); // VkPipelineVertexInputStateCreateInfo   VertexInputInfo;
+
+    vertex_inputs_description VertexInputDesc = RenderGetVertexInputsDescription();
+    VulkanPipeline.VertexInputInfo.vertexBindingDescriptionCount   = 1;                              // uint32_t vertexBindingDescriptionCount;
+    VulkanPipeline.VertexInputInfo.pVertexBindingDescriptions      = &VertexInputDesc.Bindings[0];   // Typedef * pVertexBindingDescriptions;
+    VulkanPipeline.VertexInputInfo.vertexAttributeDescriptionCount = 3;                              // uint32_t vertexAttributeDescriptionCount;
+    VulkanPipeline.VertexInputInfo.pVertexAttributeDescriptions    = &VertexInputDesc.Attributes[0]; // Typedef * pVertexAttributeDescriptions;
 
     VulkanPipeline.InputAssembly        = 
         VulkanCreatePipelineInputAssemblyStateCreateInfo(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST); // VkPipelineInputAssemblyStateCreateInfo   InputAssembly;
@@ -905,39 +982,165 @@ WaitForRender()
 }
 
 int32
-RenderCreateShaderModule(char * Buffer, size_t Size, VkShaderModule * ShaderModule)
+VulkanFindSuitableMemoryIndex(VkPhysicalDevice PhysicalDevice, VkMemoryRequirements MemoryRequirements,VkMemoryPropertyFlags PropertyFlags)
 {
+    VkPhysicalDeviceMemoryProperties MemProps;
+    vkGetPhysicalDeviceMemoryProperties(PhysicalDevice,&MemProps);
+
+    for (uint32 MemoryIndex = 0;
+         MemoryIndex < MemProps.memoryTypeCount;
+         ++MemoryIndex)
+    {
+        if (  
+                ((1 << MemoryIndex) & MemoryRequirements.memoryTypeBits) &&
+                ((MemProps.memoryTypes[MemoryIndex].propertyFlags & PropertyFlags) == PropertyFlags)
+            )
+        {
+            return (int32)MemoryIndex;
+        }
+    }
+
+    return -1;
+}
+
+
+int32
+VulkanAllocateBufferPoolCPUWriteGPURead(VkPhysicalDevice PhysicalDevice,
+                                        VkDevice Device,
+                                        VkDeviceSize AllocationSize, 
+                                        VkDeviceMemory * DeviceMemory,
+                                        VkBuffer * Buffer)
+{
+    memory_arena Arena = RenderGetMemoryArena();
+
+    VkBufferCreateInfo BufferCreateInfo;
+
+    BufferCreateInfo.sType                 = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO; // VkStructureType   sType;
+    BufferCreateInfo.pNext                 = 0;                                 // Void * pNext;
+    BufferCreateInfo.flags                 = 0;                                 // VkBufferCreateFlags flags;
+    BufferCreateInfo.size                  = Arena.MaxSize;                     // VkDeviceSize size;
+    BufferCreateInfo.usage                 = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT; // VkBufferUsageFlags usage;
+    BufferCreateInfo.sharingMode           = VK_SHARING_MODE_EXCLUSIVE;         // VkSharingMode sharingMode;
+    BufferCreateInfo.queueFamilyIndexCount = 0;                                 // uint32_t queueFamilyIndexCount;
+    BufferCreateInfo.pQueueFamilyIndices   = 0;                                 // Typedef * pQueueFamilyIndices;
+
+    VK_CHECK(vkCreateBuffer(Device, &BufferCreateInfo,0, Buffer));
+
+    VkMemoryRequirements MemReq;
+    vkGetBufferMemoryRequirements(Device, *Buffer, &MemReq);
+    VkMemoryPropertyFlags PropertyFlags = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | 
+                                          VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+    uint32 MemoryTypeIndex = VulkanFindSuitableMemoryIndex(PhysicalDevice,MemReq,PropertyFlags);
+    if (MemoryTypeIndex < 0)
+    {
+        Log("Couldn't find suitable CPU-GPU memory index\n");
+        return 1;
+    }
+
+    VkMemoryAllocateInfo AllocateInfo;
+
+    AllocateInfo.sType           = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO; // VkStructureType   sType;
+    AllocateInfo.pNext           = 0;                       // Void * pNext;
+    AllocateInfo.allocationSize  = AllocationSize;          // VkDeviceSize allocationSize;
+    AllocateInfo.memoryTypeIndex = (uint32)MemoryTypeIndex; // uint32_t memoryTypeIndex;
+
+    VK_CHECK(vkAllocateMemory(Device, &AllocateInfo, 0, DeviceMemory));
+
+    vkBindBufferMemory(Device,*Buffer,*DeviceMemory,0);
+
+    return 0;
+}
+
+memory_arena
+RenderGetMemoryArena()
+{
+    memory_arena Arena = {};
+    Arena.Base             = 0; // Typedef * Base;
+    Arena.MaxSize          = Megabytes(100); // uint32   MaxSize;
+    Arena.CurrentSize      = 0; // uint32   CurrentSize;
+
+    return Arena;
+}
+
+int32
+RenderPushVertexData(memory_arena * Arena,void * Data,uint32 DataSize,uint32 InstanceCount)
+{
+
+    uint32 TotalSize = (DataSize * InstanceCount);
+
+    Assert((Arena->CurrentSize + TotalSize) < Arena->MaxSize);
+
+    uint32 Base = Arena->CurrentSize;
+    VkDeviceSize Offset = (VkDeviceSize)Arena->CurrentSize;
+    VkDeviceSize DeviceSize = (VkDeviceSize)TotalSize;
+
+    // https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VkMemoryMapFlags.html
+    VkMemoryMapFlags Flags = 0; // RESERVED FUTURE USE
+
+    void * WriteToAddr;
+
+    VK_CHECK(vkMapMemory(GlobalVulkan.PrimaryDevice,GlobalVulkan.VertexDeviceMemory, Offset, DeviceSize, Flags , &WriteToAddr));
+
+    memcpy(WriteToAddr, Data, TotalSize);
+
+    vkUnmapMemory(GlobalVulkan.PrimaryDevice,GlobalVulkan.VertexDeviceMemory);
+
+    Arena->CurrentSize += TotalSize;
+
+    return 0;
+}
+
+int32
+RenderCreateShaderModule(char * Buffer, size_t Size)
+{
+
+    int32 ShaderIndex = -1;
+    
+    VkShaderModule ShaderModule;
 
     Assert((GlobalVulkan.ShaderModulesCount + 1) <= ArrayCount(GlobalVulkan.ShaderModules));
 
     VkShaderModuleCreateInfo ShaderModuleCreateInfo;
+
     ShaderModuleCreateInfo.sType    = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO; // VkStructureType sType;
     ShaderModuleCreateInfo.pNext    = 0;                                           // Void * pNext;
     ShaderModuleCreateInfo.flags    = 0;                                           // VkShaderModuleCreateFlags flags;
     ShaderModuleCreateInfo.codeSize = Size;                                        // size_t codeSize;
     ShaderModuleCreateInfo.pCode    = (uint32 *)Buffer;                            // Typedef * pCode;
 
-    VK_CHECK(vkCreateShaderModule(GlobalVulkan.PrimaryDevice, &ShaderModuleCreateInfo, 0, ShaderModule));
+    if (VK_SUCCESS(vkCreateShaderModule(GlobalVulkan.PrimaryDevice, &ShaderModuleCreateInfo, 0, &ShaderModule)))
+    {
+        ShaderIndex = GlobalVulkan.ShaderModulesCount++;
+        GlobalVulkan.ShaderModules[ShaderIndex] = ShaderModule;
+    }
 
-    GlobalVulkan.ShaderModules[GlobalVulkan.ShaderModulesCount++] = *ShaderModule;
-
-    return 0;
+    return ShaderIndex;
 
 }
 
 int32
-RenderLoop(real32 TimeElapsed, int32 PipelineIndex)
+VulkanSetCurrentImageSwap()
+{
+    uint32 SwapchainImageIndex;
+    VK_CHECK(vkAcquireNextImageKHR(GlobalVulkan.PrimaryDevice, GlobalVulkan.Swapchain, 1000000000, GlobalVulkan.ImageAvailableSemaphore, 0 , &SwapchainImageIndex));
+    GlobalVulkan.CurrentSwapchainImageIndex = SwapchainImageIndex;
+
+    return 0;
+}
+
+int32
+RenderBeginPass(v4 ClearColor)
 {
     if (GlobalWindowIsMinimized) return 0;
 
-    Assert((PipelineIndex >= 0) && ((uint32)PipelineIndex < GlobalVulkan.PipelinesCount));
-    Assert(VK_VALID_HANDLE(GlobalVulkan.Pipelines[PipelineIndex]));
 
-    VkPipeline Pipeline = GlobalVulkan.Pipelines[PipelineIndex];
+    if (VulkanSetCurrentImageSwap())
+    {
+        Log("Couldn't fetch current swapchain Image index\n");
+        return 1;
+    }
 
-    uint32 SwapchainImageIndex;
-    VK_CHECK(vkAcquireNextImageKHR(GlobalVulkan.PrimaryDevice, GlobalVulkan.Swapchain, 1000000000, GlobalVulkan.ImageAvailableSemaphore, 0 , &SwapchainImageIndex));
-
+    uint32 SwapchainImageIndex = GlobalVulkan.CurrentSwapchainImageIndex;
     VK_CHECK(vkResetCommandBuffer(GlobalVulkan.PrimaryCommandBuffer[SwapchainImageIndex], 0));
 
     VkCommandBuffer cmd = GlobalVulkan.PrimaryCommandBuffer[0];
@@ -950,25 +1153,60 @@ RenderLoop(real32 TimeElapsed, int32 PipelineIndex)
 
     VK_CHECK(vkBeginCommandBuffer(cmd, &CommandBufferBeginInfo));
 
-    real32 ColorRotation = sinf(TimeElapsed * (1.0f / 1.0f));
-    VkClearValue ClearValue;
-    ClearValue.color        = {0,0,ColorRotation,1.0f}; // VkClearColorValue   color;
-    ClearValue.depthStencil = {};                       // VkClearDepthStencilValue   depthStencil;
+    VkClearValue ClearValue = {};
+    ClearValue.color.float32[0] = ClearColor.r; // VkClearColorValue color;
+    ClearValue.color.float32[1] = ClearColor.g; // VkClearColorValue color;
+    ClearValue.color.float32[2] = ClearColor.b; // VkClearColorValue color;
+    ClearValue.color.float32[3] = ClearColor.a; // VkClearColorValue color;
+    //ClearValue.depthStencil  = {};            // VkClearDepthStencilValue depthStencil;
 
-    VkRenderPassBeginInfo RenderPassBeginInfo;
+    VkRenderPassBeginInfo RenderPassBeginInfo = {};
     RenderPassBeginInfo.sType           = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;       // VkStructureType   sType;
-    RenderPassBeginInfo.pNext           = 0;                                              // Void * pNext;
-    RenderPassBeginInfo.renderPass      = GlobalVulkan.RenderPass;                        // VkRenderPass   renderPass;
-    RenderPassBeginInfo.framebuffer     = GlobalVulkan.Framebuffers[SwapchainImageIndex]; // VkFramebuffer   framebuffer;
-    RenderPassBeginInfo.renderArea      = {{},GlobalVulkan.WindowExtension};              // VkRect2D   renderArea;
-    RenderPassBeginInfo.clearValueCount = 1;                                              // uint32_t   clearValueCount;
-    RenderPassBeginInfo.pClearValues    = &ClearValue;                                    // Typedef * pClearValues;
+    RenderPassBeginInfo.pNext             = 0;                                              // Void * pNext;
+    RenderPassBeginInfo.renderPass        = GlobalVulkan.RenderPass;                        // VkRenderPass renderPass;
+    RenderPassBeginInfo.framebuffer       = GlobalVulkan.Framebuffers[SwapchainImageIndex]; // VkFramebuffer framebuffer;
+    RenderPassBeginInfo.renderArea.extent = GlobalVulkan.WindowExtension;                   // VkRect2D renderArea;
+    RenderPassBeginInfo.clearValueCount   = 1;                                              // uint32_t clearValueCount;
+    RenderPassBeginInfo.pClearValues      = &ClearValue;                                    // Typedef * pClearValues;
 
     vkCmdBeginRenderPass(cmd, &RenderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
 
+    return 0;
+}
+
+int32
+RenderSetPipeline(int32 PipelineIndex)
+{
+    Assert((PipelineIndex >= 0) && ((uint32)PipelineIndex < GlobalVulkan.PipelinesCount));
+    Assert(VK_VALID_HANDLE(GlobalVulkan.Pipelines[PipelineIndex]));
+
+    VkCommandBuffer cmd = GlobalVulkan.PrimaryCommandBuffer[0];
+
+    VkPipeline Pipeline = GlobalVulkan.Pipelines[PipelineIndex];
+
     // Actual shit
     vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, Pipeline);
-    vkCmdDraw(cmd, 3, 1, 0, 0);
+
+    return 0;
+}
+
+int32
+RenderPushMesh(uint32 TotalMeshInstances, uint32 MeshSize)
+{
+    VkCommandBuffer cmd = GlobalVulkan.PrimaryCommandBuffer[0];
+
+    VkDeviceSize Offset = 0;
+    vkCmdBindVertexBuffers(cmd, 0, 1, &GlobalVulkan.VertexBuffer, &Offset);
+    vkCmdDraw(cmd, MeshSize, TotalMeshInstances, 0, 0);
+
+    return 0;
+}
+
+int32
+RenderEndPass()
+{
+    VkCommandBuffer cmd = GlobalVulkan.PrimaryCommandBuffer[0];
+    uint32 SwapchainImageIndex = GlobalVulkan.CurrentSwapchainImageIndex;
 
     vkCmdEndRenderPass(cmd);
 
@@ -1003,6 +1241,7 @@ RenderLoop(real32 TimeElapsed, int32 PipelineIndex)
 
     return 0;
 }
+
 
 void
 FreeSwapchain()
@@ -1153,6 +1392,19 @@ VulkanCreateLogicaDevice()
     VK_DEVICE_LEVEL_FN(GlobalVulkan.PrimaryDevice,vkCreatePipelineLayout);
     VK_DEVICE_LEVEL_FN(GlobalVulkan.PrimaryDevice,vkDestroyPipeline);
     VK_DEVICE_LEVEL_FN(GlobalVulkan.PrimaryDevice,vkDestroyPipelineLayout);
+
+    VK_DEVICE_LEVEL_FN(GlobalVulkan.PrimaryDevice,vkAllocateMemory);
+    VK_DEVICE_LEVEL_FN(GlobalVulkan.PrimaryDevice,vkFreeMemory);
+
+    VK_DEVICE_LEVEL_FN(GlobalVulkan.PrimaryDevice,vkCreateBuffer);
+    VK_DEVICE_LEVEL_FN(GlobalVulkan.PrimaryDevice,vkDestroyBuffer);
+    VK_DEVICE_LEVEL_FN(GlobalVulkan.PrimaryDevice,vkGetBufferMemoryRequirements);
+
+    VK_DEVICE_LEVEL_FN(GlobalVulkan.PrimaryDevice,vkMapMemory);
+    VK_DEVICE_LEVEL_FN(GlobalVulkan.PrimaryDevice,vkUnmapMemory);
+
+    VK_DEVICE_LEVEL_FN(GlobalVulkan.PrimaryDevice,vkBindBufferMemory);
+
 
     VkFenceCreateInfo FenceCreateInfo;
     FenceCreateInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO; // VkStructureType   sType;
@@ -1468,6 +1720,7 @@ VulkanGetInstance(bool32 EnableValidationLayer,
     VK_INSTANCE_LEVEL_FN(Instance,vkGetPhysicalDeviceSurfaceCapabilitiesKHR);
     VK_INSTANCE_LEVEL_FN(Instance,vkGetPhysicalDeviceSurfaceFormatsKHR);
     VK_INSTANCE_LEVEL_FN(Instance,vkGetPhysicalDeviceSurfacePresentModesKHR);
+    VK_INSTANCE_LEVEL_FN(Instance,vkGetPhysicalDeviceMemoryProperties);
 
     // physical devices
     VK_INSTANCE_LEVEL_FN(Instance,vkEnumeratePhysicalDevices);
@@ -1493,6 +1746,7 @@ VulkanGetInstance(bool32 EnableValidationLayer,
     VK_INSTANCE_LEVEL_FN(Instance,vkCmdBindPipeline);
     VK_INSTANCE_LEVEL_FN(Instance,vkCmdDraw);
     VK_INSTANCE_LEVEL_FN(Instance,vkQueueSubmit);
+    VK_INSTANCE_LEVEL_FN(Instance,vkCmdBindVertexBuffers);
 
     return 0;
 }
@@ -1538,6 +1792,15 @@ InitializeVulkan(int32 Width, int32 Height,
 
     VK_CHECK(vkCreatePipelineLayout(GlobalVulkan.PrimaryDevice, &PipelineLayoutCreateInfo, 0, &GlobalVulkan.PipelineLayout));
 
+    if (
+            VulkanAllocateBufferPoolCPUWriteGPURead(
+                GlobalVulkan.PrimaryGPU,GlobalVulkan.PrimaryDevice,
+                (VkDeviceSize)Megabytes(100),&GlobalVulkan.VertexDeviceMemory,&GlobalVulkan.VertexBuffer)
+    )
+    {
+        return 1;
+    }
+
     GlobalVulkan.Initialized = true;
 
     return 0;
@@ -1565,6 +1828,17 @@ CloseVulkan()
     VulkanWaitForDevices();
 
     /* ALWAYS AFTER WAIT IDLE */
+
+    if (VK_VALID_HANDLE(GlobalVulkan.VertexBuffer))
+    {
+        vkDestroyBuffer(GlobalVulkan.PrimaryDevice,GlobalVulkan.VertexBuffer,0);
+    }
+
+    if (VK_VALID_HANDLE(GlobalVulkan.VertexDeviceMemory))
+    {
+        vkFreeMemory(GlobalVulkan.PrimaryDevice, GlobalVulkan.VertexDeviceMemory, 0);
+    }
+
     VulkanDestroyPipeline();
 
     if (VK_VALID_HANDLE(GlobalVulkan.PipelineLayout))

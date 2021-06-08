@@ -5,7 +5,6 @@
 
 #include <stdint.h>
 #include <stdio.h>
-#include <math.h>
 
 #define GAME_API __declspec( dllexport )
 
@@ -48,20 +47,45 @@ typedef DEBUG_READ_FILE(debug_read_file);
 typedef DEBUG_CLOSE_FILE(debug_close_file);
 
 
+struct memory_arena
+{
+    uint8 * Base;
+    uint32 MaxSize;
+    uint32 CurrentSize;
+};
+
 struct game_button
 {
     bool32 IsPressed;
     bool32 WasPressed;
-    uint32 TimesPressed;
+    uint32 Transitions;
 };
 
-struct game_input
+struct game_controller
 {
     union
     {
-        game_button Up,Down,Left,Right;
-        game_button Buttons[4];
+        game_button Buttons[9];
+        struct
+        {
+            game_button Up;
+            game_button Down;
+            game_button Left;
+            game_button Right;
+            game_button Space;
+            game_button Shift;
+            game_button Alt;
+            game_button MouseLeft;
+            game_button MouseRight;
+        };
     };
+};
+struct game_input
+{
+    bool32 CloseGame; // game -> platform
+    real32 DtFrame;
+    real32 TimeElapsed;
+    game_controller Controller;
 };
 
 struct game_memory
@@ -78,7 +102,7 @@ struct game_memory
 
 };
 
-#define GAME_UPDATE_AND_RENDER(name) void name(game_memory * Memory,game_input * Input, real32 DtTime)
+#define GAME_UPDATE_AND_RENDER(name) void name(game_memory * Memory,game_input * Input)
 typedef GAME_UPDATE_AND_RENDER(game_update_and_render);
 
 #define GAME_PLATFORM_H

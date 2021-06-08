@@ -20,7 +20,8 @@ set WarningLevel=/W4
 set IWPadding=/wd4820
 set IWInitializedNotReferenced=/wd4189
 set IWUnusedParam=/wd4100
-set IgnoreWarnings=%IWPadding% %IWInitializedNotReferenced% %IWUnusedParam%
+set IWNamelessStructUnion=/wd4201
+set IgnoreWarnings=%IWPadding% %IWInitializedNotReferenced% %IWUnusedParam% %IWNamelessStructUnion%
 
 if not exist %OutputFolder% (
   mkdir %OutputFolder%

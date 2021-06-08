@@ -43,27 +43,74 @@ VULKAN_CREATE_SURFACE(VulkanCreateSurface)
 }
 
 void
-HandleInput(game_input * Input,HWND WindowHandle)
+UpdateGameButton(game_button * Button, bool32 IsPressed)
+{
+    Button->WasPressed = !IsPressed;
+    Button->IsPressed = IsPressed;
+    ++Button->Transitions;
+}
+
+void
+HandleInput(game_controller * Controller,HWND WindowHandle)
 {
     MSG msg = {};
     for (;;)
     { 
         BOOL GotMessage = PeekMessage( &msg, WindowHandle, 0, 0, PM_REMOVE );
         if (!GotMessage) break;
-
-        switch (msg.wParam)
+        // https://docs.microsoft.com/en-us/windows/win32/inputdev/wm-keydown
+        switch (msg.message)
         {
-            case VK_ESCAPE:
+            case WM_QUIT:
             {
                 GlobalAppRunning = false;
             } break;
-            default:
+
+            case WM_SYSKEYDOWN: 
+            case WM_SYSKEYUP: 
+            case WM_KEYDOWN: 
+            case WM_KEYUP:
+            {
+                uint32 VKCode = (uint32)msg.wParam;
+
+                bool32 IsAltPressed = (msg.lParam & (1 << 29));
+                // https://docs.microsoft.com/en-us/windows/win32/inputdev/using-keyboard-input
+                bool32 IsShiftPressed = (GetKeyState(VK_SHIFT) & (1 << 15));
+                bool32 IsPressed = (msg.lParam & (1UL << 31)) == 0;
+                bool32 WasPressed = (msg.lParam & (1 << 30)) != 0;
+
+                if (IsPressed != WasPressed)
+                {
+                    if (VKCode == VK_ESCAPE) 
+                    {
+                        GlobalAppRunning = false;
+                    }
+                    else if (VKCode == VK_UP || VKCode == 'W')
+                    {
+                        UpdateGameButton(&Controller->Up,IsPressed);
+                    }
+                    else if (VKCode == VK_DOWN || VKCode == 'S')
+                    {
+                        UpdateGameButton(&Controller->Down,IsPressed);
+                    }
+                    else if (VKCode == VK_RIGHT || VKCode == 'D')
+                    {
+                        UpdateGameButton(&Controller->Right,IsPressed);
+                    }
+                    else if (VKCode == VK_LEFT || VKCode == 'A')
+                    {
+                        UpdateGameButton(&Controller->Left,IsPressed);
+                    }
+                }
+            } break;
+
+            default :
             {
                 TranslateMessage(&msg); 
                 DispatchMessage(&msg); 
             } break;
         }
-    }
+    } // for lock
 }
 
 LRESULT CALLBACK 
@@ -194,6 +241,22 @@ struct game_state
     game_update_and_render * pfnGameUpdateAndRender;
 };
 
+LARGE_INTEGER
+Win32QueryPerformance()
+{
+    LARGE_INTEGER Performance;
+    QueryPerformanceCounter(&Performance);
+    return Performance;
+}
+LARGE_INTEGER
+Win32QueryPerformanceDiff(LARGE_INTEGER TimeEnd,LARGE_INTEGER TimeStart,LARGE_INTEGER PerformanceFrequency)
+{
+    TimeEnd.QuadPart = TimeEnd.QuadPart - TimeStart.QuadPart;
+    TimeEnd.QuadPart *= 1000000;
+    TimeEnd.QuadPart /= PerformanceFrequency.QuadPart;
+    return TimeEnd;
+}
+
 //int main( HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow )
 int main()
 {
@@ -260,8 +323,11 @@ int main()
         GameMemory.TransientMemorySize = TransientMemorySize; // uint32 TransientMemorySize;
         /* ------------------------- END GAME MEMORY ------------------------- */
 
+        int32 ExpectedFramesPerSecond = 30;
+        real32 ExpectedMillisecondsPerFrame = 1.0f / (real32)ExpectedFramesPerSecond;
         GlobalAppRunning = true;
         game_input Input = {};
+        Input.DtFrame = ExpectedMillisecondsPerFrame;
 
         //https://docs.microsoft.com/en-us/windows/win32/sysinfo/acquiring-high-resolution-time-stampsp
         LARGE_INTEGER PerfFreq;
@@ -272,16 +338,13 @@ int main()
         // Main loop
         while (GlobalAppRunning)
         {
-            LARGE_INTEGER TimeElapsed;
-            QueryPerformanceCounter(&TimeElapsed);
-            TimeElapsed.QuadPart = TimeElapsed.QuadPart - StartingTime.QuadPart;
-            TimeElapsed.QuadPart *= 1000000;
-            TimeElapsed.QuadPart /= PerfFreq.QuadPart;
-            real32 R32TimeElapsed = (real32)(TimeElapsed.QuadPart * (1.0f / 1000000.0f));
+            LARGE_INTEGER TimeElapsed = 
+                Win32QueryPerformanceDiff(Win32QueryPerformance(), StartingTime, PerfFreq);
+            Input.TimeElapsed = (real32)(TimeElapsed.QuadPart * (1.0f / 1000000.0f));
 
-            HandleInput(&Input,WindowHandle);
+            HandleInput(&Input.Controller,WindowHandle);
 
-            GameState.pfnGameUpdateAndRender(&GameMemory,&Input,R32TimeElapsed);
+            GameState.pfnGameUpdateAndRender(&GameMemory,&Input);
 
             //Log("Time elapsed %f\n",(real32)(TimeElapsed.QuadPart * (1.0f / 1000000.0f)));
 
@@ -300,7 +363,6 @@ int main()
     {
         FreeLibrary(GameState.Lib);
     }
-
     return 0;
 
 }

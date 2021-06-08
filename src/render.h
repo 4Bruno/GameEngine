@@ -1,5 +1,6 @@
 #ifndef RENDER_H
 #include "game_platform.h"
+#include "mesh.h"
 
 #define RENDER_API __declspec( dllexport )
 
@@ -37,16 +38,39 @@ WaitForRender();
 
 RENDER_API
 int32
-RenderLoop(real32 TimeElapsed, int32 PipelineIndex);
+RenderLoop(int32 PipelineIndex, uint32 TotalMeshInstances, uint32 MeshSize);
 
 RENDER_API
 int32
-RenderCreateShaderModule(char * Buffer, size_t Size, VkShaderModule * ShaderModule);
+RenderCreateShaderModule(char * Buffer, size_t Size);
 
 RENDER_API
 int32
-RenderCreatePipeline(VkShaderModule VertexShader,
-                     VkShaderModule FragmentShader);
+RenderCreatePipeline(int32 VertexShaderIndex,
+                     int32 FragmentShaderIndex);
+RENDER_API
+int32
+RenderBeginPass(v4 ClearColor);
+
+RENDER_API
+int32
+RenderSetPipeline(int32 PipelineIndex);
+
+RENDER_API
+int32
+RenderPushMesh(uint32 TotalMeshInstances, uint32 MeshSize);
+
+RENDER_API
+int32
+RenderEndPass();
+
+RENDER_API
+int32
+RenderPushVertexData(memory_arena * Arena,void * Data,uint32 DataSize,uint32 InstanceCount);
+
+RENDER_API
+memory_arena
+RenderGetMemoryArena();
 
 #define RENDER_H
 #endif
