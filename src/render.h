@@ -18,6 +18,12 @@ struct vulkan_platform_window
     const char *            OSSurfaceFuncName;
 };
 
+struct mesh_push_constant
+{
+    v4 Data;
+    m4 RenderMatrix;
+};
+
 RENDER_API
 int32
 InitializeVulkan(int32 Width, int32 Height, 
@@ -58,7 +64,7 @@ RenderSetPipeline(int32 PipelineIndex);
 
 RENDER_API
 int32
-RenderPushMesh(uint32 TotalMeshInstances, uint32 MeshSize);
+RenderPushMesh(uint32 TotalMeshInstances, uint32 MeshSize, uint32 IndicesSize = 0);
 
 RENDER_API
 int32
@@ -69,8 +75,16 @@ int32
 RenderPushVertexData(memory_arena * Arena,void * Data,uint32 DataSize,uint32 InstanceCount);
 
 RENDER_API
+int32
+RenderPushIndexData(memory_arena * Arena,void * Data,uint32 DataSize,uint32 InstanceCount);
+
+RENDER_API
 memory_arena
 RenderGetMemoryArena();
+
+RENDER_API
+void
+RenderPushVertexConstant(uint32 Size,void * Data);
 
 #define RENDER_H
 #endif

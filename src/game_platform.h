@@ -12,7 +12,7 @@
 #define Megabytes(x) x*1024*Kilobytes(1)
 #define Gigabytes(x) x*1024*Megabytes(1)
 
-#define Assert(exp) if (!(exp)) { (void)0; } 
+#define Assert(exp) if (!(exp)) { *(volatile int *)0 = 0; } 
 #define ArrayCount(a) (sizeof(a) / sizeof(a[0]))
 #define global_variable static
 #define local_persist   static
@@ -23,11 +23,14 @@
 
 typedef int32_t     int32;
 typedef uint8_t     uint8;
+typedef uint16_t    uint16;
 typedef uint32_t    uint32;
 typedef uint64_t    uint64;
 typedef int32       bool32;
 typedef float       real32;
+typedef double      real64;
 
+#define PI 3.141684
 
 #define VULKAN_CREATE_SURFACE(name) int32 name(void * SurfaceData, void * pfnOSSurface, VkInstance Instance, VkSurfaceKHR * Surface)
 typedef VULKAN_CREATE_SURFACE(vulkan_create_surface);
@@ -102,7 +105,7 @@ struct game_memory
 
 };
 
-#define GAME_UPDATE_AND_RENDER(name) void name(game_memory * Memory,game_input * Input)
+#define GAME_UPDATE_AND_RENDER(name) void name(game_memory * Memory,game_input * Input, int32 ScreenWidth, int32 ScreenHeight)
 typedef GAME_UPDATE_AND_RENDER(game_update_and_render);
 
 #define GAME_PLATFORM_H

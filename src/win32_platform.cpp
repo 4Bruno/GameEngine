@@ -101,6 +101,10 @@ HandleInput(game_controller * Controller,HWND WindowHandle)
                     {
                         UpdateGameButton(&Controller->Left,IsPressed);
                     }
+                    else if (VKCode == VK_SPACE)
+                    {
+                        UpdateGameButton(&Controller->Space,IsPressed);
+                    }
                 }
             } break;
 
@@ -344,7 +348,12 @@ int main()
 
             HandleInput(&Input.Controller,WindowHandle);
 
-            GameState.pfnGameUpdateAndRender(&GameMemory,&Input);
+            // TODO: function call
+            RECT Rect;
+            GetWindowRect(WindowHandle, &Rect);
+            int32 Height =  Rect.bottom - Rect.top;
+            int32 Width = Rect.right - Rect.left;
+            GameState.pfnGameUpdateAndRender(&GameMemory,&Input,Width, Height);
 
             //Log("Time elapsed %f\n",(real32)(TimeElapsed.QuadPart * (1.0f / 1000000.0f)));
 

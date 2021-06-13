@@ -1,7 +1,8 @@
-#include "game_platform.h"
+#include "game.h"
 #include "render.h"
 #include "math.h"
-#include "mesh.h"
+#include "model_loader.cpp"
+
 
 
 enum  shader_type_vertex
@@ -19,38 +20,6 @@ enum  shader_type_fragment
 
     shader_type_fragment_total
 };
-
-
-struct game_state
-{
-    bool32 IsInitialized;
-
-    memory_arena TemporaryArena;
-    memory_arena ShadersArena;
-    memory_arena MeshesArena;
-    memory_arena VertexArena;
-
-    int32 PipelineIndex;
-    int32 VertexShaders[2];
-    int32 FragmentShaders[2];
-
-    mesh Meshes[10];
-    uint32 TotalMeshes;
-};
-
-
-#define PushSize(Arena,Size) _PushSize(Arena,Size*sizeof(char))
-#define PushArray(Arena,Count,Struct) (Struct *)_PushSize(Arena,Count*sizeof(Struct))
-#define PushStruct(Arena,Struct) (Struct *)PushArray(Arena,1,Struct)
-
-uint8 *
-_PushSize(memory_arena * Arena,uint32 Size)
-{
-    Assert((Arena->CurrentSize + Size) < Arena->MaxSize);
-    uint8 * BaseAddr = Arena->Base + Arena->CurrentSize;
-    Arena->CurrentSize += Size;
-    return BaseAddr;
-}
 
 struct file_contents
 {
@@ -93,6 +62,21 @@ InitializeArena(memory_arena * Arena,uint8 * BaseAddr, uint32 MaxSize)
     Arena->Base = BaseAddr;
 }
 
+mesh
+LoadModel(game_memory * Memory,memory_arena * ArenaMeshes, memory_arena * ArenaTemp,const char * Filepath)
+{
+    mesh Mesh = {};
+    int32 Result = -1;
+    file_contents GetFileResult = GetFileContents(Memory, ArenaTemp,Filepath);
+    if (GetFileResult.Success)
+    {
+        obj_file_header Header = ReadObjFileHeader((const char *)GetFileResult.Base, GetFileResult.Size);
+        Mesh = CreateMeshFromObjHeader(ArenaMeshes,Header, (const char *)GetFileResult.Base, GetFileResult.Size);
+        ArenaTemp->CurrentSize -= GetFileResult.Size;
+    }
+
+    return Mesh;
+}
 
 int32
 LoadShader(game_memory * Memory,memory_arena * Arena,const char * Filepath)
@@ -107,7 +91,7 @@ LoadShader(game_memory * Memory,memory_arena * Arena,const char * Filepath)
     }
     return Result;
 }
-
+#if 0
 mesh
 CreateTriangle(memory_arena * Arena, v3 P, real32 SideLength)
 {
@@ -122,6 +106,7 @@ CreateTriangle(memory_arena * Arena, v3 P, real32 SideLength)
 
     return Mesh;
 }
+#endif
 
 extern "C"
 GAME_API
@@ -142,6 +127,15 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
         Base = PushSize(&GameState->TemporaryArena,ShaderArenaSize);
         InitializeArena(&GameState->ShadersArena,Base, ShaderArenaSize);
 
+        uint32 MeshesArenaSize = Megabytes(10);
+        Base = PushSize(&GameState->TemporaryArena,MeshesArenaSize);
+        InitializeArena(&GameState->MeshesArena, Base, MeshesArenaSize);
+
+        GameState->TotalMeshes = 1;
+        GameState->Meshes[0] = LoadModel(Memory,&GameState->MeshesArena,&GameState->TemporaryArena,"assets\\human_male_triangles.obj");
+        //GameState->Meshes[0] = LoadModel(Memory,&GameState->MeshesArena,&GameState->TemporaryArena,"assets\\human_male.obj");
+        //GameState->Meshes[0] = LoadModel(Memory,&GameState->MeshesArena,&GameState->TemporaryArena,"assets\\cube.obj");
+
         GameState->VertexShaders[shader_type_vertex_default] 
             = LoadShader(Memory,&GameState->ShadersArena,"shaders\\triangle.vert");
         GameState->FragmentShaders[shader_type_fragment_default] 
@@ -158,11 +152,19 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
             Log("Error during creation of main pipeline\n");
         }
 
-        uint32 MeshesArenaSize = Megabytes(10);
-        Base = PushSize(&GameState->TemporaryArena,MeshesArenaSize);
-        InitializeArena(&GameState->MeshesArena, Base, MeshesArenaSize);
-
         GameState->VertexArena = RenderGetMemoryArena();
+        GameState->IndicesArena = RenderGetMemoryArena();
+
+        GameState->TotalEntities = 2;
+        GameState->Entities[0].P = V3(0,0,10);
+        GameState->Entities[0].Mesh = GameState->Meshes + 0;
+
+        GameState->Entities[1].P = V3(-5.0f,-5.0f,5.0f);
+        GameState->Entities[1].Mesh = GameState->Meshes + 0;
+
+
+        GameState->CameraP = V3(0,-9.42f, -16.92f);
+#if 0
 
         GameState->TotalMeshes = 3;
         for (uint32 Index = 0;
@@ -173,7 +175,6 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
             v3 P = { -1.0f + Offset, 0.0f, 0.0f }; 
             GameState->Meshes[Index] = CreateTriangle(&GameState->MeshesArena,P, 0.2f);
         }
-#if 0
         GameState->TotalMeshes = 1;
         GameState->Meshes[0].Vertices[0].P = V3(-1,-1,0);
         GameState->Meshes[0].Vertices[1].P = V3(0,1,0);
@@ -183,6 +184,7 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
         GameState->IsInitialized = true;
     }
 
+
     /* ------------------------- GAME UPDATE ------------------------- */
     real32 Speed = (Input->DtFrame * 0.2f);
     v3 dP = {};
@@ -191,28 +193,33 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
     {
         dP.y = 1.0f;
     } 
-    else if (Input->Controller.Down.IsPressed)
+    if (Input->Controller.Down.IsPressed)
     {
         dP.y = -1.0f;
     }
-    else if (Input->Controller.Left.IsPressed)
+    if (Input->Controller.Left.IsPressed)
     {
         dP.x = -1.0f;
     } 
-    else if (Input->Controller.Right.IsPressed)
+    if (Input->Controller.Right.IsPressed)
     {
         dP.x = 1.0f;
     }
+    if (Input->Controller.Space.IsPressed)
+    {
+        dP.z = -1.0f;
+    }
+   
     dP *= Speed;
 
-    for (uint32 Index = 0;
-            Index < GameState->TotalMeshes;
-            ++Index)
-    {
-        GameState->Meshes[Index].Vertices[0].P += dP;
-        GameState->Meshes[Index].Vertices[1].P += dP;
-        GameState->Meshes[Index].Vertices[2].P += dP;
-    }
+    v3 WorldCenter = V3(0,0,0);
+    GameState->CameraP += V3(dP.x,dP.y,dP.z);
+    v3 CamPos = GameState->CameraP;
+
+    m4 View = Translate(IdentityMatrix(),CamPos);
+    m4 Proj = Projection(ToRadians(70.0f),((real32)ScreenWidth / (real32)ScreenHeight), 0.1f, 200.0f);
+
+    v4 ClearColor = V4(53.0f / 128.0f, 81.0f / 128.0f, 92.0f / 128.0f, 1.0f);
 
     /* ------------------------- GAME RENDER ------------------------- */
     // TODO: how to properly push vertex inputs to render?
@@ -220,18 +227,44 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
     // at the same time and the vertices ptr of the 3 triangles
     // happens to be consecutive
     void * BaseVertexAddr = GameState->Meshes[0].Vertices;
+    void * BaseIndicesAddr = GameState->Meshes[0].Indices;
     // as for now reset the vertex stack every time
     GameState->VertexArena.CurrentSize = 0;
-    RenderPushVertexData(&GameState->VertexArena, BaseVertexAddr,GameState->Meshes[0].VertexSize, GameState->TotalMeshes);
+    GameState->IndicesArena.CurrentSize = 0;
 
     WaitForRender();
 
-    RenderBeginPass(V4(1.0f,0,0,1));
+    RenderBeginPass(ClearColor);
 
     RenderSetPipeline(GameState->PipelineIndex);
 
-    RenderPushMesh(3,GameState->Meshes[0].VertexSize);
+    for (uint32 MeshIndex = 0;
+                MeshIndex < GameState->TotalMeshes;
+                ++MeshIndex)
+    {
+        mesh * Mesh = GameState->Meshes + MeshIndex; 
+        RenderPushVertexData(&GameState->VertexArena, BaseVertexAddr,Mesh->VertexSize, GameState->TotalMeshes);
+        RenderPushIndexData(&GameState->IndicesArena, BaseIndicesAddr,Mesh->IndicesSize, GameState->TotalMeshes);
+    }
+
+    for (uint32 EntityIndex = 0;
+            EntityIndex < GameState->TotalEntities;
+            ++EntityIndex)
+    {
+        entity * Entity = GameState->Entities + EntityIndex;
+
+        m4 Rotation = RotationMatrix(Input->TimeElapsed,V3(0,1,0));
+        real32 ScaleFactor = (Input->Controller.Space.IsPressed) ? 2.0f : 1.0f;
+        m4 Model = Translate(IdentityMatrix(), (Entity->P - WorldCenter)) * Rotation * ScaleMatrix(ScaleFactor,ScaleFactor,ScaleFactor);
+        m4 MeshMatrix = Proj * View * Model;
+        MeshMatrix = Transpose(MeshMatrix);
+
+        mesh_push_constant Constants;
+        Constants.RenderMatrix = MeshMatrix;
+
+        RenderPushVertexConstant(sizeof(mesh_push_constant),(void *)&Constants);
+        RenderPushMesh(GameState->TotalMeshes,GameState->Meshes[0].VertexSize,GameState->Meshes[0].IndicesSize);
+    }
 
     RenderEndPass();
-
 }

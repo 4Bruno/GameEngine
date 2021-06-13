@@ -14,6 +14,9 @@ struct mesh
 {
     vertex_point * Vertices;
     uint32         VertexSize;
+
+    uint16       * Indices;
+    uint32         IndicesSize;
 };
 
 #define MESH_H
