@@ -118,6 +118,7 @@ PFN_vkDestroySemaphore                        vkDestroySemaphore                
 PFN_vkCreateRenderPass                        vkCreateRenderPass                        = 0;
 PFN_vkDestroyRenderPass                       vkDestroyRenderPass                       = 0;
 PFN_vkCreateImageView                         vkCreateImageView                         = 0;
+PFN_vkCreateImage                             vkCreateImage                             = 0;
 PFN_vkDestroyImageView                        vkDestroyImageView                        = 0;
 PFN_vkCreateFramebuffer                       vkCreateFramebuffer                       = 0; 
 PFN_vkDestroyFramebuffer                      vkDestroyFramebuffer                      = 0; 
@@ -130,10 +131,13 @@ PFN_vkAllocateMemory                          vkAllocateMemory                  
 PFN_vkFreeMemory                              vkFreeMemory                              = 0;
 PFN_vkCreateBuffer                            vkCreateBuffer                            = 0;
 PFN_vkDestroyBuffer                           vkDestroyBuffer                           = 0;
+PFN_vkDestroyImage                            vkDestroyImage                            = 0;
 PFN_vkGetBufferMemoryRequirements             vkGetBufferMemoryRequirements             = 0;
+PFN_vkGetImageMemoryRequirements              vkGetImageMemoryRequirements              = 0;
 PFN_vkMapMemory                               vkMapMemory                               = 0;
 PFN_vkUnmapMemory                             vkUnmapMemory                             = 0;
 PFN_vkBindBufferMemory                        vkBindBufferMemory                        = 0;
+PFN_vkBindImageMemory                         vkBindImageMemory                         = 0;
 
 
 // vulkan is verbose
@@ -160,6 +164,8 @@ struct vulkan_pipeline
     VkPipelineVertexInputStateCreateInfo   VertexInputInfo;
     VkPipelineInputAssemblyStateCreateInfo InputAssembly;
 
+    VkPipelineDepthStencilStateCreateInfo DepthStencil;
+
     VkViewport Viewport;
     VkRect2D   Scissor;
 
@@ -170,6 +176,115 @@ struct vulkan_pipeline
     VkPipelineLayout PipelineLayout;
 };
 
+int32
+VulkanFindSuitableMemoryIndex(VkPhysicalDevice PhysicalDevice, VkMemoryRequirements MemoryRequirements,VkMemoryPropertyFlags PropertyFlags)
+{
+    VkPhysicalDeviceMemoryProperties MemProps;
+    vkGetPhysicalDeviceMemoryProperties(PhysicalDevice,&MemProps);
+
+    for (uint32 MemoryIndex = 0;
+         MemoryIndex < MemProps.memoryTypeCount;
+         ++MemoryIndex)
+    {
+        if (  
+                ((1 << MemoryIndex) & MemoryRequirements.memoryTypeBits) &&
+                ((MemProps.memoryTypes[MemoryIndex].propertyFlags & PropertyFlags) == PropertyFlags)
+            )
+        {
+            return (int32)MemoryIndex;
+        }
+    }
+
+    return -1;
+}
+
+struct depth_buffer
+{
+    VkImage        Image;
+    VkImageView    ImageView;
+    VkFormat       Format;
+    VkDeviceMemory DeviceMemory;
+};
+
+int32
+VulkanCreateDepthBuffer(VkPhysicalDevice PhysicalDevice,VkDevice Device, VkExtent3D Extent, depth_buffer * DepthBuffer)
+{
+    VkFormat Format = VK_FORMAT_D32_SFLOAT;
+    VkImageUsageFlags Usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
+
+    VkImageCreateInfo ImageCreateInfo = {};
+
+    ImageCreateInfo.sType                 = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO; // VkStructureType   sType;
+    ImageCreateInfo.pNext                 = 0;                         // Void * pNext;
+    ImageCreateInfo.flags                 = 0;                         // VkImageCreateFlags flags;
+    ImageCreateInfo.imageType             = VK_IMAGE_TYPE_2D;          // VkImageType imageType;
+    ImageCreateInfo.format                = Format;                    // VkFormat format;
+    ImageCreateInfo.extent                = Extent;                    // VkExtent3D extent;
+    ImageCreateInfo.mipLevels             = 1;                         // uint32_t mipLevels;
+    ImageCreateInfo.arrayLayers           = 1;                         // uint32_t arrayLayers;
+    ImageCreateInfo.samples               = VK_SAMPLE_COUNT_1_BIT;     // VkSampleCountFlagBits samples;
+    ImageCreateInfo.tiling                = VK_IMAGE_TILING_OPTIMAL;   // VkImageTiling tiling;
+    ImageCreateInfo.usage                 = Usage;                     // VkImageUsageFlags usage;
+    ImageCreateInfo.sharingMode           = VK_SHARING_MODE_EXCLUSIVE; // VkSharingMode sharingMode;
+    ImageCreateInfo.queueFamilyIndexCount = 0;                         // uint32_t queueFamilyIndexCount;
+    ImageCreateInfo.pQueueFamilyIndices   = 0;                         // Typedef * pQueueFamilyIndices;
+    ImageCreateInfo.initialLayout         = VK_IMAGE_LAYOUT_UNDEFINED; // VkImageLayout initialLayout;
+
+    VkImage Image;
+    VK_CHECK(vkCreateImage(Device,&ImageCreateInfo, 0, &Image));
+
+    VkMemoryRequirements MemReq;
+    vkGetImageMemoryRequirements(Device, Image, &MemReq);
+    VkMemoryPropertyFlags PropertyFlags = VK_MEMORY_GPU;
+
+    uint32 MemoryTypeIndex = VulkanFindSuitableMemoryIndex(PhysicalDevice,MemReq,PropertyFlags);
+    if (MemoryTypeIndex < 0)
+    {
+        Log("Couldn't find suitable CPU-GPU memory index\n");
+        return 1;
+    }
+
+    VkDeviceMemory DeviceMemory;
+    VkMemoryAllocateInfo AllocateInfo;
+
+    AllocateInfo.sType           = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO; // VkStructureType   sType;
+    AllocateInfo.pNext           = 0;                       // Void * pNext;
+    AllocateInfo.allocationSize  = MemReq.size;             // VkDeviceSize allocationSize;
+    AllocateInfo.memoryTypeIndex = (uint32)MemoryTypeIndex; // uint32_t memoryTypeIndex;
+
+    VK_CHECK(vkAllocateMemory(Device, &AllocateInfo, 0, &DeviceMemory));
+
+    vkBindImageMemory(Device,Image,DeviceMemory,0);
+
+    VkImageSubresourceRange SubresourceRange;
+    SubresourceRange.aspectMask     = VK_IMAGE_ASPECT_DEPTH_BIT; // VkImageAspectFlags   aspectMask;
+    SubresourceRange.baseMipLevel   = 0; // uint32_t   baseMipLevel;
+    SubresourceRange.levelCount     = 1; // uint32_t   levelCount;
+    SubresourceRange.baseArrayLayer = 0; // uint32_t   baseArrayLayer;
+    SubresourceRange.layerCount     = 1; // uint32_t   layerCount;
+
+    VkImageViewCreateInfo ImageViewCreateInfo = {}; 
+
+    ImageViewCreateInfo.sType            = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO; // VkStructureType   sType;
+    ImageViewCreateInfo.pNext    = 0;                     // Void * pNext;
+    ImageViewCreateInfo.flags    = 0;                     // VkImageViewCreateFlags flags;
+    ImageViewCreateInfo.image    = Image;                 // VkImage image;
+    ImageViewCreateInfo.viewType = VK_IMAGE_VIEW_TYPE_2D; // VkImageViewType viewType;
+    ImageViewCreateInfo.format   = Format;                // VkFormat format;
+    //ImageViewCreateInfo.components       = ; // VkComponentMapping   components;
+    ImageViewCreateInfo.subresourceRange = SubresourceRange; // VkImageSubresourceRange   subresourceRange;
+
+    VkImageView ImageView;
+    VK_CHECK(vkCreateImageView( Device, &ImageViewCreateInfo, 0, &ImageView ));
+
+    DepthBuffer->Image        = Image;        // VkImage Buffer;
+    DepthBuffer->ImageView    = ImageView;    // VkImageView ImageView;
+    DepthBuffer->Format       = Format;       // VkFormat Format;
+    DepthBuffer->DeviceMemory = DeviceMemory; // VkFormat Format;
+
+    return 0;
+}
+
 struct vulkan
 {
     bool32 Initialized;
@@ -179,6 +294,8 @@ struct vulkan
     // Primary GPU
     VkPhysicalDevice PrimaryGPU;
     VkDevice         PrimaryDevice;
+
+    depth_buffer DepthBuffer;
 
     uint32  GraphicsQueueFamilyIndex;
     VkQueue GraphicsQueue;
@@ -407,44 +524,44 @@ VulkanPipelineBuilder(vulkan_pipeline * VulkanPipeline,VkDevice Device, VkRender
 
     VkPipelineViewportStateCreateInfo ViewportState = {};
     ViewportState.sType         = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO; // VkStructureType sType;
-    ViewportState.pNext         = 0;                                                     // Void * pNext;
-    ViewportState.flags         = 0;                                                     // VkPipelineViewportStateCreateFlags flags;
-    ViewportState.viewportCount = 1;                                                     // uint32_t viewportCount;
-    ViewportState.pViewports    = &VulkanPipeline->Viewport;                                    // Typedef * pViewports;
-    ViewportState.scissorCount  = 1;                                                     // uint32_t scissorCount;
-    ViewportState.pScissors     = &VulkanPipeline->Scissor;                                     // Typedef * pScissors;
-
+    ViewportState.pNext         = 0;                         // Void * pNext;
+    ViewportState.flags         = 0;                         // VkPipelineViewportStateCreateFlags flags;
+    ViewportState.viewportCount = 1;                         // uint32_t viewportCount;
+    ViewportState.pViewports    = &VulkanPipeline->Viewport; // Typedef * pViewports;
+    ViewportState.scissorCount  = 1;                         // uint32_t scissorCount;
+    ViewportState.pScissors     = &VulkanPipeline->Scissor;  // Typedef * pScissors;
+    
     VkPipelineColorBlendStateCreateInfo ColorBlending = {};
     ColorBlending.sType           = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO; // VkStructureType sType;
-    ColorBlending.pNext           = 0;                                                        // Void * pNext;
-    ColorBlending.flags           = 0;                                                        // VkPipelineColorBlendStateCreateFlags flags;
-    ColorBlending.logicOpEnable   = VK_FALSE;                                                 // VkBool32 logicOpEnable;
-    ColorBlending.logicOp         = VK_LOGIC_OP_COPY;                                         // VkLogicOp logicOp;
-    ColorBlending.attachmentCount = 1;                                                        // uint32_t attachmentCount;
-    ColorBlending.pAttachments    = &VulkanPipeline->ColorBlendAttachment;                           // Typedef * pAttachments;
-    //ColorBlending.blendConstants  = 0;                                                        // CONSTANTARRAY blendConstants;
+    ColorBlending.pNext           = 0;                                     // Void * pNext;
+    ColorBlending.flags           = 0;                                     // VkPipelineColorBlendStateCreateFlags flags;
+    ColorBlending.logicOpEnable   = VK_FALSE;                              // VkBool32 logicOpEnable;
+    ColorBlending.logicOp         = VK_LOGIC_OP_COPY;                      // VkLogicOp logicOp;
+    ColorBlending.attachmentCount = 1;                                     // uint32_t attachmentCount;
+    ColorBlending.pAttachments    = &VulkanPipeline->ColorBlendAttachment; // Typedef * pAttachments;
+    //ColorBlending.blendConstants  = 0;// CONSTANTARRAY blendConstants;
 
     VkGraphicsPipelineCreateInfo PipelineInfo = {};
     PipelineInfo.sType               = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO; // VkStructureType sType;
-    PipelineInfo.pNext               = 0;                                               // Void * pNext;
-    PipelineInfo.flags               = 0;                                               // VkPipelineCreateFlags flags;
-    PipelineInfo.stageCount          = VulkanPipeline->ShaderStagesCount;               // uint32_t stageCount;
-    PipelineInfo.pStages             = VulkanPipeline->ShaderStages;                     // Typedef * pStages;
-    PipelineInfo.pVertexInputState   = &VulkanPipeline->VertexInputInfo;                 // Typedef * pVertexInputState;
-    PipelineInfo.pInputAssemblyState = &VulkanPipeline->InputAssembly;                   // Typedef * pInputAssemblyState;
-    PipelineInfo.pTessellationState  = 0;                                               // Typedef * pTessellationState;
-    PipelineInfo.pViewportState      = &ViewportState;                                  // Typedef * pViewportState;
-    PipelineInfo.pRasterizationState = &VulkanPipeline->Rasterizer;                      // Typedef * pRasterizationState;
-    PipelineInfo.pMultisampleState   = &VulkanPipeline->Multisampling;                   // Typedef * pMultisampleState;
-    PipelineInfo.pDepthStencilState  = 0;                                               // Typedef * pDepthStencilState;
-    PipelineInfo.pColorBlendState    = &ColorBlending;                                  // Typedef * pColorBlendState;
-    PipelineInfo.pDynamicState       = 0;                                               // Typedef * pDynamicState;
-    PipelineInfo.layout              = VulkanPipeline->PipelineLayout;                   // VkPipelineLayout layout;
-    PipelineInfo.renderPass          = RenderPass;                                      // VkRenderPass renderPass;
-    PipelineInfo.subpass             = 0;                                               // uint32_t subpass;
-    PipelineInfo.basePipelineHandle  = VK_NULL_HANDLE;                                  // VkPipeline basePipelineHandle;
-    PipelineInfo.basePipelineIndex   = 0;                                               // int32_t basePipelineIndex;
-
+    PipelineInfo.pNext               = 0;                                 // Void * pNext;
+    PipelineInfo.flags               = 0;                                 // VkPipelineCreateFlags flags;
+    PipelineInfo.stageCount          = VulkanPipeline->ShaderStagesCount; // uint32_t stageCount;
+    PipelineInfo.pStages             = VulkanPipeline->ShaderStages;      // Typedef * pStages;
+    PipelineInfo.pVertexInputState   = &VulkanPipeline->VertexInputInfo;  // Typedef * pVertexInputState;
+    PipelineInfo.pInputAssemblyState = &VulkanPipeline->InputAssembly;    // Typedef * pInputAssemblyState;
+    PipelineInfo.pTessellationState  = 0;                                 // Typedef * pTessellationState;
+    PipelineInfo.pViewportState      = &ViewportState;                    // Typedef * pViewportState;
+    PipelineInfo.pRasterizationState = &VulkanPipeline->Rasterizer;       // Typedef * pRasterizationState;
+    PipelineInfo.pMultisampleState   = &VulkanPipeline->Multisampling;    // Typedef * pMultisampleState;
+    PipelineInfo.pDepthStencilState  = &VulkanPipeline->DepthStencil;     // Typedef * pDepthStencilState;
+    PipelineInfo.pColorBlendState    = &ColorBlending;                    // Typedef * pColorBlendState;
+    PipelineInfo.pDynamicState       = 0;                                 // Typedef * pDynamicState;
+    PipelineInfo.layout              = VulkanPipeline->PipelineLayout;    // VkPipelineLayout layout;
+    PipelineInfo.renderPass          = RenderPass;                        // VkRenderPass renderPass;
+    PipelineInfo.subpass             = 0;                                 // uint32_t subpass;
+    PipelineInfo.basePipelineHandle  = VK_NULL_HANDLE;                    // VkPipeline basePipelineHandle;
+    PipelineInfo.basePipelineIndex   = 0;                                 // int32_t basePipelineIndex;
+    
     VkPipeline Pipeline;
 
     if (VK_FAILS(vkCreateGraphicsPipelines(Device,VK_NULL_HANDLE,1,&PipelineInfo, 0, &Pipeline)))
@@ -549,6 +666,24 @@ RenderCreatePipeline(int32 VertexShaderIndex,
     VulkanPipeline.VertexInputInfo.pVertexBindingDescriptions      = &VertexInputDesc.Bindings[0];   // Typedef * pVertexBindingDescriptions;
     VulkanPipeline.VertexInputInfo.vertexAttributeDescriptionCount = 3;                              // uint32_t vertexAttributeDescriptionCount;
     VulkanPipeline.VertexInputInfo.pVertexAttributeDescriptions    = &VertexInputDesc.Attributes[0]; // Typedef * pVertexAttributeDescriptions;
+
+
+    VkPipelineDepthStencilStateCreateInfo DepthStencil = {};
+
+    DepthStencil.sType                 = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO; // VkStructureType   sType;
+    DepthStencil.pNext                 = 0;                           // Void * pNext;
+    DepthStencil.flags                 = 0;                           // VkPipelineDepthStencilStateCreateFlags flags;
+    DepthStencil.depthTestEnable       = VK_TRUE;                     // VkBool32 depthTestEnable;
+    DepthStencil.depthWriteEnable      = VK_TRUE;                     // VkBool32 depthWriteEnable;
+    DepthStencil.depthCompareOp        = VK_COMPARE_OP_LESS_OR_EQUAL; // VkCompareOp depthCompareOp;
+    DepthStencil.depthBoundsTestEnable = VK_FALSE;                    // VkBool32 depthBoundsTestEnable;
+    DepthStencil.stencilTestEnable     = VK_FALSE;                    // VkBool32 stencilTestEnable;
+    //DepthStencil.front               = ; // VkStencilOpState front;
+    //DepthStencil.back                = ; // VkStencilOpState back;
+    DepthStencil.minDepthBounds        = 0.0f;                        // FLOAT minDepthBounds;
+    DepthStencil.maxDepthBounds        = 1.0f;                        // FLOAT maxDepthBounds;
+    
+    VulkanPipeline.DepthStencil = DepthStencil;
 
 #if 1
     VulkanPipeline.InputAssembly        = 
@@ -902,42 +1037,63 @@ VulkanCreateSwapChain(int32 Width, int32 Height)
 int32
 VulkanInitDefaultRenderPass()
 {
-    VkAttachmentDescription AttachmentDescription;
-    AttachmentDescription.flags          = 0;                                 // VkAttachmentDescriptionFlags   flags;
-    AttachmentDescription.format         = GlobalVulkan.SwapchainImageFormat; // VkFormat   format;
-    AttachmentDescription.samples        = VK_SAMPLE_COUNT_1_BIT;             // VkSampleCountFlagBits   samples;
-    AttachmentDescription.loadOp         = VK_ATTACHMENT_LOAD_OP_CLEAR;       // VkAttachmentLoadOp   loadOp;
-    AttachmentDescription.storeOp        = VK_ATTACHMENT_STORE_OP_STORE;      // VkAttachmentStoreOp   storeOp;
-    AttachmentDescription.stencilLoadOp  = VK_ATTACHMENT_LOAD_OP_DONT_CARE;   // VkAttachmentLoadOp   stencilLoadOp;
-    AttachmentDescription.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;  // VkAttachmentStoreOp   stencilStoreOp;
-    AttachmentDescription.initialLayout  = VK_IMAGE_LAYOUT_UNDEFINED;         // VkImageLayout   initialLayout;
-    AttachmentDescription.finalLayout    = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;   // VkImageLayout   finalLayout;
+    VkAttachmentDescription DepthAttachment;
+    DepthAttachment.flags          = 0;                                                // VkDepthAttachmentFlags flags;
+    DepthAttachment.format         = GlobalVulkan.DepthBuffer.Format;                  // VkFormat format;
+    DepthAttachment.samples        = VK_SAMPLE_COUNT_1_BIT;                            // VkSampleCountFlagBits samples;
+    DepthAttachment.loadOp         = VK_ATTACHMENT_LOAD_OP_CLEAR;                      // VkAttachmentLoadOp loadOp;
+    DepthAttachment.storeOp        = VK_ATTACHMENT_STORE_OP_STORE;                     // VkAttachmentStoreOp storeOp;
+    DepthAttachment.stencilLoadOp  = VK_ATTACHMENT_LOAD_OP_CLEAR;                      // VkAttachmentLoadOp stencilLoadOp;
+    DepthAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;                 // VkAttachmentStoreOp stencilStoreOp;
+    DepthAttachment.initialLayout  = VK_IMAGE_LAYOUT_UNDEFINED;                        // VkImageLayout initialLayout;
+    DepthAttachment.finalLayout    = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL; // VkImageLayout finalLayout;
 
-    VkAttachmentReference AttachmentReference;
-    AttachmentReference.attachment = 0;                                        // uint32_t   attachment;
-    AttachmentReference.layout     = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL; // VkImageLayout   layout;
+    VkAttachmentReference DepthAttachmentReference;
+    DepthAttachmentReference.attachment = 1; // uint32_t   attachment;
+    DepthAttachmentReference.layout     = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL; // VkImageLayout   layout;
+
+
+    VkAttachmentDescription ColorAttachment;
+    ColorAttachment.flags          = 0;                                 // VkColorAttachmentFlags   flags;
+    ColorAttachment.format         = GlobalVulkan.SwapchainImageFormat; // VkFormat   format;
+    ColorAttachment.samples        = VK_SAMPLE_COUNT_1_BIT;             // VkSampleCountFlagBits   samples;
+    ColorAttachment.loadOp         = VK_ATTACHMENT_LOAD_OP_CLEAR;       // VkAttachmentLoadOp   loadOp;
+    ColorAttachment.storeOp        = VK_ATTACHMENT_STORE_OP_STORE;      // VkAttachmentStoreOp   storeOp;
+    ColorAttachment.stencilLoadOp  = VK_ATTACHMENT_LOAD_OP_DONT_CARE;   // VkAttachmentLoadOp   stencilLoadOp;
+    ColorAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;  // VkAttachmentStoreOp   stencilStoreOp;
+    ColorAttachment.initialLayout  = VK_IMAGE_LAYOUT_UNDEFINED;         // VkImageLayout   initialLayout;
+    ColorAttachment.finalLayout    = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;   // VkImageLayout   finalLayout;
+
+    VkAttachmentReference ColorAttachmentReference;
+    ColorAttachmentReference.attachment = 0;                                        // uint32_t   attachment;
+    ColorAttachmentReference.layout     = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL; // VkImageLayout   layout;
 
     VkSubpassDescription SubpassDescription;
-    SubpassDescription.flags                   = 0;                               // VkSubpassDescriptionFlags   flags;
-    SubpassDescription.pipelineBindPoint       = VK_PIPELINE_BIND_POINT_GRAPHICS; // VkPipelineBindPoint   pipelineBindPoint;
-    SubpassDescription.inputAttachmentCount    = 0;                               // uint32_t   inputAttachmentCount;
+    SubpassDescription.flags                   = 0;                               // VkSubpassDescriptionFlags flags;
+    SubpassDescription.pipelineBindPoint       = VK_PIPELINE_BIND_POINT_GRAPHICS; // VkPipelineBindPoint pipelineBindPoint;
+    SubpassDescription.inputAttachmentCount    = 0;                               // uint32_t inputAttachmentCount;
     SubpassDescription.pInputAttachments       = 0;                               // Typedef * pInputAttachments;
-    SubpassDescription.colorAttachmentCount    = 1;                               // uint32_t   colorAttachmentCount;
-    SubpassDescription.pColorAttachments       = &AttachmentReference;            // Typedef * pColorAttachments;
+    SubpassDescription.colorAttachmentCount    = 1;                               // uint32_t colorAttachmentCount;
+    SubpassDescription.pColorAttachments       = &ColorAttachmentReference;       // Typedef * pColorAttachments;
     SubpassDescription.pResolveAttachments     = 0;                               // Typedef * pResolveAttachments;
-    SubpassDescription.pDepthStencilAttachment = 0;                               // Typedef * pDepthStencilAttachment;
-    SubpassDescription.preserveAttachmentCount = 0;                               // uint32_t   preserveAttachmentCount;
+    SubpassDescription.pDepthStencilAttachment = &DepthAttachmentReference;       // Typedef * pDepthStencilAttachment;
+    SubpassDescription.preserveAttachmentCount = 0;                               // uint32_t preserveAttachmentCount;
     SubpassDescription.pPreserveAttachments    = 0;                               // Typedef * pPreserveAttachments;
 
+    VkAttachmentDescription Attachments[2] = {
+        ColorAttachment,
+        DepthAttachment
+    };
+
     VkRenderPassCreateInfo RenderPassCreateInfo;
-    RenderPassCreateInfo.sType           = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO; // VkStructureType   sType;
+    RenderPassCreateInfo.sType           = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO; // VkStructureType sType;
     RenderPassCreateInfo.pNext           = 0;                                         // Void * pNext;
-    RenderPassCreateInfo.flags           = 0;                                         // VkRenderPassCreateFlags   flags;
-    RenderPassCreateInfo.attachmentCount = 1;                                         // uint32_t   attachmentCount;
-    RenderPassCreateInfo.pAttachments    = &AttachmentDescription;                    // Typedef * pAttachments;
-    RenderPassCreateInfo.subpassCount    = 1;                                         // uint32_t   subpassCount;
+    RenderPassCreateInfo.flags           = 0;                                         // VkRenderPassCreateFlags flags;
+    RenderPassCreateInfo.attachmentCount = ArrayCount(Attachments);                   // uint32_t attachmentCount;
+    RenderPassCreateInfo.pAttachments    = &Attachments[0];                           // Typedef * pAttachments;
+    RenderPassCreateInfo.subpassCount    = 1;                                         // uint32_t subpassCount;
     RenderPassCreateInfo.pSubpasses      = &SubpassDescription;                       // Typedef * pSubpasses;
-    RenderPassCreateInfo.dependencyCount = 0;                                         // uint32_t   dependencyCount;
+    RenderPassCreateInfo.dependencyCount = 0;                                         // uint32_t dependencyCount;
     RenderPassCreateInfo.pDependencies   = 0;                                         // Typedef * pDependencies;
 
     VK_CHECK(vkCreateRenderPass(GlobalVulkan.PrimaryDevice,&RenderPassCreateInfo, 0, &GlobalVulkan.RenderPass));
@@ -953,16 +1109,21 @@ VulkanInitFramebuffers()
                 ImageIndex < GlobalVulkan.SwapchainImageCount;
                 ++ImageIndex)
     {
+        VkImageView Attachments[2] = {
+            GlobalVulkan.SwapchainImageViews[ImageIndex],
+            GlobalVulkan.DepthBuffer.ImageView
+        };
+
         VkFramebufferCreateInfo FramebufferCreateInfo;
         FramebufferCreateInfo.sType           = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;     // VkStructureType   sType;
-        FramebufferCreateInfo.pNext           = 0;                                             // Void * pNext;
-        FramebufferCreateInfo.flags           = 0;                                             // VkFramebufferCreateFlags   flags;
-        FramebufferCreateInfo.renderPass      = GlobalVulkan.RenderPass;                       // VkRenderPass   renderPass;
-        FramebufferCreateInfo.attachmentCount = 1;                                             // uint32_t   attachmentCount;
-        FramebufferCreateInfo.pAttachments    = &GlobalVulkan.SwapchainImageViews[ImageIndex]; // Typedef * pAttachments;
-        FramebufferCreateInfo.width           = GlobalVulkan.WindowExtension.width;            // uint32_t   width;
-        FramebufferCreateInfo.height          = GlobalVulkan.WindowExtension.height;           // uint32_t   height;
-        FramebufferCreateInfo.layers          = 1;                                             // uint32_t   layers;
+        FramebufferCreateInfo.pNext           = 0;                                   // Void * pNext;
+        FramebufferCreateInfo.flags           = 0;                                   // VkFramebufferCreateFlags flags;
+        FramebufferCreateInfo.renderPass      = GlobalVulkan.RenderPass;             // VkRenderPass renderPass;
+        FramebufferCreateInfo.attachmentCount = ArrayCount(Attachments);             // uint32_t attachmentCount;
+        FramebufferCreateInfo.pAttachments    = &Attachments[0];                     // Typedef * pAttachments;
+        FramebufferCreateInfo.width           = GlobalVulkan.WindowExtension.width;  // uint32_t width;
+        FramebufferCreateInfo.height          = GlobalVulkan.WindowExtension.height; // uint32_t height;
+        FramebufferCreateInfo.layers          = 1;                                   // uint32_t layers;
 
         VK_CHECK( vkCreateFramebuffer(GlobalVulkan.PrimaryDevice, &FramebufferCreateInfo, 0, &GlobalVulkan.Framebuffers[ImageIndex]));
     }
@@ -1015,27 +1176,6 @@ WaitForRender()
     return 0;
 }
 
-int32
-VulkanFindSuitableMemoryIndex(VkPhysicalDevice PhysicalDevice, VkMemoryRequirements MemoryRequirements,VkMemoryPropertyFlags PropertyFlags)
-{
-    VkPhysicalDeviceMemoryProperties MemProps;
-    vkGetPhysicalDeviceMemoryProperties(PhysicalDevice,&MemProps);
-
-    for (uint32 MemoryIndex = 0;
-         MemoryIndex < MemProps.memoryTypeCount;
-         ++MemoryIndex)
-    {
-        if (  
-                ((1 << MemoryIndex) & MemoryRequirements.memoryTypeBits) &&
-                ((MemProps.memoryTypes[MemoryIndex].propertyFlags & PropertyFlags) == PropertyFlags)
-            )
-        {
-            return (int32)MemoryIndex;
-        }
-    }
-
-    return -1;
-}
 
 int32
 VulkanCopyBuffer(VkCommandBuffer CommandBuffer, VkBuffer Src, VkBuffer Dest, VkDeviceSize Size)
@@ -1092,9 +1232,9 @@ VulkanCreateBuffer(VkPhysicalDevice PhysicalDevice,VkDevice Device,
     BufferCreateInfo.usage                 = Usage;       // VkBufferUsageFlags usage;
     BufferCreateInfo.sharingMode           = SharingMode; // VkSharingMode sharingMode;
 
-    if ( (SharingMode == VK_SHARING_MODE_CONCURRENT) )
+    if ( SharingMode == VK_SHARING_MODE_CONCURRENT )
     {
-        if ( (SharedBufferQueueFamilyIndexCount == 0) )
+        if ( SharedBufferQueueFamilyIndexCount == 0 )
         {
             Log("Error buffer creation. Shared buffer requires family queue indexes and count\n");
             return 1;
@@ -1296,12 +1436,19 @@ RenderBeginPass(v4 ClearColor)
 
     VK_CHECK(vkBeginCommandBuffer(cmd, &CommandBufferBeginInfo));
 
-    VkClearValue ClearValue = {};
-    ClearValue.color.float32[0] = ClearColor.r; // VkClearColorValue color;
-    ClearValue.color.float32[1] = ClearColor.g; // VkClearColorValue color;
-    ClearValue.color.float32[2] = ClearColor.b; // VkClearColorValue color;
-    ClearValue.color.float32[3] = ClearColor.a; // VkClearColorValue color;
+    VkClearValue ColorClear = {};
+    ColorClear.color.float32[0] = ClearColor.r; // VkClearColorValue color;
+    ColorClear.color.float32[1] = ClearColor.g; // VkClearColorValue color;
+    ColorClear.color.float32[2] = ClearColor.b; // VkClearColorValue color;
+    ColorClear.color.float32[3] = ClearColor.a; // VkClearColorValue color;
     //ClearValue.depthStencil  = {};            // VkClearDepthStencilValue depthStencil;
+    VkClearValue DepthClear;
+    DepthClear.depthStencil.depth = 1.0f; // VkClearDepthStencilValue   depthStencil;
+
+    VkClearValue ClearAttachments[2] = {
+        ColorClear,
+        DepthClear
+    };
 
     VkRenderPassBeginInfo RenderPassBeginInfo = {};
     RenderPassBeginInfo.sType           = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;       // VkStructureType   sType;
@@ -1309,8 +1456,8 @@ RenderBeginPass(v4 ClearColor)
     RenderPassBeginInfo.renderPass        = GlobalVulkan.RenderPass;                        // VkRenderPass renderPass;
     RenderPassBeginInfo.framebuffer       = GlobalVulkan.Framebuffers[SwapchainImageIndex]; // VkFramebuffer framebuffer;
     RenderPassBeginInfo.renderArea.extent = GlobalVulkan.WindowExtension;                   // VkRect2D renderArea;
-    RenderPassBeginInfo.clearValueCount   = 1;                                              // uint32_t clearValueCount;
-    RenderPassBeginInfo.pClearValues      = &ClearValue;                                    // Typedef * pClearValues;
+    RenderPassBeginInfo.clearValueCount   = ArrayCount(ClearAttachments);                   // uint32_t clearValueCount;
+    RenderPassBeginInfo.pClearValues      = &ClearAttachments[0];                           // Typedef * pClearValues;
 
     vkCmdBeginRenderPass(cmd, &RenderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
 
@@ -1334,16 +1481,15 @@ RenderSetPipeline(int32 PipelineIndex)
 }
 
 int32
-RenderPushMesh(uint32 TotalMeshInstances, uint32 MeshSize, uint32 IndicesSize)
+RenderPushMesh(uint32 TotalMeshInstances, uint32 MeshSize, uint32 IndicesSize, VkDeviceSize OffsetVertex, VkDeviceSize OffsetIndices)
 {
     VkCommandBuffer cmd = GlobalVulkan.PrimaryCommandBuffer[0];
 
-    VkDeviceSize Offset = 0;
-    vkCmdBindVertexBuffers(cmd, 0, 1, &GlobalVulkan.VertexBuffer, &Offset);
+    vkCmdBindVertexBuffers(cmd, 0, 1, &GlobalVulkan.VertexBuffer, &OffsetVertex);
 #if 0
     vkCmdDraw(cmd, MeshSize, TotalMeshInstances, 0, 0);
 #else
-    vkCmdBindIndexBuffer(cmd, GlobalVulkan.IndexBuffer, 0, VK_INDEX_TYPE_UINT16);
+    vkCmdBindIndexBuffer(cmd, GlobalVulkan.IndexBuffer, OffsetIndices, VK_INDEX_TYPE_UINT16);
     vkCmdDrawIndexed(cmd,IndicesSize,1,0,0,0);
 #endif
 
@@ -1426,6 +1572,24 @@ FreeSwapchain()
     }
 
 }
+
+void
+VulkanDestroyDepthBuffer()
+{
+    if ( VK_VALID_HANDLE(GlobalVulkan.DepthBuffer.Image) )
+    {
+        vkDestroyImage(GlobalVulkan.PrimaryDevice,GlobalVulkan.DepthBuffer.Image,0);
+    }
+    if ( VK_VALID_HANDLE(GlobalVulkan.DepthBuffer.ImageView) )
+    {
+        vkDestroyImageView(GlobalVulkan.PrimaryDevice,GlobalVulkan.DepthBuffer.ImageView,0);
+    }
+    if ( VK_VALID_HANDLE(GlobalVulkan.DepthBuffer.DeviceMemory) )
+    {
+        vkFreeMemory(GlobalVulkan.PrimaryDevice,GlobalVulkan.DepthBuffer.DeviceMemory,0);
+    }
+
+}
 int32
 VulkanOnWindowResize(int32 Width,int32 Height)
 {
@@ -1448,6 +1612,14 @@ VulkanOnWindowResize(int32 Width,int32 Height)
                     GlobalVulkan.PrimaryCommandBuffer)) return 1;
 
         if (VulkanInitDefaultRenderPass()) return 1;
+
+        VulkanDestroyDepthBuffer();
+
+        VkExtent3D Extent3D = { GlobalVulkan.WindowExtension.width, GlobalVulkan.WindowExtension.height, 1};
+        if (VulkanCreateDepthBuffer(GlobalVulkan.PrimaryGPU,GlobalVulkan.PrimaryDevice, Extent3D, &GlobalVulkan.DepthBuffer))
+        {
+            return 1;
+        }
 
         if (VulkanInitFramebuffers()) return 1;
 
@@ -1539,6 +1711,7 @@ VulkanCreateLogicaDevice()
     VK_DEVICE_LEVEL_FN(GlobalVulkan.PrimaryDevice,vkCreateRenderPass);
     VK_DEVICE_LEVEL_FN(GlobalVulkan.PrimaryDevice,vkDestroyRenderPass);
     VK_DEVICE_LEVEL_FN(GlobalVulkan.PrimaryDevice,vkCreateImageView);
+    VK_DEVICE_LEVEL_FN(GlobalVulkan.PrimaryDevice,vkCreateImage);
     VK_DEVICE_LEVEL_FN(GlobalVulkan.PrimaryDevice,vkDestroyImageView);
     VK_DEVICE_LEVEL_FN(GlobalVulkan.PrimaryDevice,vkCreateFramebuffer);
     VK_DEVICE_LEVEL_FN(GlobalVulkan.PrimaryDevice,vkDestroyFramebuffer);
@@ -1556,12 +1729,15 @@ VulkanCreateLogicaDevice()
 
     VK_DEVICE_LEVEL_FN(GlobalVulkan.PrimaryDevice,vkCreateBuffer);
     VK_DEVICE_LEVEL_FN(GlobalVulkan.PrimaryDevice,vkDestroyBuffer);
+    VK_DEVICE_LEVEL_FN(GlobalVulkan.PrimaryDevice,vkDestroyImage);
     VK_DEVICE_LEVEL_FN(GlobalVulkan.PrimaryDevice,vkGetBufferMemoryRequirements);
+    VK_DEVICE_LEVEL_FN(GlobalVulkan.PrimaryDevice,vkGetImageMemoryRequirements);
 
     VK_DEVICE_LEVEL_FN(GlobalVulkan.PrimaryDevice,vkMapMemory);
     VK_DEVICE_LEVEL_FN(GlobalVulkan.PrimaryDevice,vkUnmapMemory);
 
     VK_DEVICE_LEVEL_FN(GlobalVulkan.PrimaryDevice,vkBindBufferMemory);
+    VK_DEVICE_LEVEL_FN(GlobalVulkan.PrimaryDevice,vkBindImageMemory);
 
     // Queue creation
     vkGetDeviceQueue(GlobalVulkan.PrimaryDevice, GlobalVulkan.GraphicsQueueFamilyIndex, 0, &GlobalVulkan.GraphicsQueue);
@@ -1996,6 +2172,12 @@ InitializeVulkan(int32 Width, int32 Height,
                 1,
                 &GlobalVulkan.TransferBitCommandBuffer)) return 1;
 
+    VkExtent3D Extent3D = { GlobalVulkan.WindowExtension.width, GlobalVulkan.WindowExtension.height, 1};
+    if (VulkanCreateDepthBuffer(GlobalVulkan.PrimaryGPU,GlobalVulkan.PrimaryDevice, Extent3D, &GlobalVulkan.DepthBuffer))
+    {
+        return 1;
+    }
+
     if (VulkanInitDefaultRenderPass()) return 1;
 
     if (VulkanInitFramebuffers()) return 1;
@@ -2058,6 +2240,7 @@ VulkanDestroyPipeline()
         }
     }
 }
+
 
 void
 CloseVulkan()
@@ -2143,6 +2326,10 @@ CloseVulkan()
         vkDestroyShaderModule(GlobalVulkan.PrimaryDevice,GlobalVulkan.ShaderModules[ShaderIndex],0);
         GlobalVulkan.ShaderModules[ShaderIndex] = VK_NULL_HANDLE;
     }
+
+    VulkanDestroyDepthBuffer();
+
+    /* DEVICE DESTRUCTION */
 
     if (VK_VALID_HANDLE(GlobalVulkan.PrimaryDevice) )vkDestroyDevice(GlobalVulkan.PrimaryDevice,0);
 

@@ -17,6 +17,9 @@ struct mesh
 
     uint16       * Indices;
     uint32         IndicesSize;
+
+    uint32 OffsetVertices;
+    uint32 OffsetIndices;
 };
 
 #define MESH_H

@@ -64,7 +64,7 @@ RenderSetPipeline(int32 PipelineIndex);
 
 RENDER_API
 int32
-RenderPushMesh(uint32 TotalMeshInstances, uint32 MeshSize, uint32 IndicesSize = 0);
+RenderPushMesh(uint32 TotalMeshInstances, uint32 MeshSize, uint32 IndicesSize = 0, VkDeviceSize OffsetVertex = 0, VkDeviceSize OffsetIndices = 0);
 
 RENDER_API
 int32

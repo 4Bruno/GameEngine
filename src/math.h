@@ -174,6 +174,11 @@ ScaleMatrix(real32 x, real32 y, real32 z)
 
     return m;
 }
+m4 
+ScaleMatrix(v3 A)
+{
+    return ScaleMatrix(A.x,A.y,A.z);
+}
 
 
 

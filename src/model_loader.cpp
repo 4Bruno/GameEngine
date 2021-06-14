@@ -39,7 +39,7 @@ AdvanceAfterWs(const char * Data, uint32 Size, uint32 * c)
     uint32 ci = *c;
     for (; (ci < Size);++ci)
     {
-        if ( Data[ci] == ' ' )
+        if ( (Data[ci] == ' ') || (Data[ci] == '\n') )
         {
             break;
         }
@@ -192,15 +192,33 @@ ReadObjFileHeader(const char * Data, uint32 Size)
     return Description;
 }
 
+#if 0
 mesh
 CreateMeshFromObjHeader(memory_arena * Arena,obj_file_header Header, const char * Data, uint32 Size)
 {
     mesh Mesh = {};
 
-    Mesh.Vertices = PushArray(Arena,Header.VertexCount,vertex_point);
-    Mesh.VertexSize = Header.VertexCount*sizeof(vertex_point);
+    uint32 FaceVertices = 3;
+
+    uint32 TotalVertices = Header.FaceElementsCount*FaceVertices;
+    Mesh.Vertices = PushArray(Arena,TotalVertices,vertex_point);
+    Mesh.VertexSize = TotalVertices*sizeof(vertex_point);
 
     uint32 Line = 0;
+
+    for (uint32 ci = (Header.FaceElementsStart); (Line < Header.FaceElementsCount); ++Line)
+    {
+        ci += 2; // fixed
+        Mesh.Indices[Indice++] = (uint16)strtoimax(Data + ci,&End, Base10);
+        AdvanceAfterWs(Data,Size,&ci);
+        Mesh.Indices[Indice++] = (uint16)strtoimax(Data + ci,&End, Base10);
+        AdvanceAfterWs(Data,Size,&ci);
+        Mesh.Indices[Indice++] = (uint16)strtoimax(Data + ci,&End, Base10);
+        AdvanceAfterWs(Data,Size,&ci);
+        Mesh.Indices[Indice++] = (uint16)strtoimax(Data + ci,&End, Base10);
+
+        SkipLine(Data,Size,&ci);
+    }
 
     for (uint32 ci = (Header.VertexStart); (Line < Header.VertexCount); ++Line)
     {
@@ -221,19 +239,67 @@ CreateMeshFromObjHeader(memory_arena * Arena,obj_file_header Header, const char 
     Line = 0;
     uint32 Indice = 0;
     uint32 Base10 = 10;
-    for (uint32 ci = (Header.FaceElementsStart); (Line < Header.FaceElementsCount); ++Line)
-    {
-        ci += 2; // fixed
-        Mesh.Indices[Indice++] = (uint16)strtoimax(Data + ci,&End, Base10);
-        AdvanceAfterWs(Data,Size,&ci);
-        Mesh.Indices[Indice++] = (uint16)strtoimax(Data + ci,&End, Base10);
-        AdvanceAfterWs(Data,Size,&ci);
-        Mesh.Indices[Indice++] = (uint16)strtoimax(Data + ci,&End, Base10);
-        AdvanceAfterWs(Data,Size,&ci);
-        Mesh.Indices[Indice++] = (uint16)strtoimax(Data + ci,&End, Base10);
-
-        SkipLine(Data,Size,&ci);
-    }
 
     return Mesh;
 }
+#endif
+#if 1
+mesh
+CreateMeshFromObjHeader(memory_arena * Arena,obj_file_header Header, const char * Data, uint32 Size)
+{
+    mesh Mesh = {};
+
+    Mesh.Vertices = PushArray(Arena,Header.VertexCount,vertex_point);
+    Mesh.VertexSize = Header.VertexCount*sizeof(vertex_point);
+
+    uint32 Line = 0;
+    uint32 FaceVertices = 3;
+
+    for (uint32 ci = (Header.VertexStart); 
+            (Line < Header.VertexCount); 
+            ++Line)
+    {
+        ci += 2; // fixed
+        for (uint32 CoordinateIndex = 0;
+                CoordinateIndex < FaceVertices;
+                ++CoordinateIndex)
+        {
+            Mesh.Vertices[Line].P._V[CoordinateIndex] = (real32)atof(Data + ci);
+            AdvanceAfterWs(Data,Size,&ci);
+        }
+        //SkipLine(Data,Size,&ci);
+    }
+
+    Mesh.Indices     = PushArray(Arena,Header.FaceElementsCount*FaceVertices,uint16);
+    Mesh.IndicesSize = Header.FaceElementsCount*FaceVertices*sizeof(uint16);
+
+    char * End;
+
+    Line = 0;
+    uint32 Indice = 0;
+    uint32 Base10 = 10;
+    for (uint32 ci = (Header.FaceElementsStart); 
+            (Line < Header.FaceElementsCount); 
+            ++Line)
+    {
+        ci += 2; // fixed
+        for (uint32 VertexIndex = 0;
+                VertexIndex < FaceVertices;
+                ++VertexIndex)
+        {
+            Mesh.Indices[Indice++] = (uint16)strtoimax(Data + ci,&End, Base10) - (uint16)1;
+            AdvanceAfterWs(Data,Size,&ci);
+        }
+        //SkipLine(Data,Size,&ci);
+    }
+
+#if 0
+    for (uint32 i = 0; i < 30;i+=3)
+    {
+        Log("%u %u %u\n",Mesh.Indices[i], Mesh.Indices[i+ 1],Mesh.Indices[i+ 2]);
+    }
+#endif
+
+    return Mesh;
+}
+#endif
