@@ -6,6 +6,25 @@
 #define PushArray(Arena,Count,Struct) (Struct *)_PushSize(Arena,Count*sizeof(Struct))
 #define PushStruct(Arena,Struct) (Struct *)PushArray(Arena,1,Struct)
 
+#define DEFAULT_WORLD_UP V3(0,1,0)
+struct renderer_3d
+{
+    v3  WorldUp;
+
+    m4 Projection;
+
+    m4 ViewMoveMatrix;
+    m4 ViewRotationMatrix;
+    m4 WorldTransform;
+    
+    m4 ObjectMoveMatrix;
+    m4 ObjectRotationMatrix;
+    m4 ObjectTransform;
+    m4 ObjectScale;
+
+    m4 MVP;
+};
+
 inline uint8 *
 _PushSize(memory_arena * Arena,uint32 Size)
 {
@@ -18,6 +37,7 @@ _PushSize(memory_arena * Arena,uint32 Size)
 
 struct entity
 {
+    v3 D;
     v3 P;
     mesh * Mesh;
     real32 Height;
@@ -26,19 +46,35 @@ struct entity
 
 
 struct game_state;
+struct scene;
 
-#define SCENE_LOADER(name) void name(game_state * GameState)
+#define SCENE_LOADER(name) void name(game_state * GameState, scene * Scene)
 typedef SCENE_LOADER(scene_loader);
 
-#define SCENE_HANDLER(name) void name(game_state * GameState,game_input * Input,m4 Proj, m4 View)
+#define SCENE_HANDLER(name) void name(game_state * GameState,game_input * Input, scene * Scene)
 typedef SCENE_HANDLER(scene_handler);
+
+
+struct list
+{
+    void * Current;
+    list * Next;
+};
 
 struct scene
 {
     scene_loader  * Loader;
     scene_handler * Handler;
     bool32          Loaded;
+    list            Entities;
 };
+
+struct mouse_drag
+{
+    v2 StartP;
+    real32 StartTime;
+};
+
 
 struct game_state
 {
@@ -57,14 +93,20 @@ struct game_state
     entity Entities[100];
     uint32 TotalEntities;
 
+    entity * Player;
+
     mesh Meshes[10];
     uint32 TotalMeshes;
 
     scene Scenes[2];
     uint32 CurrentScene;
 
-    v3 CameraP;
+    renderer_3d Renderer;
+
+
+    real32 DebugLastTimeStamp;
 };
+
 
 
 #define GAME_H

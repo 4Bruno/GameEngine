@@ -192,58 +192,6 @@ ReadObjFileHeader(const char * Data, uint32 Size)
     return Description;
 }
 
-#if 0
-mesh
-CreateMeshFromObjHeader(memory_arena * Arena,obj_file_header Header, const char * Data, uint32 Size)
-{
-    mesh Mesh = {};
-
-    uint32 FaceVertices = 3;
-
-    uint32 TotalVertices = Header.FaceElementsCount*FaceVertices;
-    Mesh.Vertices = PushArray(Arena,TotalVertices,vertex_point);
-    Mesh.VertexSize = TotalVertices*sizeof(vertex_point);
-
-    uint32 Line = 0;
-
-    for (uint32 ci = (Header.FaceElementsStart); (Line < Header.FaceElementsCount); ++Line)
-    {
-        ci += 2; // fixed
-        Mesh.Indices[Indice++] = (uint16)strtoimax(Data + ci,&End, Base10);
-        AdvanceAfterWs(Data,Size,&ci);
-        Mesh.Indices[Indice++] = (uint16)strtoimax(Data + ci,&End, Base10);
-        AdvanceAfterWs(Data,Size,&ci);
-        Mesh.Indices[Indice++] = (uint16)strtoimax(Data + ci,&End, Base10);
-        AdvanceAfterWs(Data,Size,&ci);
-        Mesh.Indices[Indice++] = (uint16)strtoimax(Data + ci,&End, Base10);
-
-        SkipLine(Data,Size,&ci);
-    }
-
-    for (uint32 ci = (Header.VertexStart); (Line < Header.VertexCount); ++Line)
-    {
-        ci += 2; // fixed
-        Mesh.Vertices[Line].P.x = (real32)atof(Data + ci);
-        AdvanceAfterWs(Data,Size,&ci);
-        Mesh.Vertices[Line].P.y = (real32)atof(Data + ci);
-        AdvanceAfterWs(Data,Size,&ci);
-        Mesh.Vertices[Line].P.z = (real32)atof(Data + ci);
-        SkipLine(Data,Size,&ci);
-    }
-
-    Mesh.Indices     = PushArray(Arena,Header.FaceElementsCount*4,uint16);
-    Mesh.IndicesSize = Header.FaceElementsCount*2*sizeof(uint16);
-
-    char * End;
-
-    Line = 0;
-    uint32 Indice = 0;
-    uint32 Base10 = 10;
-
-    return Mesh;
-}
-#endif
-#if 1
 mesh
 CreateMeshFromObjHeader(memory_arena * Arena,obj_file_header Header, const char * Data, uint32 Size)
 {
@@ -302,4 +250,3 @@ CreateMeshFromObjHeader(memory_arena * Arena,obj_file_header Header, const char 
 
     return Mesh;
 }
-#endif

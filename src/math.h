@@ -15,6 +15,47 @@ struct v2
     };
 };
 
+inline v2
+V2(real32 x, real32 y)
+{
+    v2 Result = { x, y};
+    return Result;
+}
+real32
+LengthSqr(v2 A)
+{
+    real32 Result = A.x*A.x + A.y*A.y;
+    return Result;
+}
+real32
+Length(v2 A)
+{
+    real32 Result = (real32)sqrtf(LengthSqr(A));
+    return Result;
+}
+
+v2
+operator *(v2 A, real32 B)
+{
+    v2 Result = {A.x * B, A.y * B};
+    return Result;
+}
+
+v2
+operator /(v2 A, real32 B)
+{
+    real32 OneOver = 1.0f / B;
+    v2 Result = A * OneOver;
+    return Result;
+}
+
+v2
+operator -(v2 A, v2 B)
+{
+    v2 Result = {A.x - B.x, A.y - B.y};
+    return Result;
+}
+
 struct v3
 {
     union
@@ -36,6 +77,107 @@ struct v3
         };
     };
 };
+
+
+inline v3
+V3(real32 x, real32 y, real32 z)
+{
+    v3 Result = { x, y, z};
+    return Result;
+}
+
+inline v3
+V3(v2 A, real32 z)
+{
+    v3 Result = { A.x, A.y, z};
+    return Result;
+}
+
+v3
+operator -(v3 A)
+{
+    v3 Result = { -A.x, -A.y, -A.z};
+    return Result;
+}
+
+v3
+Cross(v3 A, v3 B)
+{
+    v3 Result = {
+        A.y*B.z - A.z*B.y,
+        A.z*B.x - A.x*B.z,
+        A.x*B.y - A.y*B.x
+    };
+
+
+    return Result;
+}
+
+v3
+operator -(v3 A, v3 B)
+{
+    v3 Result = { A.x - B.x, A.y - B.y, A.z - B.z };
+
+    return Result;
+}
+v3
+operator +(v3 A, v3 B)
+{
+    v3 Result = { A.x + B.x, A.y + B.y, A.z + B.z };
+
+    return Result;
+}
+
+v3
+operator +=(v3 &A, v3 B)
+{
+    A = A + B;
+
+    return A;
+}
+
+v3
+operator *(v3 A, real32 B)
+{
+    v3 Result = {A.x * B, A.y * B, A.z * B};
+
+    return Result;
+}
+
+
+v3
+operator *=(v3 &A, real32 B)
+{
+    A = A*B;
+
+    return A;
+}
+
+v3
+operator /(v3 A, real32 B)
+{
+    v3 Result = A * (1.0f / B);
+
+    return Result;
+}
+real32
+Inner(v3 A, v3 B)
+{
+    real32 Result = (A.x * B.x + A.y * B.y + A.z * B.z);
+    return Result;
+}
+real32
+LengthSqr(v3 A)
+{
+    real32 Result = Inner(A, A);
+    return Result;
+}
+real32
+Length(v3 A)
+{
+    real32 Result = sqrtf(LengthSqr(A));
+    return Result;
+}
 
 struct v4
 {
@@ -68,51 +210,6 @@ struct v4
     };
 };
 
-inline v3
-V3(real32 x, real32 y, real32 z)
-{
-    v3 Result = { x, y, z};
-    return Result;
-}
-v3
-operator -(v3 A, v3 B)
-{
-    v3 Result = { A.x - B.x, A.y - B.y, A.z - B.z };
-
-    return Result;
-}
-v3
-operator +(v3 A, v3 B)
-{
-    v3 Result = { A.x + B.x, A.y + B.y, A.z + B.z };
-
-    return Result;
-}
-
-v3
-operator +=(v3 &A, v3 B)
-{
-    A = A + B;
-
-    return A;
-}
-
-v3
-operator *(v3 A, real32 B)
-{
-    v3 Result = {A.x * B, A.y * B, A.z * B};
-
-    return Result;
-}
-
-v3
-operator *=(v3 &A, real32 B)
-{
-    A = A*B;
-
-    return A;
-}
-
 inline v4
 V4(real32 x, real32 y, real32 z, real32 w)
 {
@@ -120,198 +217,20 @@ V4(real32 x, real32 y, real32 z, real32 w)
     return Result;
 }
 
-struct m4
+real32
+Inner(v4 A, v4 B)
 {
-    
-    union
-    {
-        real32 _V[16];
-        real32 _RC[4][4];
-        struct
-        {
-            real32 r00,r01,r02,r03;
-            real32 r10,r11,r12,r13;
-            real32 r20,r21,r22,r23;
-            real32 r30,r31,r32,r33;
-        };
-        struct
-        {
-            real32 c00,c10,c20,c30;
-            real32 c01,c11,c21,c31;
-            real32 c02,c12,c22,c32;
-            real32 c03,c13,c23,c33;
-        };
-        struct
-        {
-            v4 r0;
-            v4 r1;
-            v4 r2;
-            v4 r3;
-        };
-    };
-};
-
-m4 
-IdentityMatrix()
-{
-    m4 m = {};
-    m.r00 = 1.0f;
-    m.r11 = 1.0f;
-    m.r22 = 1.0f;
-    m.r33 = 1.0f;
-
-    return m;
-}
-
-m4 
-ScaleMatrix(real32 x, real32 y, real32 z)
-{
-    m4 m = {};
-    m.r00 = x;
-    m.r11 = y;
-    m.r22 = z;
-    m.r33 = 1.0f;
-
-    return m;
-}
-m4 
-ScaleMatrix(v3 A)
-{
-    return ScaleMatrix(A.x,A.y,A.z);
-}
-
-
-
-m4
-ProjectionMatrix(real32 AngleOfView, real32 n, real32 f)
-{
-    real32 OneOverFN= 1.0f / (f - n);
-    real32 S = (real32)(1.0 / (tan((AngleOfView * 0.5f) * (PI * (1.0f / 180.0f)))));
-    m4 Result = {
-        S,0,0,0,
-        0,S,0,0,
-        0,0,-f * OneOverFN, -1,
-        0,0,(-f * n) * OneOverFN,0
-    };
-    return Result;
-}
-m4
-Transpose(m4 A)
-{
-    m4 Result = {
-        A.c00, A.c01, A.c02, A.c03,
-        A.c10, A.c11, A.c12, A.c13,
-        A.c20, A.c21, A.c22, A.c23,
-        A.c30, A.c31, A.c32, A.c33
-    };
-
-    return Result;
-}
-m4
-RotationMatrix(real32 AngleOfView, v3 Axis)
-{
-    real32 C = (real32)cos(AngleOfView);
-    real32 S = (real32)sin(AngleOfView);
-    m4 Result = {};
-    if (Axis.z)
-    {
-        Result = {
-            C,S,0,0,
-            -S,C,0,0,
-            0,0,1,0,
-            0,0,0,1
-        };
-    } 
-    else if (Axis.x)
-    {
-        Result = {
-            1,0,0,0,
-            0,C,S,0,
-            0,-S,C,0,
-            0,0,0,1
-        };
-    }
-    else if (Axis.y)
-    {
-        Result = {
-            C,0,-S,0,
-            0,1,0,0,
-            S,0,C,0,
-            0,0,0,1
-        };
-    }
+    real32 Result = (A.x * B.x + A.y * B.y + A.z * B.z + A.w * B.w);
     return Result;
 }
 
-v4
-operator *(v4 A, m4 B)
+v3
+operator *(real32 R, v3 V)
 {
-    v4 Result = {
-        (A.x * B.r00 + A.y * B.r10 + A.z * B.r20 + A.w * B.r30),
-        (A.x * B.r01 + A.y * B.r11 + A.z * B.r21 + A.w * B.r31),
-        (A.x * B.r02 + A.y * B.r12 + A.z * B.r22 + A.w * B.r32),
-        (A.x * B.r03 + A.y * B.r13 + A.z * B.r23 + A.w * B.r33)
-    };
-
+    v3 Result = { V.x * R, V.y * R, V.z * R };
     return Result;
 }
-m4
-ProjectionMatrixOpenGl(real32 FOV, real32 AspectRatio,real32 n, real32 f)
-{
-    real32 TanHalfFOV = (real32)tan(FOV / 2.0f);
 
-    m4 m = {};
-    m._RC[0][0] = 1.0f / (AspectRatio * TanHalfFOV);
-    m._RC[1][1] = 1.0f / (AspectRatio * TanHalfFOV);
-    m._RC[2][2] = -(f + n) / (f - n);
-    m._RC[3][2] = -1.0f;
-    m._RC[2][3] = -(2.0f * f * n) / (f - n);
-
-    return m;
-}
-m4
-Projection(real32 FOV,real32 AspectRatio, real32 n, real32 f)
-{
-    m4 m = {};
-#if 0
-    // https://www.scratchapixel.com/lessons/3d-basic-rendering/perspective-and-orthographic-projection-matrix/opengl-perspective-projection-matrix
-    real32 b,l,r;
-    // tan(FOV*0.5) = op/ad = (height) / n => height = tan(FOV*0.5)*n
-    real32 t = (real32)(tan(FOV * 0.5f)*(real64)n);
-    b = -t;
-    r = t * AspectRatio;
-    l = -r;
-
-
-    // Psz = (0*Px + 0*Py + A*Pz + B*Pw) / (-Pz)
-    // Psz = (A*Pz + B*Pw) / -Pz
-#endif
-
-    real32 HalfTanFOV = (real32)(tan(FOV * 0.5f));
-    real32 A = -(f + n) / (f - n);
-    real32 B = (-2*f*n) / (f - n);
-
-    m.c00 = 1.0f / (HalfTanFOV * AspectRatio); // (2 * n) / (r - l);
-    // m.c20 = 0; //(r + l) / (r - l);
-    m.c11 = 1.0f / (HalfTanFOV); // (2 * n) / (t - b);
-    // m.c21 = 0; //(t + b) / (t - b);
-    m.c22 = A;
-    m.c32 = B;
-    m.c23 = -1; // -Pz
-    //m.c33 = 0;  // w
-
-    return m;
-} 
-
-m4
-Translate(m4 A, v3 B)
-{
-    A.c30 = B.x;
-    A.c31 = B.y;
-    A.c32 = B.z;
-
-    return A;
-}
 
 inline real32 
 ToRadians(real32 Degrees)
@@ -321,26 +240,82 @@ ToRadians(real32 Degrees)
     return Result; 
 }
 
-m4
-operator *(m4 A, m4 B)
+
+struct m4
 {
-    m4 Result = {};
-    for (uint32 r = 0;
-                r < 4;
-                ++r)
+    v4 Columns[4];
+    const v4& operator[](int index) const
     {
-        for (uint32 c = 0;
-                    c < 4;
-                    ++c)
-        {
-            Result._RC[r][c] = A._RC[r][0] * B._RC[0][c] +
-                               A._RC[r][1] * B._RC[1][c] +
-                               A._RC[r][2] * B._RC[2][c] +
-                               A._RC[r][3] * B._RC[3][c];
-        }
+        return Columns[index];
+    }
+    v4& operator[](int index)
+    {
+        return Columns[index];
     }
 
+};
+
+inline m4
+M4()
+{
+    m4 Result;
+
+    Result.Columns[0] = V4(1,0,0,0);
+    Result.Columns[1] = V4(0,1,0,0);
+    Result.Columns[2] = V4(0,0,1,0);
+    Result.Columns[3] = V4(0,0,0,1);
+
     return Result;
+}
+inline m4
+M4Scale(v3 V)
+{
+    m4 Result;
+
+    Result.Columns[0] = V4(V.x,0,0,0);
+    Result.Columns[1] = V4(0,V.y,0,0);
+    Result.Columns[2] = V4(0,0,V.z,0);
+    Result.Columns[3] = V4(0,0,0,1);
+
+    return Result;
+}
+
+// pre-multiply
+v4
+operator *(const m4& M, const v4& V)
+{
+    v4 R = V4( 
+        M[0].x * V.x + M[1].x * V.y + M[2].x * V.z + M[3].x * V.w,
+        M[0].y * V.x + M[1].y * V.y + M[2].y * V.z + M[3].y * V.w,
+        M[0].z * V.x + M[1].z * V.y + M[2].z * V.z + M[3].z * V.w,
+        M[0].w * V.x + M[1].w * V.y + M[2].w * V.z + M[3].w * V.w
+    );
+    return R;
+}
+// post-multiply
+v4
+operator *(const v4& V, const m4& M)
+{
+    v4 R = V4( 
+            Inner(M[0],V),
+            Inner(M[1],V),
+            Inner(M[2],V),
+            Inner(M[3],V)
+    );
+
+    return R;
+}
+m4
+operator *(const m4 &M1, const m4 &M2)
+{
+    m4 MR;
+
+    MR.Columns[0] = M1 * M2[0];
+    MR.Columns[1] = M1 * M2[1];
+    MR.Columns[2] = M1 * M2[2];
+    MR.Columns[3] = M1 * M2[3];
+
+    return MR;
 }
 
 

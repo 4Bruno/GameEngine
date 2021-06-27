@@ -30,7 +30,7 @@ typedef int32       bool32;
 typedef float       real32;
 typedef double      real64;
 
-#define PI 3.141684
+#define PI 3.141684f
 
 #define VULKAN_CREATE_SURFACE(name) int32 name(void * SurfaceData, void * pfnOSSurface, VkInstance Instance, VkSurfaceKHR * Surface)
 typedef VULKAN_CREATE_SURFACE(vulkan_create_surface);
@@ -66,9 +66,12 @@ struct game_button
 
 struct game_controller
 {
+    real32 MouseX;
+    real32 MouseY;
+    int32 RelMouseX, RelMouseY;
     union
     {
-        game_button Buttons[9];
+        game_button Buttons[11];
         struct
         {
             game_button Up;
@@ -80,15 +83,19 @@ struct game_controller
             game_button Alt;
             game_button MouseLeft;
             game_button MouseRight;
+            game_button Lock;
+            game_button R;
         };
     };
 };
 struct game_input
 {
+    bool32 Reloaded;
     bool32 CloseGame; // game -> platform
     real32 DtFrame;
     real32 TimeElapsed;
     game_controller Controller;
+    bool32 LockMouse;
 };
 
 struct game_memory
