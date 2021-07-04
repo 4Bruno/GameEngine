@@ -25,6 +25,7 @@ struct mesh_push_constant
     v4 Data;
     m4 RenderMatrix;
     m4 ViewRotationMatrix;
+    m4 Model;
     v3 SourceLight;
     bool IsLightSource;
     v4 DebugColor;
@@ -51,6 +52,9 @@ WaitForRender();
 RENDER_API
 int32
 RenderCreateShaderModule(char * Buffer, size_t Size);
+RENDER_API
+int32
+RenderFreeShaders();
 
 RENDER_API
 int32
@@ -95,6 +99,10 @@ RenderPushVertexConstant(uint32 Size,void * Data);
 RENDER_API
 void
 VulkanWaitForDevices();
+
+RENDER_API
+void
+VulkanDestroyPipeline();
 
 #define VULKAN_INITIALIZER_H
 #endif

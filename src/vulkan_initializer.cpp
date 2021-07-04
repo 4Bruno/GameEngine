@@ -1385,6 +1385,22 @@ RenderPushIndexData(memory_arena * Arena,void * Data,uint32 DataSize,uint32 Inst
 }
 
 int32
+RenderFreeShaders()
+{
+    for (uint32 ShaderIndex = 0;
+                ShaderIndex < GlobalVulkan.ShaderModulesCount;
+                ++ShaderIndex)
+    {
+        Assert(VK_VALID_HANDLE(GlobalVulkan.ShaderModules[ShaderIndex]));
+        vkDestroyShaderModule(GlobalVulkan.PrimaryDevice,GlobalVulkan.ShaderModules[ShaderIndex],0);
+        GlobalVulkan.ShaderModules[ShaderIndex] = VK_NULL_HANDLE;
+    }
+    GlobalVulkan.ShaderModulesCount = 0;
+
+    return 0;
+}
+
+int32
 RenderCreateShaderModule(char * Buffer, size_t Size)
 {
 
@@ -2257,6 +2273,7 @@ VulkanDestroyPipeline()
             GlobalVulkan.Pipelines[PipelineIndex] = VK_NULL_HANDLE;
         }
     }
+    GlobalVulkan.PipelinesCount = 0;
 }
 
 
@@ -2336,14 +2353,7 @@ CloseVulkan()
         vkDestroySwapchainKHR(GlobalVulkan.PrimaryDevice, GlobalVulkan.Swapchain, 0);
     }
 
-    for (uint32 ShaderIndex = 0;
-                ShaderIndex < GlobalVulkan.ShaderModulesCount;
-                ++ShaderIndex)
-    {
-        Assert(VK_VALID_HANDLE(GlobalVulkan.ShaderModules[ShaderIndex]));
-        vkDestroyShaderModule(GlobalVulkan.PrimaryDevice,GlobalVulkan.ShaderModules[ShaderIndex],0);
-        GlobalVulkan.ShaderModules[ShaderIndex] = VK_NULL_HANDLE;
-    }
+    RenderFreeShaders();
 
     VulkanDestroyDepthBuffer();
 

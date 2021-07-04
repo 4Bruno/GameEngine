@@ -90,6 +90,7 @@ struct game_controller
 };
 struct game_input
 {
+    bool32 ShaderHasChanged;
     bool32 Reloaded;
     bool32 CloseGame; // game -> platform
     real32 DtFrame;
@@ -109,7 +110,6 @@ struct game_memory
     debug_open_file  * DebugOpenFile;
     debug_read_file  * DebugReadFile;
     debug_close_file * DebugCloseFile;
-
 };
 
 #define GAME_UPDATE_AND_RENDER(name) void name(game_memory * Memory,game_input * Input, int32 ScreenWidth, int32 ScreenHeight)

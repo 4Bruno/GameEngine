@@ -11,6 +11,7 @@ layout ( push_constant ) uniform constants
     vec4 Data;
     mat4 RenderMatrix;
     mat4 ViewRotationMatrix;
+    mat4 Model;
     vec3 SourceLight;
     bool IsLightSource;
     vec4 ColorDebug;
@@ -18,21 +19,16 @@ layout ( push_constant ) uniform constants
 
 void main()
 {
-    gl_Position = PushConstants.RenderMatrix * vec4(Position, 1.0f);
-    vec3 N = vec3(PushConstants.ViewRotationMatrix * vec4(Normal,1.0f));
+    float AmbientLight = 0.2f;
+    vec3 FragPos = vec3(PushConstants.Model * vec4(Position,1.0f));
+    vec3 N = normalize(mat3(transpose(inverse(PushConstants.Model))) * Normal);
     float Intensity = 1.0f;
-    if (!PushConstants.IsLightSource)
-    {
-        vec3 SourceLight = vec3(PushConstants.RenderMatrix * vec4(PushConstants.SourceLight,1.0f));
-        vec3 Ray = vec3(gl_Position) - SourceLight;
-        float Reflection = dot(-Ray,N);
-        Intensity = 0.0f;
-        if (Reflection > 0.0f)
-        {
-            Intensity = Reflection;
-        }
-    }
-    outColor = PushConstants.ColorDebug * Intensity;
-    //outColor = vec4(Normal,1.0f);
+    vec3 Ray = PushConstants.SourceLight - FragPos;
+    Intensity = max(dot(Ray,N),0.0f);
+    float Dist = 1.0f / length(Ray);
+    //outColor = PushConstants.ColorDebug * max(AmbientLight,min(Intensity*Dist, 1.0f));
+    outColor = vec4(N,1.0f);
+    //outColor = vec4(Ray,1.0f);
+    gl_Position = PushConstants.RenderMatrix * vec4(Position, 1.0f);
 }
 

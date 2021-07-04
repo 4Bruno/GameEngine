@@ -96,7 +96,6 @@ void
 RenderUpdateObject(renderer_3d * Renderer)
 {
     Renderer->ObjectTransform =  Renderer->ObjectMoveMatrix * Renderer->ObjectRotationMatrix * Renderer->ObjectScale;
-    //Renderer->ObjectTransform =   Renderer->ObjectRotationMatrix * Renderer->ObjectMoveMatrix *  Renderer->ObjectScale;
     Renderer->MVP = Renderer->Projection * Renderer->WorldTransform * Renderer->ObjectTransform;
 }
 void
@@ -218,7 +217,7 @@ RenderMoveViewForward(renderer_3d * Renderer,real32 N)
     v3 P = RenderGetViewPos(Renderer);
     v3 Out = RenderGetViewDirection(Renderer);
     // do not alter Y
-    Out.y = 0.0f;
+    //Out.y = 0.0f;
     v3 R = P + (N * Out);
     Translate(&Renderer->ViewMoveMatrix, -R);
     RenderUpdateView(Renderer);
@@ -229,7 +228,7 @@ RenderMoveObjectForward(renderer_3d * Renderer,real32 N)
     v3 P = RenderGetObjectPos(Renderer);
     v3 Out = RenderGetObjectDirection(Renderer);
     // do not alter Y
-    Out.y = 0.0f;
+    //Out.y = 0.0f;
     P = P + (N * Out);
     Translate(&Renderer->ObjectMoveMatrix, P);
     RenderUpdateObject(Renderer);
@@ -514,8 +513,10 @@ RenderMesh(renderer_3d * Renderer, entity * Entity, v3 Rotation, v4 Color, v3 So
     mesh_push_constant Constants;
 
     Constants.RenderMatrix = Renderer->MVP;
-    Constants.ViewRotationMatrix = Renderer->WorldTransform;
+    Constants.ViewRotationMatrix = Renderer->ObjectRotationMatrix;
     Constants.SourceLight = SourceLight;
+    Constants.Model = Renderer->ObjectTransform;
+    //Constants.Model = Renderer->WorldTransform * Renderer->ObjectTransform;
     Constants.IsLightSource = (SourceLight.y == 0.0f);
     Constants.DebugColor = Color;
 
@@ -525,7 +526,7 @@ RenderMesh(renderer_3d * Renderer, entity * Entity, v3 Rotation, v4 Color, v3 So
             
 }
 void
-RenderMeshAround(renderer_3d * Renderer, entity * Entity, v3 TargetP, v3 TargetD, real32 Radius, v3 Rotation, v3 SourceLight)
+RenderMeshAround(renderer_3d * Renderer, entity * Entity, v3 TargetP, v3 TargetD, real32 Radius, v3 Rotation, v4 Color, v3 SourceLight)
 {
     mesh * Mesh = Entity->Mesh;
     Assert(Mesh);
@@ -545,8 +546,10 @@ RenderMeshAround(renderer_3d * Renderer, entity * Entity, v3 TargetP, v3 TargetD
 
     mesh_push_constant Constants;
 
-    Constants.DebugColor = V4(0,0,0,1);
-    Constants.ViewRotationMatrix = Renderer->WorldTransform;
+    Constants.DebugColor = Color;
+    Constants.ViewRotationMatrix = Renderer->ObjectRotationMatrix;
+    //Constants.Model = Renderer->WorldTransform * V;
+    Constants.Model = V;
     Constants.SourceLight = SourceLight;
     Constants.IsLightSource = (SourceLight.y == 0.0f);
     Constants.RenderMatrix = MVP;

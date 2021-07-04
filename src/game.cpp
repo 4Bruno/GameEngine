@@ -126,8 +126,8 @@ SCENE_HANDLER(HandleSceneFloor)
     real32 SinTime = sinf(Input->TimeElapsed);
     real32 CosTime = cosf(Input->TimeElapsed);
     //SinTime = ((SinTime + 1.0f) * 0.5f) * PI*2.0f;
-    SinTime = SinTime * PI * 2.0f;
-    CosTime = CosTime * PI * 2.0f;
+    SinTime = SinTime;// * PI * 2.0f;
+    CosTime = CosTime;// * PI * 2.0f;
     v3 Rotation = V3(SinTime,CosTime,0);
 #else
     real32 SinTime = sinf(Input->TimeElapsed);
@@ -142,12 +142,14 @@ SCENE_HANDLER(HandleSceneFloor)
         RenderMesh(&GameState->Renderer, Entity, V3(0,0,0));
     }
 #else
+    v4 Color = V4(0.6f,0.8f,0.2f,1.0f);
     entity * Entity = Scene->Entities[0];
-    RenderMesh(&GameState->Renderer, Entity, V3(0,0,0),V4(0.6f,0.8f,0.2f,1.0f),SourceLight);
+    RenderMesh(&GameState->Renderer, Entity, V3(0,0,0),Color,SourceLight);
 
     Entity = Scene->Entities[1];
     //Entity->D = V3(SinTime,SinTime,SinTime);
-    RenderMeshAround(&GameState->Renderer,Entity,GameState->Player->P, GameState->Player->D,8.0f,Rotation,SourceLight);
+    Color = V4(1.0f,0,0,1.0f);
+    RenderMeshAround(&GameState->Renderer,Entity,GameState->Player->P, GameState->Player->D,8.0f,Rotation,Color,SourceLight);
 
 #endif
 }
@@ -230,12 +232,13 @@ FreeCameraView(renderer_3d * Renderer, v3 dP, real32 Yaw, real32 Pitch)
 {
     if (dP.z)
     {
-        RenderMoveViewForward(Renderer, dP.z);
+        RenderMoveViewForward(Renderer, -dP.z);
     }
     if (dP.x)
     {
         RenderMoveViewRight(Renderer, dP.x);
     }
+#if 0
     if (Yaw)
     {
         RenderRotateViewRight(Renderer, ToRadians(Yaw*10.0f));
@@ -244,6 +247,36 @@ FreeCameraView(renderer_3d * Renderer, v3 dP, real32 Yaw, real32 Pitch)
     {
         RenderRotateViewUp(Renderer, ToRadians(-Pitch*10.0f));
     }
+#else
+    RenderRotateViewRight(Renderer, ToRadians(Yaw*10.0f));
+    RenderRotateViewUp(Renderer, ToRadians(-Pitch*10.0f));
+#endif
+}
+
+void
+CreatePipeline(game_memory * Memory,game_state * GameState)
+{
+    GameState->ShadersArena.CurrentSize = 0;
+    RenderFreeShaders();
+    VulkanDestroyPipeline();
+
+    GameState->VertexShaders[shader_type_vertex_default] 
+        = LoadShader(Memory,&GameState->ShadersArena,"shaders\\triangle.vert");
+    GameState->FragmentShaders[shader_type_fragment_default] 
+        = LoadShader(Memory,&GameState->ShadersArena,"shaders\\triangle.frag");
+
+    GameState->PipelineIndex = 
+        RenderCreatePipeline(GameState->VertexShaders[shader_type_vertex_default], 
+                GameState->FragmentShaders[shader_type_fragment_default]);
+
+    // TODO: destroy shaders after pipeline creation
+
+    if (GameState->PipelineIndex < 0)
+    {
+        Log("Error during creation of main pipeline\n");
+    }
+
+    Assert(GameState->PipelineIndex >= 0);
 }
 
 extern "C"
@@ -294,22 +327,7 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
             //RenderPushIndexData(&GameState->IndicesArena, Mesh->Indices,Mesh->IndicesSize, 1);
         }
 
-        GameState->VertexShaders[shader_type_vertex_default] 
-            = LoadShader(Memory,&GameState->ShadersArena,"shaders\\triangle.vert");
-        GameState->FragmentShaders[shader_type_fragment_default] 
-            = LoadShader(Memory,&GameState->ShadersArena,"shaders\\triangle.frag");
-
-        GameState->PipelineIndex = 
-            RenderCreatePipeline(GameState->VertexShaders[shader_type_vertex_default], 
-                                 GameState->FragmentShaders[shader_type_fragment_default]);
-
-        // TODO: destroy shaders after pipeline creation
-
-        if (GameState->PipelineIndex < 0)
-        {
-            Log("Error during creation of main pipeline\n");
-        }
-
+        CreatePipeline(Memory,GameState);
 
         GameState->Scenes[0].Loader = LoadSceneDebug;
         GameState->Scenes[0].Handler = HandleSceneDebug;
@@ -336,6 +354,12 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
         ++GameState->TotalEntities;
 
         GameState->IsInitialized = true;
+    }
+
+    if (Input->ShaderHasChanged)
+    {
+        CreatePipeline(Memory,GameState);
+        Input->ShaderHasChanged = false;
     }
 
     real32 MouseX = (real32)Input->Controller.RelMouseX;
@@ -393,7 +417,7 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
     real32 Yaw = (MouseX != 0.0f) ? (MouseX / 20.0f) : 0.0f;
     real32 Pitch= (MouseY != 0.0f) ? (MouseY / 20.0f)   : 0.0f;
 
-#if 1
+#if 0
     MoveEntity(GameState->Player, dP,Input->DtFrame);
     //SetViewBehindObject(&GameState->Renderer,GameState->Player->P,GameState->Player->D,5.0f, 2.0f);
 #else
@@ -408,7 +432,8 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
 
     /* ------------------------- GAME RENDER ------------------------- */
 
-    v4 ClearColor = V4(53.0f / 128.0f, 81.0f / 128.0f, 92.0f / 128.0f, 1.0f);
+    //v4 ClearColor = V4(53.0f / 128.0f, 81.0f / 128.0f, 92.0f / 128.0f, 1.0f);
+    v4 ClearColor = V4(0,0,0,1);
 
     BeginRender(GameState, ClearColor);
 
@@ -420,11 +445,9 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
 
     v3 Rotation = {};
 
-    Rotation.y = -ToRadians(Yaw*10.0f);
+    //Rotation.y = -ToRadians(Yaw*10.0f);
 
-    RenderLookAt(&GameState->Renderer, 
-            V3(10.f,10.f,10.0f), 
-            GameState->Player->P);
+    //RenderLookAt(&GameState->Renderer, V3(10.f,10.f,10.0f), GameState->Player->P);
 #if 0
     if (Input->Controller.MouseRight.IsPressed && Yaw != 0.0f)
     {

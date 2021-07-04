@@ -13,6 +13,7 @@
 
 #define GAME_DLL "game.dll"
 #define GAME_DLL_TEMP "game_temp.dll"
+#define SHADER_VERTEX_DEBUG "shaders\\triangle.vert"
 
 #define APP_NAME "Vulkan_hardcore"
 #define APP_WINDOW_WIDTH  980
@@ -479,6 +480,7 @@ struct game_state
     HMODULE                  Lib;
     game_update_and_render * pfnGameUpdateAndRender;
     FILETIME                 CurrentLibLastModified;
+    FILETIME                 ShaderVertexLastModified;
 };
 
 
@@ -606,6 +608,8 @@ int main()
 
         bool32 AllowMouseConfinement = false;
 
+        GameState.ShaderVertexLastModified = Win32GetLastWriteTime((char *)SHADER_VERTEX_DEBUG);
+
         // Main loop
         while (GlobalAppRunning)
         {
@@ -618,6 +622,7 @@ int main()
                     GlobalAppRunning = false;
                     break;
                 }
+                GameState.CurrentLibLastModified = Win32GetLastWriteTime((char *)GAME_DLL_TEMP);
                 Input.Reloaded = true;
                 // I dont know how to properly sync with vulkan
                 Sleep(500);
@@ -625,6 +630,13 @@ int main()
             else
             {
                 Input.Reloaded = false;
+            }
+            if (Win32HasFileBeenModified(GameState.ShaderVertexLastModified, 
+                                        (char *)SHADER_VERTEX_DEBUG) && Win32FileExists(SHADER_VERTEX_DEBUG))
+            {
+                VulkanWaitForDevices();
+                Input.ShaderHasChanged = true;
+                GameState.ShaderVertexLastModified = Win32GetLastWriteTime((char *)SHADER_VERTEX_DEBUG);
             }
 #endif
             LARGE_INTEGER TimeElapsed = 
