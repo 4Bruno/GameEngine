@@ -24,7 +24,10 @@ struct mesh_push_constant
 {
     v4 Data;
     m4 RenderMatrix;
-    //glm::mat4 RenderMatrix;
+    m4 ViewRotationMatrix;
+    v3 SourceLight;
+    bool IsLightSource;
+    v4 DebugColor;
 };
 
 RENDER_API
@@ -63,7 +66,11 @@ RenderSetPipeline(int32 PipelineIndex);
 
 RENDER_API
 int32
-RenderPushMesh(uint32 TotalMeshInstances, uint32 IndicesSize, VkDeviceSize OffsetVertex = 0, VkDeviceSize OffsetIndices = 0);
+RenderPushMesh(uint32 TotalMeshInstances, uint32 VertexSize);
+
+RENDER_API
+int32
+RenderPushMeshIndexed(uint32 TotalMeshInstances, uint32 IndicesSize, VkDeviceSize OffsetVertex = 0, VkDeviceSize OffsetIndices = 0);
 
 RENDER_API
 int32
@@ -84,6 +91,10 @@ RenderGetMemoryArena();
 RENDER_API
 void
 RenderPushVertexConstant(uint32 Size,void * Data);
+
+RENDER_API
+void
+VulkanWaitForDevices();
 
 #define VULKAN_INITIALIZER_H
 #endif

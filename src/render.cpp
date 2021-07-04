@@ -76,6 +76,14 @@ RenderGetViewPos(renderer_3d * Renderer)
     
     return P;
 }
+v3
+RenderGetObjectPos(renderer_3d * Renderer)
+{
+    // Render negates view position.
+    v3 P = -Renderer->ViewMoveMatrix[3].xyz;
+    
+    return P;
+}
 
 void
 Rotate(m4 * A,v3 Rotation)
@@ -83,10 +91,12 @@ Rotate(m4 * A,v3 Rotation)
     *A = M4();
 }
 
+
 void
 RenderUpdateObject(renderer_3d * Renderer)
 {
     Renderer->ObjectTransform =  Renderer->ObjectMoveMatrix * Renderer->ObjectRotationMatrix * Renderer->ObjectScale;
+    //Renderer->ObjectTransform =   Renderer->ObjectRotationMatrix * Renderer->ObjectMoveMatrix *  Renderer->ObjectScale;
     Renderer->MVP = Renderer->Projection * Renderer->WorldTransform * Renderer->ObjectTransform;
 }
 void
@@ -124,6 +134,22 @@ RenderRotateView(renderer_3d * Renderer, real32 Pitch, real32 Yaw)
 
     RenderUpdateView(Renderer);
 }
+void
+RotateObjectUp(m4 * M,real32 Angle)
+{
+
+    real32 c = cosf(-Angle);
+    real32 s = sinf(-Angle);
+    m4 R = {
+        1, 0 , 0 , 0,
+        0, c, -s , 0,
+        0, s , c, 0,
+        0, 0, 0, 1
+    };
+
+    *M = R * (*M);
+}
+
 void
 RotateObjectRight(m4 * M,real32 Angle)
 {
@@ -198,6 +224,17 @@ RenderMoveViewForward(renderer_3d * Renderer,real32 N)
     RenderUpdateView(Renderer);
 }
 void
+RenderMoveObjectForward(renderer_3d * Renderer,real32 N)
+{
+    v3 P = RenderGetObjectPos(Renderer);
+    v3 Out = RenderGetObjectDirection(Renderer);
+    // do not alter Y
+    Out.y = 0.0f;
+    P = P + (N * Out);
+    Translate(&Renderer->ObjectMoveMatrix, P);
+    RenderUpdateObject(Renderer);
+}
+void
 RenderMoveViewRight(renderer_3d * Renderer,real32 N)
 {
     v3 P = RenderGetViewPos(Renderer);
@@ -211,11 +248,9 @@ RenderMoveViewRight(renderer_3d * Renderer,real32 N)
 
 
 void
-RenderMoveView(renderer_3d * Renderer,v3 Displacement)
+RenderMoveView(renderer_3d * Renderer,v3 AbsP)
 {
-    v3 CurrentP = RenderGetViewPos(Renderer);
-    Translate(&Renderer->ViewMoveMatrix , -(CurrentP + Displacement));
-    //Translate(&Renderer->ViewMoveMatrix , Displacement);
+    Translate(&Renderer->ViewMoveMatrix , -AbsP);
     Renderer->WorldTransform = Renderer->ViewRotationMatrix * Renderer->ViewMoveMatrix;
 }
 
@@ -252,6 +287,35 @@ RenderRotateFill(m4 * M, real32 AngleX, real32 AngleY, real32 AngleZ)
     *M = AxisZ * AxisY * AxisX;
 }
 
+m4
+LookAtFromD(v3 D, v3 WorldUp)
+{
+    v3 Up = WorldUp - (Inner(WorldUp,D)*D);
+    v3 Right = Cross(D,Up);
+
+    m4 R = {};
+    R[0].x = Right.x;
+    R[1].x = Up.x;
+    R[2].x = D.x;
+    R[3].x = 0;
+
+    R[0].y = Right.y;
+    R[1].y = Up.y;
+    R[2].y = D.y;
+    R[3].y = 0;
+
+    R[0].z = Right.z;
+    R[1].z = Up.z;
+    R[2].z = D.z;
+    R[3].z = 0;
+
+    R[0].w = 0;
+    R[1].w = 0;
+    R[2].w = 0;
+    R[3].w = 1;
+
+    return R;
+}
 m4
 LookAt(v3 Position, v3 Target, v3 WorldUp)
 {
@@ -385,6 +449,15 @@ RenderLookAt(renderer_3d * Renderer,v3 P, v3 TargetP)
 
     return 0;
 }
+void
+SetViewBehindObject(renderer_3d * Renderer, v3 T, v3 D, real32 Separation, real32 HeightOverObject = 0.0f)
+{
+    D = (D / Length(D));
+
+    v3 V = T - D * Separation + V3(0,HeightOverObject,0);
+
+    RenderLookAt(Renderer,V,T);
+}
 
 void
 BeginRender(game_state * GameState, v4 ClearColor)
@@ -424,7 +497,7 @@ EndRender(game_state * GameState)
 }
 
 void
-RenderMesh(renderer_3d * Renderer, entity * Entity, v3 Rotation)
+RenderMesh(renderer_3d * Renderer, entity * Entity, v3 Rotation, v4 Color, v3 SourceLight)
 {
     mesh * Mesh = Entity->Mesh;
     Assert(Mesh);
@@ -441,33 +514,44 @@ RenderMesh(renderer_3d * Renderer, entity * Entity, v3 Rotation)
     mesh_push_constant Constants;
 
     Constants.RenderMatrix = Renderer->MVP;
+    Constants.ViewRotationMatrix = Renderer->WorldTransform;
+    Constants.SourceLight = SourceLight;
+    Constants.IsLightSource = (SourceLight.y == 0.0f);
+    Constants.DebugColor = Color;
 
     RenderPushVertexConstant(sizeof(mesh_push_constant),(void *)&Constants);
-    RenderPushMesh(1,(Mesh->IndicesSize / sizeof(uint16)),Mesh->OffsetVertices,Mesh->OffsetIndices);
+    //RenderPushMesh(1,(Mesh->IndicesSize / sizeof(uint16)),Mesh->OffsetVertices,Mesh->OffsetIndices);
+    RenderPushMesh(1, Mesh->VertexSize / sizeof(vertex_point));
+            
 }
 void
-RenderMeshAround(renderer_3d * Renderer, entity * Entity, v3 Target, real32 Rotation)
+RenderMeshAround(renderer_3d * Renderer, entity * Entity, v3 TargetP, v3 TargetD, real32 Radius, v3 Rotation, v3 SourceLight)
 {
     mesh * Mesh = Entity->Mesh;
     Assert(Mesh);
 
-    m4 S = M4();
-    m4 M = M4();
-    Translate(&M, Entity->P);
-    m4 R = LookAt(Entity->P, Target, V3(0,1,0));
-    RotateObjectRight(&R, Rotation);
+    m4 V = M4();
+    Translate(&V, V3(Radius,0,0));
+    m4 R = LookAtFromD(V3(0,0,-1), V3(0,1,0));
+    RotateObjectRight(&R, Rotation.x);
+    RotateObjectUp(&R,Rotation.y);
+    //RenderRotateFill(&R, Rotation.x, Rotation.y, Rotation.z);
 
-    M = R * M * S;
+    m4 M;
+    Translate(&M, TargetP);
+    V = M * (R * V);
 
-
-    m4 MVP = Renderer->Projection * Renderer->WorldTransform * M;
-
-    Entity->D = GetObjectDirection(MVP);
+    m4 MVP = Renderer->Projection * Renderer->WorldTransform * V;
 
     mesh_push_constant Constants;
 
+    Constants.DebugColor = V4(0,0,0,1);
+    Constants.ViewRotationMatrix = Renderer->WorldTransform;
+    Constants.SourceLight = SourceLight;
+    Constants.IsLightSource = (SourceLight.y == 0.0f);
     Constants.RenderMatrix = MVP;
 
     RenderPushVertexConstant(sizeof(mesh_push_constant),(void *)&Constants);
-    RenderPushMesh(1,(Mesh->IndicesSize / sizeof(uint16)),Mesh->OffsetVertices,Mesh->OffsetIndices);
+    //RenderPushMesh(1,(Mesh->IndicesSize / sizeof(uint16)),Mesh->OffsetVertices,Mesh->OffsetIndices);
+    RenderPushMesh(1, Mesh->VertexSize / sizeof(vertex_point));
 }

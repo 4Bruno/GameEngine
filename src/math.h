@@ -216,6 +216,12 @@ V4(real32 x, real32 y, real32 z, real32 w)
     v4 Result = { x, y, z, w};
     return Result;
 }
+inline v4
+V4(v3 v, real32 w)
+{
+    v4 Result = { v.x, v.y, v.z, w};
+    return Result;
+}
 
 real32
 Inner(v4 A, v4 B)
@@ -316,6 +322,13 @@ operator *(const m4 &M1, const m4 &M2)
     MR.Columns[3] = M1 * M2[3];
 
     return MR;
+}
+
+inline v3
+Normalize(v3 A)
+{
+    v3 R = A / Length(A);
+    return A;
 }
 
 

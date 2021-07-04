@@ -612,12 +612,15 @@ int main()
 #if DEBUG
             if (Win32HasFileBeenModified(GameState.CurrentLibLastModified, (char *)GAME_DLL_TEMP) && Win32FileExists(GAME_DLL_TEMP))
             {
+                VulkanWaitForDevices();
                 if (!LoadGameDll(&GameState))
                 {
                     GlobalAppRunning = false;
                     break;
                 }
                 Input.Reloaded = true;
+                // I dont know how to properly sync with vulkan
+                Sleep(500);
             }
             else
             {

@@ -39,6 +39,7 @@ struct entity
 {
     v3 D;
     v3 P;
+    real32 dP;
     mesh * Mesh;
     real32 Height;
     v3 Scale;
@@ -54,19 +55,13 @@ typedef SCENE_LOADER(scene_loader);
 #define SCENE_HANDLER(name) void name(game_state * GameState,game_input * Input, scene * Scene)
 typedef SCENE_HANDLER(scene_handler);
 
-
-struct list
-{
-    void * Current;
-    list * Next;
-};
-
 struct scene
 {
     scene_loader  * Loader;
     scene_handler * Handler;
     bool32          Loaded;
-    list            Entities;
+    entity * Entities[10];
+    uint32 EntityCount;
 };
 
 struct mouse_drag
@@ -104,7 +99,9 @@ struct game_state
     renderer_3d Renderer;
 
 
+    v3 CameraP;
     real32 DebugLastTimeStamp;
+    v3 DebugSourceLight;
 };
 
 

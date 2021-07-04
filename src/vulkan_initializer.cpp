@@ -1492,13 +1492,24 @@ RenderSetPipeline(int32 PipelineIndex)
 }
 
 int32
-RenderPushMesh(uint32 TotalMeshInstances, uint32 IndicesSize, VkDeviceSize OffsetVertex, VkDeviceSize OffsetIndices)
+RenderPushMeshIndexed(uint32 TotalMeshInstances, uint32 IndicesSize, VkDeviceSize OffsetVertex, VkDeviceSize OffsetIndices)
 {
     VkCommandBuffer cmd = GlobalVulkan.PrimaryCommandBuffer[0];
 
     vkCmdBindVertexBuffers(cmd, 0, 1, &GlobalVulkan.VertexBuffer, &OffsetVertex);
     vkCmdBindIndexBuffer(cmd, GlobalVulkan.IndexBuffer, OffsetIndices, VK_INDEX_TYPE_UINT16);
     vkCmdDrawIndexed(cmd,IndicesSize,1,0,0,0);
+
+    return 0;
+}
+int32
+RenderPushMesh(uint32 TotalMeshInstances, uint32 VertexSize)
+{
+    VkCommandBuffer cmd = GlobalVulkan.PrimaryCommandBuffer[0];
+
+    VkDeviceSize OffsetVertex = 0;
+    vkCmdBindVertexBuffers(cmd, 0, 1, &GlobalVulkan.VertexBuffer, &OffsetVertex);
+    vkCmdDraw(cmd,VertexSize, 1, 0 , 0);
 
     return 0;
 }

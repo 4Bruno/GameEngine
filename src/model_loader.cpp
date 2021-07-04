@@ -191,7 +191,8 @@ ReadObjFileHeader(const char * Data, uint32 Size)
 
     return Description;
 }
-
+// INDEXES VS NOT INDEEXED
+#if 0
 mesh
 CreateMeshFromObjHeader(memory_arena * Arena,obj_file_header Header, const char * Data, uint32 Size)
 {
@@ -215,7 +216,22 @@ CreateMeshFromObjHeader(memory_arena * Arena,obj_file_header Header, const char 
             Mesh.Vertices[Line].P._V[CoordinateIndex] = (real32)atof(Data + ci);
             AdvanceAfterWs(Data,Size,&ci);
         }
-        //SkipLine(Data,Size,&ci);
+    }
+
+    Line = 0;
+
+    for (uint32 ci = (Header.VertexNormalStart); 
+            (Line < Header.VertexNormalCount); 
+            ++Line)
+    {
+        ci += 2; // fixed
+        for (uint32 CoordinateIndex = 0;
+                CoordinateIndex < FaceVertices;
+                ++CoordinateIndex)
+        {
+            Mesh.Vertices[Line].N._V[CoordinateIndex] = (real32)atof(Data + ci);
+            AdvanceAfterWs(Data,Size,&ci);
+        }
     }
 
     Mesh.Indices     = PushArray(Arena,Header.FaceElementsCount*FaceVertices,uint16);
@@ -238,10 +254,9 @@ CreateMeshFromObjHeader(memory_arena * Arena,obj_file_header Header, const char 
             Mesh.Indices[Indice++] = (uint16)strtoimax(Data + ci,&End, Base10) - (uint16)1;
             AdvanceAfterWs(Data,Size,&ci);
         }
-        //SkipLine(Data,Size,&ci);
     }
 
-#if 0
+#if 1
     for (uint32 i = 0; i < 30;i+=3)
     {
         Log("%u %u %u\n",Mesh.Indices[i], Mesh.Indices[i+ 1],Mesh.Indices[i+ 2]);
@@ -250,3 +265,100 @@ CreateMeshFromObjHeader(memory_arena * Arena,obj_file_header Header, const char 
 
     return Mesh;
 }
+#else
+mesh
+CreateMeshFromObjHeader(memory_arena * Arena,obj_file_header Header, const char * Data, uint32 Size)
+{
+    mesh Mesh = {};
+
+    uint32 FaceVertices = 3;
+
+    uint32 Vertices = Header.FaceElementsCount * FaceVertices; 
+    uint32 VerticesSize = Vertices * sizeof(vertex_point);
+
+    Mesh.Vertices = (vertex_point *)PushSize(Arena,VerticesSize);
+    Mesh.VertexSize = VerticesSize;
+
+    // create 2 temp arrays for vertices/normals we will shrink stack later
+    uint32 SizeUniqueVertices = Header.VertexCount * sizeof(v3);
+    v3 * UniqueVertexArray = (v3 *)PushSize(Arena,SizeUniqueVertices);
+
+    // Pre-load list of unique vertices
+    uint32 Line = 0;
+
+    for (uint32 ci = (Header.VertexStart); 
+            (Line < Header.VertexCount); 
+            ++Line)
+    {
+        ci += 2; // fixed
+        for (uint32 CoordinateIndex = 0;
+                CoordinateIndex < FaceVertices;
+                ++CoordinateIndex)
+        {
+            UniqueVertexArray[Line]._V[CoordinateIndex] = (real32)atof(Data + ci);
+            AdvanceAfterWs(Data,Size,&ci);
+        }
+    }
+    
+    uint32 SizeUniqueNormals = Header.VertexNormalCount * sizeof(v3);
+    v3 * UniqueNormalArray = (v3 *)PushSize(Arena,SizeUniqueNormals);
+
+    Line = 0;
+
+    for (uint32 ci = (Header.VertexNormalStart); 
+            (Line < Header.VertexNormalCount); 
+            ++Line)
+    {
+        ci += 3; // fixed
+        for (uint32 CoordinateIndex = 0;
+                CoordinateIndex < FaceVertices;
+                ++CoordinateIndex)
+        {
+            UniqueNormalArray[Line]._V[CoordinateIndex] = (real32)atof(Data + ci);
+            AdvanceAfterWs(Data,Size,&ci);
+        }
+    }
+
+    // Create all vertices indices data
+    char * End;
+    Line = 0;
+    uint32 Indice = 0;
+    uint32 Base10 = 10;
+    for (uint32 ci = (Header.FaceElementsStart); 
+            (Line < Header.FaceElementsCount); 
+            ++Line)
+    {
+        ci += 2; // fixed
+        for (uint32 VertexIndex = 0;
+                VertexIndex < FaceVertices;
+                ++VertexIndex)
+        {
+            uint16 IndexVertexP = (uint16)strtoimax(Data + ci,&End, Base10) - (uint16)1;
+            uint16 IndexVertexT = (uint16)strtoimax(End + 1,&End, Base10) - (uint16)1;
+            uint16 IndexVertexN = (uint16)strtoimax(End + 1,&End, Base10) - (uint16)1;
+            // P
+            Mesh.Vertices[Indice].P = UniqueVertexArray[IndexVertexP];
+            // TextCoord
+            // TODO
+            // N
+            Mesh.Vertices[Indice].N = UniqueNormalArray[IndexVertexN];
+
+            AdvanceAfterWs(Data,Size,&ci);
+            ++Indice;
+        }
+    }
+
+    // reduce arena stack
+    Arena->CurrentSize -= (SizeUniqueVertices + SizeUniqueNormals);
+
+
+#if 1
+    for (uint32 i = 0; i < Vertices;++i)
+    {
+        Log("Pos: %f %f %f Normal: %f %f %f\n",Mesh.Vertices[i].P.x,Mesh.Vertices[i].P.y,Mesh.Vertices[i].P.z,Mesh.Vertices[i].N.x,Mesh.Vertices[i].N.y,Mesh.Vertices[i].N.z);
+    }
+#endif
+
+    return Mesh;
+}
+#endif
