@@ -513,7 +513,7 @@ LoadGameDll(game_state * GameState)
     {
         GameState->pfnGameUpdateAndRender = 
             (game_update_and_render *)GetProcAddress(GameState->Lib, "GameUpdateAndRender"); // game_update_and_render   pfnGameUpdateAndRender;
-        GameState->CurrentLibLastModified = Win32GetLastWriteTime((char *)GAME_DLL);
+        GameState->CurrentLibLastModified = Win32GetLastWriteTime((char *)GAME_DLL_TEMP);
         if (!GameState->pfnGameUpdateAndRender)
         {
             FreeLibrary(GameState->Lib);
@@ -622,10 +622,7 @@ int main()
                     GlobalAppRunning = false;
                     break;
                 }
-                GameState.CurrentLibLastModified = Win32GetLastWriteTime((char *)GAME_DLL_TEMP);
                 Input.Reloaded = true;
-                // I dont know how to properly sync with vulkan
-                Sleep(500);
             }
             else
             {

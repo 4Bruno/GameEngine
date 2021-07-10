@@ -70,6 +70,13 @@ struct mouse_drag
     real32 StartTime;
 };
 
+struct camera
+{
+    real32 Yaw;
+    real32 Pitch;    
+    v3 D;
+};
+
 
 struct game_state
 {
@@ -99,6 +106,7 @@ struct game_state
     renderer_3d Renderer;
 
 
+    camera Camera;
     v3 CameraP;
     real32 DebugLastTimeStamp;
     v3 DebugSourceLight;

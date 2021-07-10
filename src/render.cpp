@@ -211,13 +211,16 @@ RenderRotateViewUp(renderer_3d * Renderer,real32 Angle)
     Renderer->ViewRotationMatrix = R * Renderer->ViewRotationMatrix;
     RenderUpdateView(Renderer);
 }
+void tempdelete()
+{
+}
 void
 RenderMoveViewForward(renderer_3d * Renderer,real32 N)
 {
     v3 P = RenderGetViewPos(Renderer);
     v3 Out = RenderGetViewDirection(Renderer);
     // do not alter Y
-    //Out.y = 0.0f;
+    Out.y = 0.0f;
     v3 R = P + (N * Out);
     Translate(&Renderer->ViewMoveMatrix, -R);
     RenderUpdateView(Renderer);
@@ -253,6 +256,28 @@ RenderMoveView(renderer_3d * Renderer,v3 AbsP)
     Renderer->WorldTransform = Renderer->ViewRotationMatrix * Renderer->ViewMoveMatrix;
 }
 
+void
+RenderRotateFill2(m4 * M, real32 AngleX, real32 AngleY)
+{ 
+    real32 cosx = cosf(AngleX);
+    real32 sinx = sinf(AngleX);
+    real32 cosy = cosf(AngleY);
+    real32 siny = sinf(AngleY);
+
+    v3 xaxis = { cosy, 0, -siny };
+    v3 yaxis = { siny * sinx, cosx, cosy * sinx };
+    v3 zaxis = { siny * cosx, -sinx, cosx * cosy };
+
+    // Create a 4x4 view matrix from the right, up, forward and eye position vectors
+    m4 ViewMatrix = {
+        V4(       xaxis.x,            yaxis.x,            zaxis.x,      0 ),
+        V4(       xaxis.y,            yaxis.y,            zaxis.y,      0 ),
+        V4(       xaxis.z,            yaxis.z,            zaxis.z,      0 ),
+        0,0,0,1
+    };
+
+    *M = ViewMatrix;
+}
 
 void
 RenderRotateFill(m4 * M, real32 AngleX, real32 AngleY, real32 AngleZ)
@@ -283,7 +308,8 @@ RenderRotateFill(m4 * M, real32 AngleX, real32 AngleY, real32 AngleZ)
         0,    0,  0, 1
     };
 
-    *M = AxisZ * AxisY * AxisX;
+    //*M = AxisZ * AxisY * AxisX;
+    *M = AxisX * AxisY * AxisZ;
 }
 
 m4

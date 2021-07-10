@@ -132,7 +132,7 @@ SCENE_HANDLER(HandleSceneFloor)
 #else
     real32 SinTime = sinf(Input->TimeElapsed);
 #endif
-    Log("TimeElapsed: %f  Sin: %f Rotation: %f\n",Input->TimeElapsed,SinTime,Rotation.x);
+    //Log("TimeElapsed: %f  Sin: %f Rotation: %f\n",Input->TimeElapsed,SinTime,Rotation.x);
 #if 0
     for (uint32 EntityIndex = 0;
                 EntityIndex < Scene->EntityCount;
@@ -178,6 +178,11 @@ SCENE_LOADER(LoadSceneFloor)
     ++GameState->TotalEntities;
     Scene->Entities[Scene->EntityCount++] = Entity;
 #endif
+
+    RenderLookAt(&GameState->Renderer,V3(0,0.0f,5.0f),GameState->Player->P);
+    GameState->Camera.D = RenderGetViewDirection(&GameState->Renderer);
+    GameState->Camera.Yaw = 0.0f;
+    GameState->Camera.Pitch = 0.0f;
 }
 
 SCENE_LOADER(LoadSceneDebug)
@@ -207,7 +212,6 @@ SCENE_HANDLER(HandleSceneDebug)
 #else
     real32 SinTime = sinf(Input->TimeElapsed);
 #endif
-    Log("%f\n",Input->TimeElapsed);
     for (uint32 EntityIndex = 0;
                 EntityIndex < (Scene->EntityCount - 1);
                 ++EntityIndex)
@@ -227,8 +231,17 @@ MoveEntity(entity * Entity, v3 D, real32 dtTime)
     Entity->P = Entity->P + (Entity->D * D.z) * Speed;
 }
 
+/*
+struct camera
+{
+    real32 Yaw;
+    real32 Pitch;    
+    bool32 Lock
+};
+*/
+
 void
-FreeCameraView(renderer_3d * Renderer, v3 dP, real32 Yaw, real32 Pitch)
+FreeCameraView(game_state * GameState, renderer_3d * Renderer, v3 dP, real32 Yaw, real32 Pitch)
 {
     if (dP.z)
     {
@@ -238,15 +251,28 @@ FreeCameraView(renderer_3d * Renderer, v3 dP, real32 Yaw, real32 Pitch)
     {
         RenderMoveViewRight(Renderer, dP.x);
     }
-#if 0
+#if 1
     if (Yaw)
     {
-        RenderRotateViewRight(Renderer, ToRadians(Yaw*10.0f));
+        GameState->Camera.Yaw += -Yaw * 10.0f;
     }
     if (Pitch)
     {
-        RenderRotateViewUp(Renderer, ToRadians(-Pitch*10.0f));
+        GameState->Camera.Pitch += Pitch * 10.0f;
     }
+    if (GameState->Camera.Pitch > 89.9f)
+    {
+        GameState->Camera.Pitch = 89.9f;
+    }
+    else if (GameState->Camera.Pitch < -89.9f)
+    {
+        GameState->Camera.Pitch = -89.9f;
+    }
+    Log("Pitch: %f Yaw: %f\n", GameState->Camera.Pitch,GameState->Camera.Yaw);
+    Renderer->ViewRotationMatrix = M4();
+    RenderRotateFill(&Renderer->ViewRotationMatrix, ToRadians(GameState->Camera.Pitch), ToRadians(GameState->Camera.Yaw), 0);
+    //RenderRotateFill2(&Renderer->ViewRotationMatrix, ToRadians(GameState->Camera.Pitch), ToRadians(GameState->Camera.Yaw));
+    RenderUpdateView(Renderer);
 #else
     RenderRotateViewRight(Renderer, ToRadians(Yaw*10.0f));
     RenderRotateViewUp(Renderer, ToRadians(-Pitch*10.0f));
@@ -277,6 +303,15 @@ CreatePipeline(game_memory * Memory,game_state * GameState)
     }
 
     Assert(GameState->PipelineIndex >= 0);
+}
+
+void
+LoadGameScenes(game_state * GameState)
+{
+    GameState->Scenes[0].Loader = LoadSceneDebug;
+    GameState->Scenes[0].Handler = HandleSceneDebug;
+    GameState->Scenes[1].Loader = LoadSceneFloor;
+    GameState->Scenes[1].Handler = HandleSceneFloor;
 }
 
 extern "C"
@@ -329,11 +364,7 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
 
         CreatePipeline(Memory,GameState);
 
-        GameState->Scenes[0].Loader = LoadSceneDebug;
-        GameState->Scenes[0].Handler = HandleSceneDebug;
-        GameState->Scenes[1].Loader = LoadSceneFloor;
-        GameState->Scenes[1].Handler = HandleSceneFloor;
-
+        LoadGameScenes(GameState);
         GameState->CurrentScene = 1;
 
         v3 WorldCenter = V3(0,0,0);
@@ -354,6 +385,11 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
         ++GameState->TotalEntities;
 
         GameState->IsInitialized = true;
+    }
+
+    if (Input->Reloaded)
+    {
+        LoadGameScenes(GameState);
     }
 
     if (Input->ShaderHasChanged)
@@ -421,7 +457,8 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
     MoveEntity(GameState->Player, dP,Input->DtFrame);
     //SetViewBehindObject(&GameState->Renderer,GameState->Player->P,GameState->Player->D,5.0f, 2.0f);
 #else
-    FreeCameraView(&GameState->Renderer, dP, Yaw,Pitch);
+    //GameState->Camera.D = V3(0,0,1
+    FreeCameraView(GameState,&GameState->Renderer, dP, Yaw,Pitch);
 #endif
 
     //RenderLookAt(&GameState->Renderer,V3(0,20.0f,5.0f),GameState->Player->P);
@@ -458,6 +495,10 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
     RenderMesh(&GameState->Renderer, GameState->Player, Rotation,V4(1,0,0,1),GameState->DebugSourceLight);
 
     Scene->Handler(GameState, Input,Scene);
+    
+    int a = 0;
+
+    Log("%i",a);
 
     EndRender(GameState);
 }
