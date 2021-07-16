@@ -24,10 +24,9 @@ struct mesh_push_constant
 {
     v4 Data;
     m4 RenderMatrix;
-    m4 ViewRotationMatrix;
     m4 Model;
     v3 SourceLight;
-    bool IsLightSource;
+    real32 Dummy;
     v4 DebugColor;
 };
 

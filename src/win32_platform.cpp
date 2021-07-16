@@ -370,6 +370,10 @@ HandleInput(game_controller * Controller,HWND WindowHandle, int32 Width, int32 H
                     {
                         UpdateGameButton(&Controller->R, IsPressed);
                     }
+                    else if (VKCode >= '0' && VKCode <= '9')
+                    {
+                        UpdateGameButton(&Controller->Numbers[VKCode - '0'], IsPressed);
+                    }
                 }
             } break;
 #if 1
@@ -648,6 +652,13 @@ int main()
                 game_button * Button = Input.Controller.Buttons + ButtonIndex;
                 Button->WasPressed = Button->IsPressed;
             }
+            for (uint32 ButtonIndex = 0;
+                        ButtonIndex < ArrayCount(Input.Controller.Numbers);
+                        ++ButtonIndex)
+            {
+                game_button * Button = Input.Controller.Numbers + ButtonIndex;
+                Button->WasPressed = Button->IsPressed;
+            }
 
             if (AllowMouseConfinement)
             {
@@ -680,6 +691,8 @@ int main()
             LARGE_INTEGER TimeFrameElapsed = 
                 Win32QueryPerformanceDiff(Win32QueryPerformance(), TimeFrameStart, PerfFreq);
             real32 TimeFrameRemaining = ExpectedMillisecondsPerFrame - QUAD_TO_MS(TimeFrameElapsed);
+
+            //Log("Time frame remaining %f\n",TimeFrameRemaining);
 
             if (TimeFrameRemaining > 1.0f)
             {

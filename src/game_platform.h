@@ -69,6 +69,7 @@ struct game_controller
     real32 MouseX;
     real32 MouseY;
     int32 RelMouseX, RelMouseY;
+    game_button Numbers[10];
     union
     {
         game_button Buttons[11];

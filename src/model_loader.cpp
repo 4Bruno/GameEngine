@@ -352,7 +352,7 @@ CreateMeshFromObjHeader(memory_arena * Arena,obj_file_header Header, const char 
     Arena->CurrentSize -= (SizeUniqueVertices + SizeUniqueNormals);
 
 
-#if 1
+#if 0
     for (uint32 i = 0; i < Vertices;++i)
     {
         Log("Pos: %f %f %f Normal: %f %f %f\n",Mesh.Vertices[i].P.x,Mesh.Vertices[i].P.y,Mesh.Vertices[i].P.z,Mesh.Vertices[i].N.x,Mesh.Vertices[i].N.y,Mesh.Vertices[i].N.z);

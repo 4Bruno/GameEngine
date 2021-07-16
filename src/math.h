@@ -160,6 +160,20 @@ operator /(v3 A, real32 B)
 
     return Result;
 }
+
+
+v3
+VectorMultiply(v3 A, v3 B)
+{
+    v3 R = {
+        A.x * B.x,
+        A.y * B.y,
+        A.z * B.z
+    };
+
+    return R;
+}
+
 real32
 Inner(v3 A, v3 B)
 {
@@ -274,7 +288,7 @@ M4()
     return Result;
 }
 inline m4
-M4Scale(v3 V)
+M4(v3 V)
 {
     m4 Result;
 
@@ -284,6 +298,26 @@ M4Scale(v3 V)
     Result.Columns[3] = V4(0,0,0,1);
 
     return Result;
+}
+
+v4
+operator +(const v4& A, const v4& B)
+{
+    v4 R = { A.x + B.x, A.y + B.y, A.z + B.z, A.w + B.w };
+
+    return R;
+}
+
+m4
+operator +(const m4& A, const m4& B)
+{
+    m4 R;
+    R[0] = A[0] + B[0];
+    R[1] = A[1] + B[1];
+    R[2] = A[2] + B[2];
+    R[3] = A[3] + B[3];
+
+    return R;
 }
 
 // pre-multiply
