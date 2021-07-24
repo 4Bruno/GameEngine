@@ -1,7 +1,10 @@
 #include <Windows.h>
 #include "game_platform.h"
+#include "win32_io.cpp"
 #include "vulkan\vulkan_win32.h"
 #include "vulkan_initializer.h"
+#include "win32_threading.cpp"
+
 // https://docs.microsoft.com/en-us/windows/win32/dxtecharts/taking-advantage-of-high-dpi-mouse-movement?redirectedfrom=MSDN
 // you can #include <hidusage.h> for these defines
 #ifndef HID_USAGE_PAGE_GENERIC
@@ -25,6 +28,9 @@
 #define GET_Y_LPARAM(lp)                        ((int)(short)HIWORD(lp))
 
 #define ENABLED_DEBUG_VULKAN_VALIDATION_LAYER 1
+
+#define QUAD_TO_MS(Q) Q.QuadPart * (1.0f / 1000.0f)
+
 
 global_variable bool32  GlobalAppRunning = false;
 global_variable RECT GlobalOldRectClip;
@@ -144,109 +150,8 @@ Win32CreateWindow(HINSTANCE hInstance)
 
     return WindowHandle;
 }
-
-inline FILETIME
-Win32GetLastWriteTime(char * Filename)
-{
-    FILETIME LastWriteTime = {};
-    
-    WIN32_FILE_ATTRIBUTE_DATA Data;
-
-    if(GetFileAttributesExA(Filename, GetFileExInfoStandard, &Data))
-    {
-        LastWriteTime = Data.ftLastWriteTime;
-    }
-    
-    return LastWriteTime;
-}
-
-inline bool32
-Win32HasFileBeenModified(FILETIME LastModified, char * Filename)
-{
-    FILETIME CurrentTime = Win32GetLastWriteTime(Filename);
-    
-    bool32 Result = (CompareFileTime(&CurrentTime, &LastModified) != 0);
-
-    return Result;
-}
-
-inline bool32
-Win32DeleteFile(const char * Filename)
-{
-    bool32 Result = DeleteFile(Filename);
-    return Result;
-}
-
-void
-Win32CloseFile(platform_open_file_result Result)
-{
-    if (Result.Handle)
-    {
-        CloseHandle(Result.Handle);
-    }
-}
-inline bool32
-Win32FileExists(const char * Filename)
-{
-    HANDLE Hnd = 
-        CreateFileA(Filename, GENERIC_WRITE,FILE_SHARE_READ, 0, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, 0);
-    bool32 Result = (Hnd != INVALID_HANDLE_VALUE);
-    if (Result)
-    {
-        platform_open_file_result OpenFileResult;
-        OpenFileResult.Handle  = Hnd; // Void * Handle;
-        Win32CloseFile(OpenFileResult);
-    }
-    return Result;
-}
-inline bool32
-Win32CopyFile(const char * Source, const char * Destination)
-{
-    BOOL Result = CopyFile(Source,Destination, false);
-    return (bool32)Result;
-}
-
-
-platform_open_file_result
-Win32OpenFile(const char * Filepath)
-{
-    platform_open_file_result Result = {};
-
-    HANDLE FileHandle = CreateFileA(Filepath,GENERIC_READ,FILE_SHARE_READ,0,OPEN_EXISTING,FILE_ATTRIBUTE_NORMAL,0);
-
-    if (!FileHandle) return Result;
-
-    LARGE_INTEGER Size;
-    if (!GetFileSizeEx(FileHandle, &Size))
-    {
-        CloseHandle(FileHandle);
-        return Result;
-    }
-    
-    Result.Success = true;
-    Result.Size    = Size.LowPart;
-    Result.Handle  = FileHandle;
-       
-    return Result;
-}
-
-bool32
-Win32ReadFile(platform_open_file_result OpenFileResult, void * Buffer)
-{
-
-    DWORD BytesRead;
-
-    if (!ReadFile(OpenFileResult.Handle, Buffer, OpenFileResult.Size, &BytesRead, 0) ||
-            (OpenFileResult.Size != BytesRead))
-    {
-        return false;
-    }
-
-    return true;
-
-}
-
 /* END of OS Specific calls to be replicated in other OS */
+
 
 /* BEGIN of vulkan OS calls */
 struct vulkan_window_data
@@ -537,6 +442,16 @@ LoadGameDll(game_state * GameState)
 //int main( HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow )
 int main()
 {
+    /* ------------------------- THREADS ----------------------------------- */
+    thread_work_queue HighPriorityWorkQueue = {};
+    uint32 HighPriorityWorkQueueThreadCount = 12;
+    CreateWorkQueue(&HighPriorityWorkQueue, HighPriorityWorkQueueThreadCount);
+
+    thread_work_queue LowPriorityWorkQueue = {};
+    uint32 LowPriorityWorkQueueThreadCount = 12;
+    CreateWorkQueue(&LowPriorityWorkQueue, LowPriorityWorkQueueThreadCount);
+    /* ------------------------- THREADS ----------------------------------- */
+
     HINSTANCE hInstance = GetModuleHandle(0);
 
     HWND WindowHandle = Win32CreateWindow(hInstance);
@@ -590,6 +505,12 @@ int main()
         GameMemory.PermanentMemorySize = PermanentMemorySize; // uint32 PermanentMemorySize;
         GameMemory.TransientMemory     = TransientMemory;     // Void * TransientMemory;
         GameMemory.TransientMemorySize = TransientMemorySize; // uint32 TransientMemorySize;
+
+        GameMemory.AddWorkToWorkQueue    = AddWorkToQueue;
+        GameMemory.CompleteWorkQueue     = CompleteWorkQueue;
+        GameMemory.HighPriorityWorkQueue = &HighPriorityWorkQueue;
+        GameMemory.LowPriorityWorkQueue  = &LowPriorityWorkQueue;
+
         /* ------------------------- END GAME MEMORY ------------------------- */
 
         int32 ExpectedFramesPerSecond = 30;
@@ -613,6 +534,9 @@ int main()
         bool32 AllowMouseConfinement = false;
 
         GameState.ShaderVertexLastModified = Win32GetLastWriteTime((char *)SHADER_VERTEX_DEBUG);
+
+        uint64 GameCycles[100] = {};
+        uint32 CurrentCycle = 0;
 
         // Main loop
         while (GlobalAppRunning)
@@ -684,15 +608,33 @@ int main()
                 AllowMouseConfinement = !AllowMouseConfinement;
             }
 
+#if 0
+            uint64 GameCycleStart = __rdtsc();
             GameState.pfnGameUpdateAndRender(&GameMemory,&Input,Width, Height);
+            GameCycleStart = __rdtsc() - GameCycleStart;
 
-#define QUAD_TO_MS(Q) Q.QuadPart * (1.0f / 1000.0f)
+            GameCycles[CurrentCycle++] = GameCycleStart;
+            CurrentCycle = CurrentCycle % ArrayCount(GameCycles);
+            
+            real64 AvgCycle = 0.0f;
+            for (uint32 CyCleIndex = 0;
+                        CyCleIndex < ArrayCount(GameCycles);
+                        ++CyCleIndex)
+            {
+                AvgCycle += (real64)GameCycles[CyCleIndex];
+            }
+            AvgCycle /= (real64)ArrayCount(GameCycles);
+
+            //Log("Avg: %f Last: %I64u\n",AvgCycle,GameCycleStart);
+#else
+            GameState.pfnGameUpdateAndRender(&GameMemory,&Input,Width, Height);
+#endif
 
             LARGE_INTEGER TimeFrameElapsed = 
                 Win32QueryPerformanceDiff(Win32QueryPerformance(), TimeFrameStart, PerfFreq);
             real32 TimeFrameRemaining = ExpectedMillisecondsPerFrame - QUAD_TO_MS(TimeFrameElapsed);
 
-            //Log("Time frame remaining %f\n",TimeFrameRemaining);
+            Log("Time frame remaining %f\n",TimeFrameRemaining);
 
             if (TimeFrameRemaining > 1.0f)
             {

@@ -5,6 +5,7 @@
 
 #include <stdint.h>
 #include <stdio.h>
+#include <intrin.h>
 
 #define GAME_API __declspec( dllexport )
 
@@ -49,13 +50,40 @@ typedef DEBUG_READ_FILE(debug_read_file);
 #define DEBUG_CLOSE_FILE(name) void name(platform_open_file_result OpenFileResult)
 typedef DEBUG_CLOSE_FILE(debug_close_file);
 
+/* ----------------------- BEGIN MULTI THREAD ---------------------- */
 
-struct memory_arena
+// TODO how to get other intrinsics and avoid linking to winin.h??
+#define COMPILER_DONOT_REORDER_BARRIER  __faststorefence()
+struct thread_work_queue;
+
+#define THREAD_WORK_HANDLER(name) void name(thread_work_queue * Queue, void * Data)
+typedef THREAD_WORK_HANDLER(thread_work_handler);
+
+#define THREAD_ADD_WORK_TO_QUEUE(name) void name(thread_work_queue * Queue, thread_work_handler * Handler, void * Data)
+typedef THREAD_ADD_WORK_TO_QUEUE(thread_add_work_to_queue);
+
+#define THREAD_COMPLETE_QUEUE(name) void name(thread_work_queue * Queue)
+typedef THREAD_COMPLETE_QUEUE(thread_complete_queue);
+
+struct thread_work_queue_entry
 {
-    uint8 * Base;
-    uint32 MaxSize;
-    uint32 CurrentSize;
+    thread_work_handler * Handler;
+    void * Data;
 };
+
+struct thread_work_queue
+{
+    void * Semaphore;
+
+    volatile uint32 ThingsToDo;
+    volatile uint32 ThingsDone;
+
+    volatile uint32 CurrentRead;
+    volatile uint32 CurrentWrite;
+
+    thread_work_queue_entry Entries[256];
+};
+/* ----------------------- END MULTI THREAD ---------------------- */
 
 struct game_button
 {
@@ -111,6 +139,12 @@ struct game_memory
     debug_open_file  * DebugOpenFile;
     debug_read_file  * DebugReadFile;
     debug_close_file * DebugCloseFile;
+
+    thread_complete_queue * CompleteWorkQueue;
+    thread_add_work_to_queue * AddWorkToWorkQueue;
+
+    thread_work_queue * HighPriorityWorkQueue;
+    thread_work_queue * LowPriorityWorkQueue;
 };
 
 #define GAME_UPDATE_AND_RENDER(name) void name(game_memory * Memory,game_input * Input, int32 ScreenWidth, int32 ScreenHeight)

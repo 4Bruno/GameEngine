@@ -20,6 +20,9 @@ struct mesh
 
     uint32 OffsetVertices;
     uint32 OffsetIndices;
+
+    bool32 Loaded;
+    bool32 LoadInProcess;
 };
 
 #define MESH_H

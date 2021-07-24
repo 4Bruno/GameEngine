@@ -1,8 +1,8 @@
 #include "game.h"
 #include "math.h"
-#include "model_loader.cpp"
 #include "render_2.cpp"
 #include "collision.cpp"
+#include "data_load.h"
 
 
 #define LOG_P(P) Log("x: %f y: %f z: %f \n", P.x, P.y, P.z);
@@ -23,38 +23,6 @@ enum  shader_type_fragment
     shader_type_fragment_total
 };
 
-struct file_contents
-{
-    uint8 * Base;
-    uint32 Size;
-    bool32 Success;
-};
-
-file_contents
-GetFileContents(game_memory * GameMemory,memory_arena * Arena,const char * Filepath)
-{
-    file_contents Result = {};
-    void * Buffer = 0;
-
-    platform_open_file_result OpenFileResult = GameMemory->DebugOpenFile(Filepath);
-
-    if (OpenFileResult.Success)
-    {
-        Buffer = PushSize(Arena,OpenFileResult.Size);
-        if (GameMemory->DebugReadFile(OpenFileResult,Buffer))
-        {
-            Result.Size = OpenFileResult.Size;
-            Result.Base = (uint8 *)Buffer;
-            Result.Success = true;
-        }
-        else
-        {
-            Arena->CurrentSize -= OpenFileResult.Size;
-        }
-        GameMemory->DebugCloseFile(OpenFileResult);
-    }
-    return Result;
-}
 
 void
 InitializeArena(memory_arena * Arena,uint8 * BaseAddr, uint32 MaxSize)
@@ -64,21 +32,6 @@ InitializeArena(memory_arena * Arena,uint8 * BaseAddr, uint32 MaxSize)
     Arena->Base = BaseAddr;
 }
 
-mesh
-LoadModel(game_memory * Memory,memory_arena * ArenaMeshes, memory_arena * ArenaTemp,const char * Filepath)
-{
-    mesh Mesh = {};
-    int32 Result = -1;
-    file_contents GetFileResult = GetFileContents(Memory, ArenaTemp,Filepath);
-    if (GetFileResult.Success)
-    {
-        obj_file_header Header = ReadObjFileHeader((const char *)GetFileResult.Base, GetFileResult.Size);
-        Mesh = CreateMeshFromObjHeader(ArenaMeshes,Header, (const char *)GetFileResult.Base, GetFileResult.Size);
-        ArenaTemp->CurrentSize -= GetFileResult.Size;
-    }
-
-    return Mesh;
-}
 
 int32
 LoadShader(game_memory * Memory,memory_arena * Arena,const char * Filepath)
@@ -259,10 +212,135 @@ FirstTimePressed(game_button * Button)
     return Result;
 }
 
-SCENE_HANDLER(HandleSceneFloor)
+struct scene_data
+{
+    uint32 CurrentNode;
+    uint32 MaxNode;
+    v3 * Max;
+    v3 * Min;
+    vertex_point * Vertices;
+};
+
+SCENE_HANDLER(HandleDebugConvexHull)
+{
+    if (FirstTimePressed(&Input->Controller.Numbers[1]))
+    {
+        real32 Scale = 0.1f;
+        scene_data * Data = (scene_data *)GameState->SceneData;
+        if (Data->CurrentNode < Data->MaxNode)
+        {
+            if (!Data->Max)
+            {
+                // Find max/min
+            }
+            else
+            {
+                v3 P = Data->Vertices[Data->CurrentNode].P;
+                v3 ViewP = GetViewPos(GameState->ViewMoveMatrix);
+                P.z = ViewP.z - 10.0f;
+                P.x = ViewP.x;
+                P.y = 50.0f;
+                entity Entity = AddEntity(GameState);
+                EntityAddTranslation(GameState,
+                        Entity,NullEntity(),
+                        P,
+                        V3(Scale,Scale,Scale),1.0f);
+                EntityAdd3DRender(GameState,Entity,0);
+
+                LOG_P(P);
+                ++Data->CurrentNode;
+            }
+        }
+    }
+
+}
+
+SCENE_LOADER(LoadSceneDebugConvexHull)
 {
 
-    entity * SourceLight = Scene->LightSources[0];
+    ViewLookAt(GameState,V3(0,0.0f,5.0f),V3(0,0,0));
+
+    GameState->Camera.D = GetViewDirection(GameState->ViewRotationMatrix);
+    GameState->Camera.Yaw = 0.0f;
+    GameState->Camera.Pitch = 0.0f;
+
+    GameState->SceneData = PushSize(&GameState->TemporaryArena, sizeof(scene_data));
+    scene_data * Data = (scene_data *)GameState->SceneData;
+    Data->Vertices = GameState->Meshes[0].Vertices;
+    Data->CurrentNode = 0;
+    Data->MaxNode = GameState->Meshes[0].VertexSize / sizeof(vertex_point);
+}
+
+SCENE_LOADER(LoadSceneFloor)
+{
+
+#if 0
+    entity Entity = AddEntity(GameState);
+    EntityAddTranslation(GameState,Entity,NullEntity(),V3(0,-2.0f,0),V3(8.0f,1.0f,8.0f),3.0f);
+    EntityAdd3DRender(GameState,Entity,0);
+
+    Entity = AddEntity(GameState);
+    EntityAddTranslation(GameState,Entity,NullEntity(),V3(0,0,0),V3(1,1,1),3.0f);
+    EntityAdd3DRender(GameState,Entity,0);
+#else
+    real32 WidthOverHeight = (1980.0f / 1080.0f);
+    real32 DepthZ = 30.0f;
+    real32 FOV = 45.0f;
+    real32 TanFOV = tanf(ToRadians(FOV));
+    real32 Height = TanFOV * DepthZ;
+    real32 Width = TanFOV * WidthOverHeight * DepthZ;
+
+
+#if 0
+    int32 CountX = 50;
+    int32 CountY = (int32)((real32)CountX / WidthOverHeight);
+
+    real32 CubeWidth = (Width / (real32)CountX) * 0.5f;
+    real32 CubeHeight = (Height / (real32)CountY) * 0.5f;
+    for (int32 Y = 0;
+                Y < CountY;
+                ++Y)
+    {
+        real32 StartY = (((real32)Y / (real32)CountY) * Height) - Height*0.5f;
+        for (int32 X = 0;
+                X < CountX;
+                ++X)
+        {
+            real32 StartX = (((real32)X / (real32)CountX) * Width) - Width*0.5f;
+            v3 S = V3(CubeWidth * 0.9f,CubeHeight * 0.9f, 1.0f);
+            v3 P = V3(StartX, StartY, -DepthZ) + V3(CubeWidth, CubeHeight, 0.0f);
+
+            entity Entity = AddEntity(GameState);
+            //EntityAddTranslation(GameState,Entity,NullEntity(),V3(0,0,0),V3(0.1f,0.1f,0.3f),3.0f);
+            EntityAddTranslation(GameState,Entity,NullEntity(),P,S,3.0f);
+            EntityAdd3DRender(GameState,Entity,0);
+        }
+    }
+#else
+    real32 CubeWidth = 1.0f;
+    real32 CubeHeight = 1.0f;
+    v3 S = V3(CubeWidth,CubeHeight,1.0f);
+    v3 P = V3(-Width*0.5f, -Height*0.5f, -DepthZ) + V3(S.x, S.y, 0.0f);
+    entity Entity = AddEntity(GameState);
+    //EntityAddTranslation(GameState,Entity,NullEntity(),V3(0,0,0),V3(0.1f,0.1f,0.3f),3.0f);
+    EntityAddTranslation(GameState,Entity,NullEntity(),P,S,3.0f);
+    EntityAdd3DRender(GameState,Entity,1);
+#endif
+            
+
+#endif
+
+    GameState->Player = GameState->Entities[0];
+
+    ViewLookAt(GameState,V3(0.0f,0.0f,0.0f),V3(0,0,0));
+
+    GameState->Camera.D = GetViewDirection(GameState->ViewRotationMatrix);
+    GameState->Camera.Yaw = 0.0f;
+    GameState->Camera.Pitch = 0.0f;
+}
+
+SCENE_HANDLER(HandleSceneFloor)
+{
 
 #if 0
     if (Input->Controller.Numbers[1].IsPressed)
@@ -285,27 +363,25 @@ SCENE_HANDLER(HandleSceneFloor)
         SetViewBehindObject(&GameState->Renderer,Entity->P,Entity->D,5.0f, 2.0f);
     }
 #endif
+    v3 ViewP = GetViewPos(GameState->ViewMoveMatrix);
+    //GameState->EntitiesTransform[0].LocalP[3].z = ViewP.z - 20.0f;
+    if (Input->Controller.MouseRight.IsPressed)
+    {
+        if (FirstTimePressed(&Input->Controller.MouseRight))
+            GameState->Projection = ProjectionMatrix(ToRadians(90.0f),((real32)1980.0f / (real32)1080.0f), 0.1f,200.0f);
+    }
+    else
+    {
+            GameState->Projection = ProjectionMatrix(ToRadians(45.0f),((real32)1980.0f / (real32)1080.0f), 0.1f,200.0f);
+    }
 
-}
-
-SCENE_LOADER(LoadSceneFloor)
-{
-
-    entity Entity = AddEntity(GameState);
-    EntityAddTranslation(GameState,Entity,NullEntity(),V3(0,-2.0f,0),V3(8.0f,1.0f,8.0f),3.0f);
-    EntityAdd3DRender(GameState,Entity,0);
-
-    Entity = AddEntity(GameState);
-    EntityAddTranslation(GameState,Entity,NullEntity(),V3(0,0,0),V3(1,1,1),3.0f);
-    EntityAdd3DRender(GameState,Entity,0);
-
-    GameState->Player = Entity;
-
-    ViewLookAt(GameState,V3(0,0.0f,5.0f),V3(0,0,0));
-
-    GameState->Camera.D = GetViewDirection(GameState->ViewRotationMatrix);
-    GameState->Camera.Yaw = 0.0f;
-    GameState->Camera.Pitch = 0.0f;
+    if ((dP.x != 0.0f || dP.y != 0.0f || dP.z != 0.0f) && VALID_ENTITY(GameState->Player))
+    {
+        dP.y = -dP.z;
+        dP.z = 0.0f;
+        EntityAddInput(GameState,GameState->Player,dP);
+    }
+    //ViewLookAt(GameState,,GetEntityPos(GameState->EntitiesTransform[0].WorldP));
 }
 
 
@@ -345,13 +421,6 @@ EntityHasFlag(game_state * GameState,uint32 EntityIndex,component_flags Flag)
     return R;
 }
 
-void
-LoadMesh(game_memory * Memory,game_state * GameState, const char * Path)
-{
-    Assert(GameState->LimitMeshes > (GameState->TotalMeshes + 1));
-    GameState->Meshes[GameState->TotalMeshes] = LoadModel(Memory,&GameState->MeshesArena,&GameState->TemporaryArena,Path);
-    ++GameState->TotalMeshes;
-}
 
 #define _FillArray(A,C,V) \
     for (uint32 i = 0; \
@@ -368,6 +437,85 @@ LoadMesh(game_memory * Memory,game_state * GameState, const char * Path)
     { \
         A[i].M = V; \
     }
+
+struct async_update_entities_model
+{
+    uint32 StartIndex;
+    uint32 EntitiesCount;
+    game_state * GameState;
+};
+
+THREAD_WORK_HANDLER(AsyncUpdateEntitiesModel)
+{
+    async_update_entities_model * Update = (async_update_entities_model *)Data;
+    game_state * GameState = Update->GameState;
+
+    for (uint32 EntityIndex = Update->StartIndex;
+                EntityIndex < (Update->StartIndex + Update->EntitiesCount);
+                ++EntityIndex)
+    {
+        uint32 EntityID = GameState->Entities[EntityIndex].ID;
+        if (EntityHasFlag(GameState,EntityID,component_transform))
+        {
+            entity Parent = GameState->EntitiesParent[EntityID]; 
+            entity_transform * T = GameState->EntitiesTransform + EntityID;
+            if (VALID_ENTITY(Parent))
+            {
+                uint32 ParentID = Parent.ID;
+                entity_transform * ParentT = GameState->EntitiesTransform + ParentID;
+                T->WorldP = ParentT->WorldP + (ParentT->WorldR * T->LocalP);
+                T->WorldR = ParentT->WorldR * T->LocalR;
+                T->WorldS = { 
+                    ParentT->WorldS.x * T->LocalS.x,
+                    ParentT->WorldS.y * T->LocalS.y,
+                    ParentT->WorldS.z * T->LocalS.z
+                };
+            }
+            else
+            {
+                T->WorldP = T->LocalP;
+                T->WorldR = T->LocalR;
+                T->WorldS = T->LocalS;
+            }
+            T->WorldT = T->WorldP * T->WorldR * M4(T->WorldS);
+        }
+    }
+}
+
+void
+UpdateEntitiesModel(game_state * GameState)
+{
+    for (uint32 EntityIndex = 0;
+                EntityIndex < GameState->TotalEntities;
+                ++EntityIndex)
+    {
+        uint32 EntityID = GameState->Entities[EntityIndex].ID;
+        if (EntityHasFlag(GameState,EntityID,component_transform))
+        {
+            entity Parent = GameState->EntitiesParent[EntityID]; 
+            entity_transform * T = GameState->EntitiesTransform + EntityID;
+            if (VALID_ENTITY(Parent))
+            {
+                uint32 ParentID = Parent.ID;
+                entity_transform * ParentT = GameState->EntitiesTransform + ParentID;
+                T->WorldP = ParentT->WorldP + (ParentT->WorldR * T->LocalP);
+                T->WorldR = ParentT->WorldR * T->LocalR;
+                T->WorldS = { 
+                    ParentT->WorldS.x * T->LocalS.x,
+                    ParentT->WorldS.y * T->LocalS.y,
+                    ParentT->WorldS.z * T->LocalS.z
+                };
+            }
+            else
+            {
+                T->WorldP = T->LocalP;
+                T->WorldR = T->LocalR;
+                T->WorldS = T->LocalS;
+            }
+            T->WorldT = T->WorldP * T->WorldR * M4(T->WorldS);
+        }
+    }
+}
 
 
 extern "C"
@@ -387,7 +535,8 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
         int32 AvailablePermanentMemory = Memory->PermanentMemorySize - sizeof(game_state);
         InitializeArena(&GameState->PermanentArena,Base, AvailablePermanentMemory);
 
-        GameState->LimitEntities = 100;
+        uint32 TotalSizeEntities = GameState->PermanentArena.CurrentSize;
+        GameState->LimitEntities = 4000;
         Base = PushSize(&GameState->PermanentArena, GameState->LimitEntities * sizeof(entity));
         GameState->Entities = (entity *)Base;
         GameState->TotalEntities = 0;
@@ -409,7 +558,6 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
         GameState->LimitMeshes = 50;
         Base = PushSize(&GameState->PermanentArena, GameState->LimitMeshes * sizeof(mesh));
         GameState->Meshes = (mesh *)Base;
-        GameState->TotalMeshes = 0;
 
         Base = PushSize(&GameState->PermanentArena, GameState->LimitEntities * sizeof(render_3D));
         GameState->Render3D = (render_3D *)Base;
@@ -421,11 +569,35 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
         Base = PushSize(&GameState->PermanentArena, GameState->LimitEntities * sizeof(entity_input));
         GameState->EntitiesMomentum = (entity_input *)Base;
 
+        TotalSizeEntities = GameState->PermanentArena.CurrentSize - TotalSizeEntities;
         GameState->Player = NullEntity();
 
         /* ------------------------ Temporary arenas ----------------------------- */
         Base = (uint8 *)Memory->TransientMemory;
         InitializeArena(&GameState->TemporaryArena,Base, Memory->TransientMemorySize);
+
+        // Small chunks of memory for async work
+        // which requires data that will persist
+        // multiple frames
+        GameState->LimitThreadArenas = 8;
+        GameState->ThreadArena = 
+            PushArray(&GameState->TemporaryArena, GameState->LimitThreadArenas, thread_memory_arena);
+
+        for (uint32 ThreadBucketIndex = 0;
+                    ThreadBucketIndex < GameState->LimitThreadArenas;
+                    ++ThreadBucketIndex)
+        {
+            // TODO: is this too much? should I create multiple size arenas buckets?
+            // Do I need so many buckets?
+            thread_memory_arena * ThreadArena = GameState->ThreadArena + ThreadBucketIndex;
+
+            uint32 ArenaSize = Megabytes(4);
+            Base = PushSize(&GameState->TemporaryArena,ArenaSize);
+            memory_arena * Arena = &ThreadArena->Arena;
+            InitializeArena(Arena,Base, ArenaSize);
+
+            ThreadArena->InUse = false;
+        }
 
         uint32 ShaderArenaSize = Megabytes(30);
         Base = PushSize(&GameState->TemporaryArena,ShaderArenaSize);
@@ -435,7 +607,6 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
         Base = PushSize(&GameState->TemporaryArena,MeshesArenaSize);
         InitializeArena(&GameState->MeshesArena, Base, MeshesArenaSize);
 
-        LoadMesh(Memory,GameState,"assets\\cube.obj");
 
         // TODO: how to properly push vertex inputs to render?
         // Game should tell how much arena?
@@ -443,19 +614,6 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
         // or we always reserve a size and then use like we do with cpu memory
         GameState->VertexArena = RenderGetMemoryArena();
         GameState->IndicesArena = RenderGetMemoryArena();
-
-        for (uint32 MeshIndex = 0;
-                MeshIndex < GameState->TotalMeshes;
-                ++MeshIndex)
-        {
-            mesh * Mesh = GameState->Meshes + MeshIndex; 
-
-            Mesh->OffsetVertices = GameState->VertexArena.CurrentSize;
-            //Mesh->OffsetIndices = GameState->IndicesArena.CurrentSize;
-
-            RenderPushVertexData(&GameState->VertexArena, Mesh->Vertices,Mesh->VertexSize, 1);
-            //RenderPushIndexData(&GameState->IndicesArena, Mesh->Indices,Mesh->IndicesSize, 1);
-        }
 
         CreatePipeline(Memory,GameState);
 
@@ -466,7 +624,16 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
                            0.1f, 200.0f, 
                            WorldCenter);
 
-        LoadSceneFloor(GameState);
+        //GameState->CurrentSceneLoader = LoadSceneFloor;
+#if 0
+        GameState->CurrentSceneLoader = LoadSceneDebugConvexHull;
+        GameState->CurrentSceneHandler = HandleDebugConvexHull;;
+#else
+        GameState->CurrentSceneLoader = LoadSceneFloor;
+        GameState->CurrentSceneHandler = HandleSceneFloor;;
+
+#endif
+        GameState->SceneLoaded = false;
 
         GameState->CameraMode = true;
 
@@ -476,7 +643,9 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
     if (Input->Reloaded)
     {
         // Game DLL reloaded
-        //LoadSceneFloor(GameState);
+        //GameState->CurrentSceneLoader = LoadSceneDebugConvexHull;
+        GameState->CurrentSceneLoader = LoadSceneFloor;
+        GameState->CurrentSceneHandler = HandleSceneFloor;
     }
 
     if (Input->ShaderHasChanged)
@@ -492,48 +661,55 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
 
     v3 MouseRotation = V3(MouseX,MouseY,0) / Length(V3(MouseX,MouseY,0));
 
-    if (Input->Controller.R.IsPressed)
+    if (FirstTimePressed(&Input->Controller.R))
+    {
+        GameState->SceneLoaded = false;
+    }
+
+    if (!GameState->SceneLoaded)
     {
         GameState->TotalEntities = 0;
-        LoadSceneFloor(GameState);
+        GameState->CurrentSceneLoader(GameState);
+        GameState->SceneLoaded = true;
     }
 
     /* ------------------------- GAME UPDATE ------------------------- */
 
+    v3 InputdP = {};
+
+    if (Input->Controller.Up.IsPressed)
     {
-        v3 dP = {};
-
-        if (Input->Controller.Up.IsPressed)
-        {
-            dP.z = 1.0f;
-        } 
-        if (Input->Controller.Down.IsPressed)
-        {
-            dP.z = -1.0f;
-        }
-        if (Input->Controller.Left.IsPressed)
-        {
-            dP.x = -1.0f;
-        } 
-        if (Input->Controller.Right.IsPressed)
-        {
-            dP.x = 1.0f;
-        }
-        if (Input->Controller.Space.IsPressed)
-        {
-            dP.z = 1.0f;
-        }
-
-        real32 Yaw = (MouseX != 0.0f) ? (MouseX / 20.0f) : 0.0f;
-        real32 Pitch= (MouseY != 0.0f) ? (MouseY / 20.0f)   : 0.0f;
-
-        if ((dP.x != 0.0f || dP.y != 0.0f || dP.z != 0.0f) && VALID_ENTITY(GameState->Player))
-        {
-            EntityAddInput(GameState,GameState->Player,dP);
-        }
+        InputdP.z = 1.0f;
+    } 
+    if (Input->Controller.Down.IsPressed)
+    {
+        InputdP.z = -1.0f;
+    }
+    if (Input->Controller.Left.IsPressed)
+    {
+        InputdP.x = -1.0f;
+    } 
+    if (Input->Controller.Right.IsPressed)
+    {
+        InputdP.x = 1.0f;
+    }
+    if (Input->Controller.Space.IsPressed)
+    {
+        InputdP.z = 1.0f;
     }
 
-    /* ----------------------- GAME UPDATE ---------------------------- */
+    real32 Yaw = (MouseX != 0.0f) ? (MouseX / 20.0f) : 0.0f;
+    real32 Pitch= (MouseY != 0.0f) ? (MouseY / 20.0f)   : 0.0f;
+
+    /* ------------------------- SCENE HANDLER ------------------------- */
+    
+    if (GameState->CurrentSceneHandler)
+    {
+        GameState->CurrentSceneHandler(GameState,Input, InputdP, Yaw, Pitch);
+    }
+
+    /* ----------------------- GAME SYSTEMS UPDATE ---------------------------- */
+
     // TODO: where should speed go?
     real32 Speed = 3.0f * Input->DtFrame;
     real32 Gravity = 0.0f;//9.8f;
@@ -548,14 +724,15 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
         {
             v3 dP = GameState->EntitiesInput[EntityID].dP;
 
-            dP.y = -1.0f; // gravity
+            //dP.y = -1.0f; // gravity
 
             if (LengthSqr(dP) > 1.0f)
             {
                 dP = Normalize(dP);
             }
 
-            GameState->EntitiesMomentum[EntityID].dP = V3(dP.x * Speed, dP.y * Gravity, dP.z * Speed);
+            //GameState->EntitiesMomentum[EntityID].dP = V3(dP.x * Speed, dP.y * Gravity, dP.z * Speed);
+            GameState->EntitiesMomentum[EntityID].dP = V3(dP.x * Speed, dP.y * Speed, dP.z * Speed);
             EntityRemoveFlag(GameState,GameState->Entities[EntityIndex],component_input);
             EntityAddFlag(GameState,GameState->Entities[EntityIndex],component_momentum);
         }
@@ -607,51 +784,81 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
 
             Translate(ET->LocalP, EntityP);
 
+            //LOG_P((EntityP - GetViewPos(GameState->ViewMoveMatrix)));
+
             // TODO: explore other non-dampening techniques
             GameState->EntitiesMomentum[EntityID].dP *= 0.85f;//dP - dP*0.5f;
 
             dP = GameState->EntitiesMomentum[EntityID].dP;
 
             if (LengthSqr(dP) < 0.001f)
+            {
                 EntityRemoveFlag(GameState,Entity,component_momentum);
+            }
 
         } // has momentum
     }
 
     /* ----------------------- Model Transform ------------------------------- */
 
-    for (uint32 EntityIndex = 0;
-                EntityIndex < GameState->TotalEntities;
-                ++EntityIndex)
+#if 1
+    uint32 TotalEntities = GameState->TotalEntities;
+    uint32 MaxThreads;
+#if 0
+    bool32 Threads[4] = {
+        (TotalEntities > 0),
+        (TotalEntities > 51),
+        (TotalEntities > 101),
+        (TotalEntities > 201)
+    };
+#else
+    bool32 Threads[8] = {
+        (TotalEntities > 0),
+        (TotalEntities > 3000),
+        (TotalEntities > 5000),
+        (TotalEntities > 8000),
+        (TotalEntities > 12000),
+        (TotalEntities > 16000),
+        (TotalEntities > 20000),
+        (TotalEntities > 25000)
+    };
+#endif
+    for (MaxThreads = ArrayCount(Threads);
+         MaxThreads > 0;
+         --MaxThreads)
     {
-        uint32 EntityID = GameState->Entities[EntityIndex].ID;
-        if (EntityHasFlag(GameState,EntityID,component_transform))
-        {
-            entity Parent = GameState->EntitiesParent[EntityID]; 
-            entity_transform * T = GameState->EntitiesTransform + EntityID;
-            if (VALID_ENTITY(Parent))
-            {
-                uint32 ParentID = Parent.ID;
-                entity_transform * ParentT = GameState->EntitiesTransform + ParentID;
-                T->WorldP = ParentT->WorldP + (ParentT->WorldR * T->LocalP);
-                T->WorldR = ParentT->WorldR * T->LocalR;
-                T->WorldS = { 
-                    ParentT->WorldS.x * T->LocalS.x,
-                    ParentT->WorldS.y * T->LocalS.y,
-                    ParentT->WorldS.z * T->LocalS.z
-                };
-            }
-            else
-            {
-                T->WorldP = T->LocalP;
-                T->WorldR = T->LocalR;
-                T->WorldS = T->LocalS;
-            }
-            T->WorldT = T->WorldP * T->WorldR * M4(T->WorldS);
-        }
+        if (Threads[MaxThreads - 1]) break;
     }
 
-    RotateRight(&GameState->ViewRotationMatrix, ((sinf(Input->TimeElapsed) + 1.0f) * 0.5f)*PI*0.01f);
+    uint32 EntitiesPerThread = (uint32)(TotalEntities * (1.0f / real32(MaxThreads)));
+    uint32 RemainingEntities = TotalEntities - (EntitiesPerThread * MaxThreads);
+
+    async_update_entities_model UpdateData[ArrayCount(Threads)] = {};
+
+    for (uint32 ThreadIndex = 0;
+            ThreadIndex < MaxThreads;
+            ++ThreadIndex)
+    {
+        UpdateData[ThreadIndex].StartIndex    = ThreadIndex * EntitiesPerThread; // uint32 StartIndex;
+        UpdateData[ThreadIndex].GameState     = GameState;                       // game_state * GameState;
+        if (ThreadIndex == (MaxThreads - 1))
+        {
+            UpdateData[ThreadIndex].EntitiesCount = EntitiesPerThread + RemainingEntities;
+        }
+        else
+        {
+            UpdateData[ThreadIndex].EntitiesCount = EntitiesPerThread; // uint32 EntitiesCount;
+        }
+
+        Memory->AddWorkToWorkQueue(Memory->HighPriorityWorkQueue, AsyncUpdateEntitiesModel, (UpdateData + ThreadIndex));
+    }
+
+    Memory->CompleteWorkQueue(Memory->HighPriorityWorkQueue);
+#else
+    UpdateEntitiesModel(GameState);
+#endif
+
+    //RotateRight(&GameState->ViewRotationMatrix, ((sinf(Input->TimeElapsed) + 1.0f) * 0.5f)*PI*0.01f);
 
     /* ------------------------- GAME RENDER ------------------------- */
 
@@ -659,7 +866,7 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
 
     BeginRender(GameState, ClearColor);
 
-    RenderEntities(GameState);
+    RenderEntities(Memory, GameState);
     
     EndRender(GameState);
 }

@@ -1,10 +1,7 @@
 #ifndef GAME_H
 #include "game_platform.h"
+#include "game_memory.h"
 #include "mesh.h"
-
-#define PushSize(Arena,Size) _PushSize(Arena,Size*sizeof(char))
-#define PushArray(Arena,Count,Struct) (Struct *)_PushSize(Arena,Count*sizeof(Struct))
-#define PushStruct(Arena,Struct) (Struct *)PushArray(Arena,1,Struct)
 
 #define DEFAULT_WORLD_UP V3(0,1,0)
 
@@ -12,15 +9,6 @@
 #define VALID_ENTITY(E) (E.ID != NULL_ENTITY)
 #define NULL_MESH   UINT32_MAX
 #define VALID_MESH_ID(ID) (ID != NULL_MESH)
-
-inline uint8 *
-_PushSize(memory_arena * Arena,uint32 Size)
-{
-    Assert((Arena->CurrentSize + Size) < Arena->MaxSize);
-    uint8 * BaseAddr = Arena->Base + Arena->CurrentSize;
-    Arena->CurrentSize += Size;
-    return BaseAddr;
-}
 
 
 struct sphere
@@ -47,7 +35,7 @@ struct scene;
 #define SCENE_LOADER(name) void name(game_state * GameState)
 typedef SCENE_LOADER(scene_loader);
 
-#define SCENE_HANDLER(name) void name(game_state * GameState,game_input * Input,v3 dP, real32 Yaw, real32 Pitch, scene * Scene)
+#define SCENE_HANDLER(name) void name(game_state * GameState,game_input * Input,v3 dP, real32 Yaw, real32 Pitch)
 typedef SCENE_HANDLER(scene_handler);
 
 
@@ -115,6 +103,12 @@ struct entity_input
     v3 dP;
 };
 
+struct thread_memory_arena
+{
+    bool32 InUse;
+    memory_arena Arena;
+};
+
 struct game_state
 {
     bool32 IsInitialized;
@@ -125,6 +119,9 @@ struct game_state
     memory_arena MeshesArena;
     memory_arena VertexArena;
     memory_arena IndicesArena;
+
+    thread_memory_arena * ThreadArena;
+    uint32 LimitThreadArenas;
 
     int32 PipelineIndex;
     int32 VertexShaders[2];
@@ -153,7 +150,6 @@ struct game_state
 
     mesh * Meshes;
     uint32 LimitMeshes;
-    uint32 TotalMeshes;
 
     entity Player;
 
@@ -165,6 +161,12 @@ struct game_state
 
     bool32 CameraMode;
     camera Camera;
+
+    scene_loader * CurrentSceneLoader;
+    scene_handler * CurrentSceneHandler;
+    void * SceneData;
+    bool32 SceneLoaded;
+
 };
 
 

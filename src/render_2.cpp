@@ -1,6 +1,8 @@
 #include "math.h"
 #include "game.h"
 #include "vulkan_initializer.h"
+#include "model_loader.cpp"
+#include "data_load.h"
 
 
 
@@ -104,10 +106,169 @@ EndRender(game_state * GameState)
     RenderEndPass();
 }
 
-mesh *
-GetMesh(game_state * GameState,uint32 ID)
+
+memory_arena *
+ThreadBeginArena(thread_memory_arena * ThreadArena)
 {
+    Assert(ThreadArena->InUse);
+    memory_arena * Arena = &ThreadArena->Arena;
+    Assert(Arena->Base && Arena->MaxSize > 0);
+    Arena->CurrentSize = 0;
+    return Arena;
+}
+void
+ThreadEndArena(thread_memory_arena * ThreadArena)
+{
+    Assert(ThreadArena->InUse);
+    ThreadArena->Arena.CurrentSize = 0;
+    ThreadArena->InUse = false;
+}
+
+struct async_load_mesh
+{
+    game_memory * Memory;
+    game_state * GameState;
+    char * Path;
+    mesh * Mesh;
+    thread_memory_arena * ThreadArena;
+};
+
+THREAD_WORK_HANDLER(LoadMesh)
+{
+    async_load_mesh * WorkData = (async_load_mesh *)Data;
+    Assert(WorkData->ThreadArena);
+
+    game_state * GameState = WorkData->GameState;
+    mesh * Mesh = WorkData->Mesh;
+    Assert(Mesh);
+
+    memory_arena * Arena = &WorkData->ThreadArena->Arena;
+    Assert(!Mesh->Loaded);
+
+    int32 Result = -1;
+    file_contents GetFileResult = GetFileContents(WorkData->Memory, Arena,WorkData->Path);
+
+    if (GetFileResult.Success)
+    {
+        obj_file_header Header = ReadObjFileHeader((const char *)GetFileResult.Base, GetFileResult.Size);
+        mesh TempMesh   = CreateMeshFromObjHeader(&GameState->MeshesArena,Header, (const char *)GetFileResult.Base, GetFileResult.Size);
+
+        Mesh->Vertices       = TempMesh.Vertices; // vertex_point * Vertices;
+        Mesh->VertexSize     = TempMesh.VertexSize; // uint32   VertexSize;
+        Mesh->Indices        = TempMesh.Indices; // Typedef * Indices;
+        Mesh->IndicesSize    = TempMesh.IndicesSize; // uint32   IndicesSize;
+        Mesh->OffsetVertices = TempMesh.OffsetVertices; // uint32   OffsetVertices;
+        Mesh->OffsetIndices  = TempMesh.OffsetIndices; // uint32   OffsetIndices;
+
+        // File buffer no needed anymore
+        Arena->CurrentSize -= GetFileResult.Size;
+
+        // TODO GPU barrier sync
+        RenderPushVertexData(&GameState->VertexArena, Mesh->Vertices,Mesh->VertexSize, 1);
+        //RenderPushIndexData(&GameState->IndicesArena, Mesh->Indices,Mesh->IndicesSize, 1);
+
+        COMPILER_DONOT_REORDER_BARRIER;
+        Mesh->Loaded = true;
+    }
+
+    ThreadEndArena(WorkData->ThreadArena);
+}
+
+/*
+ *  This is single thread proc
+ *  Fetching thread arenas should be done in the main thread
+ *  and no available arena case must be handle properly
+ *  Any critical step that must be guaranteed to be handle
+ *  in the current frame must be done using CompleteQueue 
+ */
+thread_memory_arena *
+GetThreadArena(game_state * GameState)
+{
+    thread_memory_arena * ThreadArena = 0;
+
+    for (uint32 ThreadArenaIndex = 0;
+                ThreadArenaIndex < GameState->LimitThreadArenas;
+                ++ThreadArenaIndex)
+    {
+        thread_memory_arena * TestThreadArena = GameState->ThreadArena + ThreadArenaIndex;
+        if (!TestThreadArena->InUse)
+        {
+            TestThreadArena->InUse = true;
+            ThreadArena = TestThreadArena;
+            break;
+        }
+    }
+
+    return ThreadArena;
+}
+
+inline uint32
+StrLen(const char * c)
+{
+    uint32 ci = 0;
+    for (;
+            (c[ci] != 0);
+            ++ci)
+    { }
+    return ci;
+}
+
+inline void
+CopyStr(char * DestStr,const char * SrcStr ,uint32 Length)
+{
+    for (uint32 ci = 0;
+                ci < Length;
+                ++ci)
+    {
+        DestStr[ci] = SrcStr[ci];
+    }
+}
+
+mesh *
+GetMesh(game_memory * Memory, game_state * GameState,uint32 ID)
+{
+
     mesh * Mesh = (GameState->Meshes + ID);
+
+    if (!Mesh->Loaded && !Mesh->LoadInProcess)
+    {
+        const char * Paths[2] = {
+            "assets\\cube.obj",
+            "assets\\human_male_triangles.obj"
+        };
+        const uint32 MeshSizes[2] = {
+            36 * sizeof(vertex_point),
+            4200 * sizeof(vertex_point),
+        };
+        thread_memory_arena * ThreadArena = GetThreadArena(GameState);
+        if (ThreadArena)
+        {
+            Mesh->LoadInProcess = true;
+
+            memory_arena * Arena = ThreadBeginArena(ThreadArena);
+
+            async_load_mesh * Data = PushStruct(Arena,async_load_mesh);
+            Data->Memory    = Memory;                  // game_memory * Memory;
+            Data->GameState = GameState;               // game_state * GameState;
+            uint32 LenPath  = StrLen(Paths[ID]) + 1;
+            Data->Path      = (char *)PushSize(Arena,LenPath); // Char_S * Path;
+            CopyStr(Data->Path, Paths[ID], LenPath);
+            Data->ThreadArena = ThreadArena;
+            Data->Mesh = Mesh;
+
+            // TODO I don't like this
+            // Multi thread mesh load, push arena size based on size
+            // of the current requested mesh
+            Mesh->OffsetVertices = GameState->VertexArena.CurrentSize;
+            uint32 MeshSize = MeshSizes[ID];
+            PushSize(&GameState->VertexArena, MeshSize);
+
+            //Mesh->OffsetIndices = GameState->IndicesArena.CurrentSize;
+            
+            Memory->AddWorkToWorkQueue(Memory->LowPriorityWorkQueue, LoadMesh,Data);
+        }
+    }
+
     return Mesh;
 }
 
@@ -118,7 +279,7 @@ UpdateView(game_state * GameState)
 }
 
 void
-RenderEntities(game_state * GameState)
+RenderEntities(game_memory * Memory, game_state * GameState)
 {
     v3 SourceLight = V3(0,10.0f,0);
     v4 Color = V4(1.0f,0.5f,0.2f,1.0f);
@@ -143,20 +304,23 @@ RenderEntities(game_state * GameState)
         if (ViewProjectionOntoEntity >= 0.0f)
         {
             render_3D * R3D = GameState->Render3D + EntityID;
-            mesh * Mesh = GetMesh(GameState,R3D->MeshID);
-            m4 ModelTransform = T->WorldT;
+            mesh * Mesh = GetMesh(Memory,GameState,R3D->MeshID);
+            if (Mesh->Loaded)
+            {
+                m4 ModelTransform = T->WorldT;
 
-            mesh_push_constant Constants;
-            m4 MVP = GameState->Projection * GameState->ViewTransform * ModelTransform;
+                mesh_push_constant Constants;
+                m4 MVP = GameState->Projection * GameState->ViewTransform * ModelTransform;
 
-            Constants.RenderMatrix = MVP;
-            Constants.SourceLight = SourceLight;
-            Constants.Model = ModelTransform;
-            Constants.DebugColor = Color;
+                Constants.RenderMatrix = MVP;
+                Constants.SourceLight = SourceLight;
+                Constants.Model = ModelTransform;
+                Constants.DebugColor = Color;
 
-            RenderPushVertexConstant(sizeof(mesh_push_constant),(void *)&Constants);
-            //RenderPushMesh(1,(Mesh->IndicesSize / sizeof(uint16)),Mesh->OffsetVertices,Mesh->OffsetIndices);
-            RenderPushMesh(1, Mesh->VertexSize / sizeof(vertex_point));
+                RenderPushVertexConstant(sizeof(mesh_push_constant),(void *)&Constants);
+                //RenderPushMesh(1,(Mesh->IndicesSize / sizeof(uint16)),Mesh->OffsetVertices,Mesh->OffsetIndices);
+                RenderPushMesh(1, Mesh->VertexSize / sizeof(vertex_point));
+            }
         }
     }
 }

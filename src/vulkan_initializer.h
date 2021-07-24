@@ -1,5 +1,6 @@
 #ifndef VULKAN_INITIALIZER_H
 #include "game_platform.h"
+#include "game_memory.h"
 #include "mesh.h"
 
 #define RENDER_API __declspec( dllexport )
