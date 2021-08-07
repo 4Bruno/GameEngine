@@ -145,6 +145,7 @@ struct game_memory
 
     thread_work_queue * HighPriorityWorkQueue;
     thread_work_queue * LowPriorityWorkQueue;
+    thread_work_queue * RenderWorkQueue;
 };
 
 #define GAME_UPDATE_AND_RENDER(name) void name(game_memory * Memory,game_input * Input, int32 ScreenWidth, int32 ScreenHeight)

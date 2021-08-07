@@ -1,5 +1,7 @@
-#include "game.h"
+#include "collision.h"
+#include "mesh.h"
 #include "math.h"
+#include <float.h>
 
 
 inline bool32 
@@ -90,3 +92,31 @@ RitterSphere(sphere * S, vertex_point * Vertices, uint32 VertexCount)
     }
 }
 
+bool32
+CollisionTestAABBAABB(AABB a, AABB b)
+{
+    if (fabs(a.c.x - b.c.x) > (a.r.x + b.r.x)) return false;
+    if (fabs(a.c.y - b.c.y) > (a.r.y + b.r.y)) return false;
+    if (fabs(a.c.z - b.c.z) > (a.r.z + b.r.z)) return false;
+    return true;
+}
+
+void 
+ExtremePointsAlongDirection(v3 dir, vertex_point * pt, int n, int *imin, int *imax)
+{
+    real32 minproj = FLT_MAX, maxproj = -FLT_MAX;
+    for (int i = 0; i < n; i++) {
+        // Project vector from origin to point onto direction vector
+        real32 proj = Inner(pt[i].P, dir);
+        // Keep track of least distant point along direction vector
+        if (proj < minproj) {
+            minproj = proj;
+            *imin = i;
+        }
+        // Keep track of most distant point along direction vector
+        if (proj > maxproj) {
+            maxproj = proj;
+            *imax = i;
+        }
+    }
+}

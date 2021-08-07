@@ -5,6 +5,8 @@
 #include "model_loader.cpp"
 #include "data_load.cpp"
 #include <stdio.h>
+#include "collision.cpp"
+#include "math.h"
 
 inline uint32
 StrLen(const char * c)
@@ -169,7 +171,8 @@ int main()
 
     char Dir[255];
     DWORD cdSize = GetCwd(Dir,255);
-    char * TargetDir = "\\assets\\*.obj";
+    //char * TargetDir = "\\assets\\*.obj";
+    const char * TargetDir = "\\assets\\human*triangles.obj";
     CopyStr(Dir + cdSize, TargetDir, StrLen(TargetDir) + 1);
     
     uint32 CountFiles = 0;
@@ -185,7 +188,47 @@ int main()
         const char * Buffer = (const char *)Files[FileIndex].Content.Base;
         uint32 FileSize = Files[FileIndex].Content.Size;
         obj_file_header Header = ReadObjFileHeader(Buffer, FileSize);
-        printf("%s VertexCount: %i Vertices: %i\n",Files[FileIndex].Path, Header.VertexCount, Header.FaceElementsCount * FaceVertices);
+        //printf("%s VertexCount: %i Vertices: %i\n",Files[FileIndex].Path, Header.VertexCount, Header.FaceElementsCount * FaceVertices);
+        uint32 MeshSize = Header.FaceElementsCount*3*sizeof(vertex_point);
+        void * BufferVertex = Arena.Base + Arena.CurrentSize;
+        PushSize(&Arena,MeshSize);
+        mesh Mesh = CreateMeshFromObjHeader(&Arena,BufferVertex,Header, Buffer, FileSize);
+        v3 dir[3] = {
+            {1,0,0},{0,1,0},{0,0,1}
+        };
+        const char * Axis[3] = {
+            "x","y","z"
+        };
+
+        printf("%s\n",Files[FileIndex].Path);
+
+        real32 T = tanf(45);
+        real32 Height = T*5.0f;
+        real32 Width = Height * (1980.0f / 1080.0f);
+
+#define PRINT_P(P) printf("x: %f y: %f z: %f\n",P.x,P.y,P.z)
+        for (uint32 VectorDirIndex = 0;
+                    VectorDirIndex < 3;
+                    ++VectorDirIndex)
+        {
+            int imin, imax;
+            ExtremePointsAlongDirection(dir[VectorDirIndex], Mesh.Vertices, Mesh.VertexSize / sizeof(vertex_point), &imin, &imax);
+#if 0
+            printf("Min:"); PRINT_P(Mesh.Vertices[imin].P);
+            printf("Max:"); PRINT_P(Mesh.Vertices[imax].P);
+#else
+            if (VectorDirIndex == 1)
+            {
+                real32 HeightInMeters = 2.0f;
+                real32 HeightInLocalUnits = (Mesh.Vertices[imax].P._V[VectorDirIndex] - Mesh.Vertices[imin].P._V[VectorDirIndex]);
+                real32 MetersToUnits = 2.0f / HeightInLocalUnits;
+                printf("%s: %f scale is %f\n", 
+                        Axis[VectorDirIndex],
+                        Len,
+                        2.0f / Len);
+            }
+#endif
+        }
     }
 
     return 0;

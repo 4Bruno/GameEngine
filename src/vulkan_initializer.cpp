@@ -1181,7 +1181,7 @@ WaitForRender()
 
 
 int32
-VulkanCopyBuffer(VkCommandBuffer CommandBuffer, VkBuffer Src, VkBuffer Dest, VkDeviceSize Size)
+VulkanCopyBuffer(VkCommandBuffer CommandBuffer, VkBuffer Src, VkBuffer Dest, VkDeviceSize Size, VkDeviceSize Offset)
 {
     VkCommandBufferBeginInfo CommandBufferBeginInfo;
     CommandBufferBeginInfo.sType            = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO; // VkStructureType   sType;
@@ -1194,7 +1194,7 @@ VulkanCopyBuffer(VkCommandBuffer CommandBuffer, VkBuffer Src, VkBuffer Dest, VkD
 
     VkBufferCopy CopyRegion = {};
     CopyRegion.srcOffset = 0;    // VkDeviceSize srcOffset;
-    CopyRegion.dstOffset = 0;    // VkDeviceSize dstOffset;
+    CopyRegion.dstOffset = Offset;    // VkDeviceSize dstOffset;
     CopyRegion.size      = Size; // VkDeviceSize size;
 
     vkCmdCopyBuffer(CommandBuffer, Src, Dest, 1, &CopyRegion);
@@ -1308,19 +1308,18 @@ RenderPushVertexConstant(uint32 Size,void * Data)
     vkCmdPushConstants(cmd,GlobalVulkan.PipelineLayout,VK_SHADER_STAGE_VERTEX_BIT,0,Size,Data);
 }
 
-int32
-RenderPushVertexData(memory_arena * Arena,void * Data,uint32 DataSize,uint32 InstanceCount)
+uint32
+RenderGetVertexMemAlign()
 {
+    uint32 Align = (uint32)GlobalVulkan.VertexMemAlign;
+    return  Align;
+}
 
-    uint32 TotalSize = (DataSize * InstanceCount);
-    uint32 Align = (uint32)GlobalVulkan.VertexMemAlign - 1;
-    TotalSize = (TotalSize + Align) &  ~Align;
-
-    Assert((Arena->CurrentSize + TotalSize) < Arena->MaxSize);
-
-    uint32 Base = Arena->CurrentSize;
-    VkDeviceSize Offset = (VkDeviceSize)Arena->CurrentSize;
-    VkDeviceSize DeviceSize = (VkDeviceSize)TotalSize;
+int32
+RenderPushVertexData(void * Data, uint32 DataSize, uint32 BaseOffset)
+{
+    VkDeviceSize Offset = BaseOffset;
+    VkDeviceSize DeviceSize = DataSize;
 
     // https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VkMemoryMapFlags.html
     VkMemoryMapFlags Flags = 0; // RESERVED FUTURE USE
@@ -1330,14 +1329,12 @@ RenderPushVertexData(memory_arena * Arena,void * Data,uint32 DataSize,uint32 Ins
     VK_CHECK(vkMapMemory(GlobalVulkan.PrimaryDevice,
                          GlobalVulkan.TransferBitDeviceMemory, 0 /*Offset*/, DeviceSize, Flags , &WriteToAddr));
 
-    memcpy(WriteToAddr, Data, TotalSize);
+    memcpy(WriteToAddr, Data, DataSize);
 
     vkUnmapMemory(GlobalVulkan.PrimaryDevice,GlobalVulkan.TransferBitDeviceMemory);
 
-    Arena->CurrentSize += TotalSize;
-
     if (VulkanCopyBuffer(GlobalVulkan.TransferBitCommandBuffer, 
-                     GlobalVulkan.TransferBitBuffer,GlobalVulkan.VertexBuffer, TotalSize))
+                     GlobalVulkan.TransferBitBuffer,GlobalVulkan.VertexBuffer, DataSize, BaseOffset))
     {
         Log("Failed to copy data from buffer to gpu\n");
         return 1;
@@ -1346,19 +1343,12 @@ RenderPushVertexData(memory_arena * Arena,void * Data,uint32 DataSize,uint32 Ins
     return 0;
 }
 
+
 int32
-RenderPushIndexData(memory_arena * Arena,void * Data,uint32 DataSize,uint32 InstanceCount)
+RenderPushIndexData(void * Data,uint32 DataSize, uint32 BaseOffset)
 {
-
-    uint32 TotalSize = (DataSize * InstanceCount);
-    uint32 Align = (uint32)GlobalVulkan.VertexMemAlign - 1;
-    TotalSize = (TotalSize + Align) &  ~Align;
-
-    Assert((Arena->CurrentSize + TotalSize) < Arena->MaxSize);
-
-    uint32 Base = Arena->CurrentSize;
-    VkDeviceSize Offset = (VkDeviceSize)Arena->CurrentSize;
-    VkDeviceSize DeviceSize = (VkDeviceSize)TotalSize;
+    VkDeviceSize Offset = BaseOffset;
+    VkDeviceSize DeviceSize = DataSize;
 
     // https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VkMemoryMapFlags.html
     VkMemoryMapFlags Flags = 0; // RESERVED FUTURE USE
@@ -1368,14 +1358,13 @@ RenderPushIndexData(memory_arena * Arena,void * Data,uint32 DataSize,uint32 Inst
     VK_CHECK(vkMapMemory(GlobalVulkan.PrimaryDevice,
                          GlobalVulkan.TransferBitDeviceMemory, 0 /* offset */, DeviceSize, Flags , &WriteToAddr));
 
-    memcpy(WriteToAddr, Data, TotalSize);
+    memcpy(WriteToAddr, Data, DataSize);
 
     vkUnmapMemory(GlobalVulkan.PrimaryDevice,GlobalVulkan.TransferBitDeviceMemory);
 
-    Arena->CurrentSize += TotalSize;
 
     if (VulkanCopyBuffer(GlobalVulkan.TransferBitCommandBuffer, 
-                     GlobalVulkan.TransferBitBuffer,GlobalVulkan.IndexBuffer, TotalSize))
+                     GlobalVulkan.TransferBitBuffer,GlobalVulkan.IndexBuffer, DataSize, BaseOffset))
     {
         Log("Failed to copy data from buffer to gpu\n");
         return 1;
@@ -1519,11 +1508,11 @@ RenderPushMeshIndexed(uint32 TotalMeshInstances, uint32 IndicesSize, VkDeviceSiz
     return 0;
 }
 int32
-RenderPushMesh(uint32 TotalMeshInstances, uint32 VertexSize)
+RenderPushMesh(uint32 TotalMeshInstances, uint32 VertexSize, uint32 Offset)
 {
     VkCommandBuffer cmd = GlobalVulkan.PrimaryCommandBuffer[0];
 
-    VkDeviceSize OffsetVertex = 0;
+    VkDeviceSize OffsetVertex = Offset;
     vkCmdBindVertexBuffers(cmd, 0, 1, &GlobalVulkan.VertexBuffer, &OffsetVertex);
     vkCmdDraw(cmd,VertexSize, 1, 0 , 0);
 
@@ -2240,7 +2229,7 @@ InitializeVulkan(int32 Width, int32 Height,
                 &GlobalVulkan.TransferBitBuffer, &GlobalVulkan.TransferBitDeviceMemory,&GlobalVulkan.TransferMemAlign,
                 2,&SharedBufferFamilyIndexArray[0])) return 1;
 
-    VkDeviceSize VertexBufferSize = Megabytes(16);
+    VkDeviceSize VertexBufferSize = Megabytes(15);
     if (VulkanCreateBuffer(
                 GlobalVulkan.PrimaryGPU,GlobalVulkan.PrimaryDevice, 
                 VertexBufferSize, VK_SHARING_MODE_EXCLUSIVE,VK_MEMORY_GPU,

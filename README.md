@@ -19,3 +19,6 @@ less time than switching windows.
 * Compilation of shaders?
 As for now using validator.exe. Everything hardcoded. 
 
+
+# Dependencies
+* For now using Quaternion external lib to test my matrix math

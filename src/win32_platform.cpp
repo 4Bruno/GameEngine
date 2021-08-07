@@ -35,6 +35,7 @@
 global_variable bool32  GlobalAppRunning = false;
 global_variable RECT GlobalOldRectClip;
 global_variable RECT GlobalNewRectClip;
+global_variable bool32 AllowMouseConfinement = false;
 
 
 /* BEGIN of OS Specific calls to be replicated in other OS */
@@ -375,6 +376,19 @@ WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
             // Allow resizing window
             Win32ReleaseCursor();
         } break;
+        case WM_ACTIVATE:
+        {
+            // Allow resizing window
+            if (wParam == WA_INACTIVE)
+            {
+                AllowMouseConfinement = false;
+                Win32ReleaseCursor();
+            }
+            else
+            {
+                AllowMouseConfinement = true;
+            }
+        } break;
         default:
         {
             return DefWindowProc(hWnd, message, wParam, lParam);
@@ -444,12 +458,16 @@ int main()
 {
     /* ------------------------- THREADS ----------------------------------- */
     thread_work_queue HighPriorityWorkQueue = {};
-    uint32 HighPriorityWorkQueueThreadCount = 12;
+    uint32 HighPriorityWorkQueueThreadCount = 8;
     CreateWorkQueue(&HighPriorityWorkQueue, HighPriorityWorkQueueThreadCount);
 
     thread_work_queue LowPriorityWorkQueue = {};
-    uint32 LowPriorityWorkQueueThreadCount = 12;
+    uint32 LowPriorityWorkQueueThreadCount = 4;
     CreateWorkQueue(&LowPriorityWorkQueue, LowPriorityWorkQueueThreadCount);
+
+    thread_work_queue RenderWorkQueue = {};
+    uint32 RenderWorkQueueCount = 1;
+    CreateWorkQueue(&RenderWorkQueue, 1);
     /* ------------------------- THREADS ----------------------------------- */
 
     HINSTANCE hInstance = GetModuleHandle(0);
@@ -510,6 +528,7 @@ int main()
         GameMemory.CompleteWorkQueue     = CompleteWorkQueue;
         GameMemory.HighPriorityWorkQueue = &HighPriorityWorkQueue;
         GameMemory.LowPriorityWorkQueue  = &LowPriorityWorkQueue;
+        GameMemory.RenderWorkQueue       = &RenderWorkQueue;
 
         /* ------------------------- END GAME MEMORY ------------------------- */
 
@@ -531,7 +550,7 @@ int main()
 
         Win32RegisterRawInput(WindowHandle);
 
-        bool32 AllowMouseConfinement = false;
+        //bool32 AllowMouseConfinement = false;
 
         GameState.ShaderVertexLastModified = Win32GetLastWriteTime((char *)SHADER_VERTEX_DEBUG);
 
@@ -634,7 +653,7 @@ int main()
                 Win32QueryPerformanceDiff(Win32QueryPerformance(), TimeFrameStart, PerfFreq);
             real32 TimeFrameRemaining = ExpectedMillisecondsPerFrame - QUAD_TO_MS(TimeFrameElapsed);
 
-            Log("Time frame remaining %f\n",TimeFrameRemaining);
+            //Log("Time frame remaining %f\n",TimeFrameRemaining);
 
             if (TimeFrameRemaining > 1.0f)
             {

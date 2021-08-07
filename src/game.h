@@ -2,6 +2,8 @@
 #include "game_platform.h"
 #include "game_memory.h"
 #include "mesh.h"
+#include "collision.h"
+#include "Quaternion\Quaternion.h"
 
 #define DEFAULT_WORLD_UP V3(0,1,0)
 
@@ -9,6 +11,12 @@
 #define VALID_ENTITY(E) (E.ID != NULL_ENTITY)
 #define NULL_MESH   UINT32_MAX
 #define VALID_MESH_ID(ID) (ID != NULL_MESH)
+
+#define RGB_RED   V3(1.0f,0,0)
+#define RGB_GREEN V3(0.0f,1.0f,0)
+#define RGB_BLUE  V3(0.0f,0.0f,1.0f)
+#define RGB_WHITE V3(1.0f,1.0f,1.0f)
+#define RGB_GREY  V3(0.5f,0.5f,0.5f)
 
 
 struct sphere
@@ -32,10 +40,10 @@ NullEntity()
 struct game_state;
 struct scene;
 
-#define SCENE_LOADER(name) void name(game_state * GameState)
+#define SCENE_LOADER(name) void name(game_state * GameState, int32 ScreenX, int32 ScreenY)
 typedef SCENE_LOADER(scene_loader);
 
-#define SCENE_HANDLER(name) void name(game_state * GameState,game_input * Input,v3 dP, real32 Yaw, real32 Pitch)
+#define SCENE_HANDLER(name) void name(game_state * GameState,game_input * Input,v3 dP, real32 Yaw, real32 Pitch, int32 ScreenX, int32 ScreenY)
 typedef SCENE_HANDLER(scene_handler);
 
 
@@ -80,6 +88,7 @@ struct entity_transform
     m4 LocalP;
     v3 LocalS;
     m4 LocalR;    
+    real32 Yaw, Pitch;
 
     m4 WorldP;
     v3 WorldS;
@@ -91,11 +100,7 @@ struct entity_transform
 struct render_3D
 {
     uint32 MeshID;
-};
-
-struct collision
-{
-    uint32 CollisionType;
+    v3 Color;
 };
 
 struct entity_input
@@ -108,6 +113,7 @@ struct thread_memory_arena
     bool32 InUse;
     memory_arena Arena;
 };
+
 
 struct game_state
 {
@@ -166,6 +172,9 @@ struct game_state
     scene_handler * CurrentSceneHandler;
     void * SceneData;
     bool32 SceneLoaded;
+
+
+    Quaternion DebugOrientation;
 
 };
 

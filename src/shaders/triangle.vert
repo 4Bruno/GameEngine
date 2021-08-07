@@ -37,6 +37,8 @@ void main()
     }
     //outColor = vec4(N,1.0f);
     //outColor = vec4(FragToLightSrc,1.0f);
+    outColor = PushConstants.ColorDebug;
+    //outColor = vec4(1.0,1.0f,1.0f,1.0f);
     gl_Position = PushConstants.RenderMatrix * vec4(Position, 1.0f);
 }
 

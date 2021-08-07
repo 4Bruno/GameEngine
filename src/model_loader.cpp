@@ -267,7 +267,8 @@ CreateMeshFromObjHeader(memory_arena * Arena,obj_file_header Header, const char 
 }
 #else
 mesh
-CreateMeshFromObjHeader(memory_arena * Arena,obj_file_header Header, const char * Data, uint32 Size)
+CreateMeshFromObjHeader(memory_arena * Arena,void * BufferVertices,obj_file_header Header, const char * Data, uint32 Size)
+//CreateMeshFromObjHeader(memory_arena * Arena,obj_file_header Header, const char * Data, uint32 Size)
 {
     mesh Mesh = {};
 
@@ -276,7 +277,7 @@ CreateMeshFromObjHeader(memory_arena * Arena,obj_file_header Header, const char 
     uint32 Vertices = Header.FaceElementsCount * FaceVertices; 
     uint32 VerticesSize = Vertices * sizeof(vertex_point);
 
-    Mesh.Vertices = (vertex_point *)PushSize(Arena,VerticesSize);
+    Mesh.Vertices = (vertex_point *)BufferVertices;
     Mesh.VertexSize = VerticesSize;
 
     // create 2 temp arrays for vertices/normals we will shrink stack later

@@ -87,6 +87,13 @@ V3(real32 x, real32 y, real32 z)
 }
 
 inline v3
+V3(real32 w)
+{
+    v3 Result = { w, w, w};
+    return Result;
+}
+
+inline v3
 V3(v2 A, real32 z)
 {
     v3 Result = { A.x, A.y, z};
@@ -222,6 +229,14 @@ struct v4
             v2 yzw;
         };
     };
+    const real32& operator[](int index) const
+    {
+        return _V[index];
+    }
+    real32& operator[](int index)
+    {
+        return _V[index];
+    }
 };
 
 inline v4
@@ -362,7 +377,7 @@ inline v3
 Normalize(v3 A)
 {
     v3 R = A / Length(A);
-    return A;
+    return R;
 }
 
 

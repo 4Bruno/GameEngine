@@ -70,7 +70,7 @@ RenderSetPipeline(int32 PipelineIndex);
 
 RENDER_API
 int32
-RenderPushMesh(uint32 TotalMeshInstances, uint32 VertexSize);
+RenderPushMesh(uint32 TotalMeshInstances, uint32 VertexSize, uint32 Offset);
 
 RENDER_API
 int32
@@ -81,12 +81,16 @@ int32
 RenderEndPass();
 
 RENDER_API
-int32
-RenderPushVertexData(memory_arena * Arena,void * Data,uint32 DataSize,uint32 InstanceCount);
+uint32
+RenderGetVertexMemAlign();
 
 RENDER_API
 int32
-RenderPushIndexData(memory_arena * Arena,void * Data,uint32 DataSize,uint32 InstanceCount);
+RenderPushVertexData(void * Data, uint32 DataSize, uint32 BaseOffset);
+
+RENDER_API
+int32
+RenderPushIndexData(void * Data, uint32 DataSize, uint32 BaseOffset);
 
 RENDER_API
 memory_arena
