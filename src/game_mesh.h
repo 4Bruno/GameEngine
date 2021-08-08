@@ -36,7 +36,7 @@ struct async_load_mesh
     uint32 BaseOffset;
 };
 
-GAME_API mesh *
+mesh *
 GetMesh(game_memory * Memory, game_state * GameState,uint32 ID);
 
 #define GAME_MESH_H

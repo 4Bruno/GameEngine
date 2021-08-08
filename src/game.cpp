@@ -2,59 +2,8 @@
 
 #define LOG_P(P) Log("x: %f y: %f z: %f \n", P.x, P.y, P.z);
 
-enum  shader_type_vertex
-{
-    shader_type_vertex_default,
 
 
-    shader_type_vertex_total
-};
-
-enum  shader_type_fragment
-{
-    shader_type_fragment_default,
-
-
-    shader_type_fragment_total
-};
-
-inline entity
-GetEntity(game_state * GameState,uint32 Index)
-{
-    entity Entity = GameState->Entities[Index];
-    return Entity;
-}
-
-
-int32
-LoadShader(game_memory * Memory,memory_arena * Arena,const char * Filepath)
-{
-    int32 Result = -1;
-    file_contents GetFileResult = GetFileContents(Memory, Arena,Filepath);
-    if (GetFileResult.Success)
-    {
-        Result = RenderCreateShaderModule((char *)GetFileResult.Base, (size_t)GetFileResult.Size);
-        // data lives on gpu side now
-        Arena->CurrentSize -= GetFileResult.Size;
-    }
-    return Result;
-}
-#if 0
-mesh
-CreateTriangle(memory_arena * Arena, v3 P, real32 SideLength)
-{
-    mesh Mesh = {};
-
-    uint32 Vertices = 3;
-    Mesh.VertexSize  = sizeof(vertex_point)*Vertices;
-    Mesh.Vertices    = PushArray(Arena, 3, vertex_point); // vertex_point * Vertices;
-    Mesh.Vertices[0].P = P;
-    Mesh.Vertices[1].P = (P + V3(SideLength, SideLength,0));
-    Mesh.Vertices[2].P = (P + V3(SideLength*2.0f, 0,0));
-
-    return Mesh;
-}
-#endif
 
 void
 MoveEntity(entity_input * Input, v3 D, real32 dtTime, real32 Yaw, real32 Pitch, real32 Gravity)
@@ -95,33 +44,6 @@ MoveEntity(entity_input * Input, v3 D, real32 dtTime, real32 Yaw, real32 Pitch, 
 #endif
 }
 
-entity
-AddEntity(game_state * GameState)
-{
-    Assert( 
-            ((GameState->TotalEntities + 1) < GameState->LimitEntities) && 
-            (GameState->LimitEntities > 0)
-            );
-
-    uint32 EntityID = GameState->TotalEntities++;
-
-    entity Entity = { EntityID };
-
-    GameState->Entities[EntityID] = Entity;
-
-    return Entity;
-}
-void
-EntityRemoveFlag(game_state * GameState, entity Entity, component_flags Flag)
-{
-    GameState->EntitiesFlags[Entity.ID] = (component_flags)(GameState->EntitiesFlags[Entity.ID] ^ Flag);
-}
-
-void
-EntityAddFlag(game_state * GameState, entity Entity, component_flags Flag)
-{
-    GameState->EntitiesFlags[Entity.ID] = (component_flags)(GameState->EntitiesFlags[Entity.ID] | Flag);
-}
 
 v3
 UniformScaleFromHeight(real32 LocalModelHeightInUnits, real32 DesiredHeightInMeters)
@@ -134,48 +56,12 @@ UniformScaleFromHeight(real32 LocalModelHeightInUnits, real32 DesiredHeightInMet
 }
 
 void
-EntityAddTranslation(game_state * GameState, entity Entity, entity Parent, v3 P, v3 Scale, real32 Speed)
-{
-    entity_transform * T = (GameState->EntitiesTransform + Entity.ID);
-    Translate(T->LocalP,P);
-    T->LocalS = Scale;
-    T->LocalR = M4();
-    T->WorldP = T->LocalP;
-    T->WorldS = Scale;
-    T->WorldR = T->LocalR;
-    T->WorldT = {};
-
-    GameState->EntitiesParent[Entity.ID] = Parent;
-
-    EntityAddFlag(GameState,Entity,component_transform);
-}
-
-void
-EntityAddCollision(game_state * GameState, entity Entity)
-{
-#if 0
-    Assert((GameState->TotalCollisionSpheres + 1) < ArrayCount(GameState->CollisionSpheres));
-    RitterSphere(GameState->CollisionSpheres, Entity->Mesh->Vertices,Entity->Mesh->VertexSize);
-#endif
-    EntityAddFlag(GameState,Entity,component_collision);
-}
-
-void
 EntityAddInput(game_state * GameState,entity Entity, v3 dP)
 {
     GameState->EntitiesInput[Entity.ID].dP = dP;
     EntityAddFlag(GameState,Entity,component_input);
 }
 
-
-void
-EntityAdd3DRender(game_state * GameState, entity Entity, uint32 MeshID, v3 Color)
-{
-    Assert(VALID_MESH_ID(MeshID));
-    (GameState->Render3D + Entity.ID)->MeshID = MeshID;
-    (GameState->Render3D + Entity.ID)->Color = Color;
-    GameState->EntitiesFlags[Entity.ID] = (component_flags)(GameState->EntitiesFlags[Entity.ID] | component_render_3d);
-}
 
 void
 FreeCameraView(game_state * GameState, v3 dP, real32 Yaw, real32 Pitch)
@@ -290,20 +176,8 @@ SCENE_LOADER(LoadSceneFloor)
     //EntityAddTranslation(GameState,Entity,NullEntity(),V3(0,0,0),V3(0.1f,0.1f,0.3f),3.0f);
     EntityAddTranslation(GameState,Entity,NullEntity(),P,S,3.0f);
     EntityAdd3DRender(GameState,Entity,1,RGB_GREY);
-    EntityLookAt(GameState,Entity,V3(0,0,-10.0f));
+    //EntityLookAt(GameState,Entity,V3(0,0,-10.0f));
     GameState->Player = Entity;
-    Quaternion_setIdentity(&GameState->DebugOrientation);
-
-#if 1
-    S = V3(1.0) * 0.2f;
-    Entity = AddEntity(GameState);
-    EntityAddTranslation(GameState,Entity,NullEntity(),P,S,3.0f);
-    EntityAdd3DRender(GameState,Entity,0,RGB_BLUE);
-
-    Entity = AddEntity(GameState);
-    EntityAddTranslation(GameState,Entity,NullEntity(),P,S,3.0f);
-    EntityAdd3DRender(GameState,Entity,0,RGB_RED);
-#endif
 
     real32 WidthOverHeight = (real32)ScreenX / (real32)ScreenY;
     real32 FOV = 45.0f;
@@ -325,33 +199,6 @@ SCENE_LOADER(LoadSceneFloor)
     GameState->Camera.Pitch = 0.0f;
 }
 
-void
-SetEntityPosRelativeToDirection(game_state * GameState,entity Center, entity T, real32 Meters, real32 Height = 0.0f)
-{
-    v3 CenterR = GetMatrixDirection(GameState->EntitiesTransform[Center.ID].LocalR);
-    v3 CenterP = GetEntityPos(GameState,Center);
-
-    v3 P = CenterP + CenterR * Meters;
-
-    P.y += Height;
-
-    Translate(GameState->EntitiesTransform[T.ID].LocalP,P);
-    //RotateFill(&GameState->EntitiesTransform[T.ID].LocalR,0,ToRadians(GameState->EntitiesTransform[Center.ID].Yaw)*5.0f + ToRadians(90.0f),0);
-}
-
-void
-SetEntityPosRelativeToRight(game_state * GameState,entity Center, entity T, real32 Meters, real32 Height = 0.0f)
-{
-    v3 CenterR = -GetMatrixRight(GameState->EntitiesTransform[Center.ID].LocalR);
-    v3 CenterP = GetEntityPos(GameState,Center);
-
-    v3 P = CenterP + CenterR * Meters;
-
-    P.y += Height;
-
-    Translate(GameState->EntitiesTransform[T.ID].LocalP,P);
-    //RotateFill(&GameState->EntitiesTransform[T.ID].LocalR,0,ToRadians(GameState->EntitiesTransform[Center.ID].Yaw)*5.0f,0);
-}
 
 SCENE_HANDLER(HandleSceneFloor)
 {
@@ -364,33 +211,23 @@ SCENE_HANDLER(HandleSceneFloor)
         if (FirstTimePressed(&Input->Controller.Numbers[1]))
         {
             v3 P = GetViewPos(GameState);
-            EntityLookAt(GameState,GameState->Player,P);
+            //EntityLookAt(GameState,GameState->Player,P);
         }
         else if (FirstTimePressed(&Input->Controller.Numbers[2]))
         {
             v3 P = GetEntityPos(GameState,GetEntity(GameState,1));
-            EntityLookAt(GameState,GameState->Player,P);
+            //EntityLookAt(GameState,GameState->Player,P);
         }
         //dP.y = -dP.z;
         //dP.z = 0.0f;
         EntityAddInput(GameState,GameState->Player,dP);
-#if 0
-        v3 P = GetEntityPos(GameState->EntitiesTransform[0].LocalP);
-        real32 A = (sinf(Input->TimeElapsed * 0.5f));
-        P.x += A;
-        //Log("A: %f Px: %f\n",A, P.x);
-        Translate(GameState->EntitiesTransform[2].LocalP,P);
-#else
-        SetEntityPosRelativeToDirection(GameState,GameState->Player, GameState->Entities[1], 2.0f , 1.0f);
-        SetEntityPosRelativeToRight(GameState,GameState->Player, GameState->Entities[2], 1.0f , 1.0f);
-#endif
     }
 #endif
 
     v3 ViewP = GetViewPos(GameState);
     real32 FOV = ToRadians(60.0f);
     real32 WidthOverHeight = (real32)ScreenX / (real32)ScreenY;
-    //GameState->EntitiesTransform[0].LocalP[3].z = ViewP.z - 20.0f;
+
     if (Input->Controller.MouseRight.IsPressed)
     {
         if (FirstTimePressed(&Input->Controller.MouseRight))
@@ -400,47 +237,7 @@ SCENE_HANDLER(HandleSceneFloor)
     {
         GameState->Projection = ProjectionMatrix(FOV,WidthOverHeight, 0.1f,200.0f);
     }
-
-    //ViewLookAt(GameState,,GetEntityPos(GameState->EntitiesTransform[0].WorldP));
 }
-
-
-void
-CreatePipeline(game_memory * Memory,game_state * GameState)
-{
-    GameState->ShadersArena.CurrentSize = 0;
-    RenderFreeShaders();
-    VulkanDestroyPipeline();
-
-    GameState->VertexShaders[shader_type_vertex_default] 
-        = LoadShader(Memory,&GameState->ShadersArena,"shaders\\triangle.vert");
-    GameState->FragmentShaders[shader_type_fragment_default] 
-        = LoadShader(Memory,&GameState->ShadersArena,"shaders\\triangle.frag");
-
-    GameState->PipelineIndex = 
-        RenderCreatePipeline(GameState->VertexShaders[shader_type_vertex_default], 
-                GameState->FragmentShaders[shader_type_fragment_default]);
-
-    // TODO: destroy shaders after pipeline creation
-
-    if (GameState->PipelineIndex < 0)
-    {
-        Log("Error during creation of main pipeline\n");
-    }
-
-    Assert(GameState->PipelineIndex >= 0);
-}
-
-inline bool32
-EntityHasFlag(game_state * GameState,uint32 EntityIndex,component_flags Flag)
-{
-    uint32 EntityID = GameState->Entities[EntityIndex].ID;
-    component_flags Flags = GameState->EntitiesFlags[EntityID];
-    bool32 R = (Flags & Flag);
-
-    return R;
-}
-
 
 #define _FillArray(A,C,V) \
     for (uint32 i = 0; \
@@ -458,88 +255,6 @@ EntityHasFlag(game_state * GameState,uint32 EntityIndex,component_flags Flag)
         A[i].M = V; \
     }
 
-struct async_update_entities_model
-{
-    uint32 StartIndex;
-    uint32 EntitiesCount;
-    game_state * GameState;
-};
-
-THREAD_WORK_HANDLER(AsyncUpdateEntitiesModel)
-{
-    async_update_entities_model * Update = (async_update_entities_model *)Data;
-    game_state * GameState = Update->GameState;
-
-    for (uint32 EntityIndex = Update->StartIndex;
-                EntityIndex < (Update->StartIndex + Update->EntitiesCount);
-                ++EntityIndex)
-    {
-        entity Entity = GetEntity(GameState,EntityIndex);
-        uint32 EntityID = Entity.ID;
-        if (EntityHasFlag(GameState,EntityID,component_transform))
-        {
-            entity Parent = GameState->EntitiesParent[EntityID]; 
-            entity_transform * T = GameState->EntitiesTransform + EntityID;
-            if (VALID_ENTITY(Parent))
-            {
-                uint32 ParentID = Parent.ID;
-                entity_transform * ParentT = GameState->EntitiesTransform + ParentID;
-                T->WorldP = ParentT->WorldP + (ParentT->WorldR * T->LocalP);
-                T->WorldR = ParentT->WorldR * T->LocalR;
-                T->WorldS = { 
-                    ParentT->WorldS.x * T->LocalS.x,
-                    ParentT->WorldS.y * T->LocalS.y,
-                    ParentT->WorldS.z * T->LocalS.z
-                };
-            }
-            else
-            {
-                T->WorldP = T->LocalP;
-                T->WorldR = T->LocalR;
-                T->WorldS = T->LocalS;
-            }
-            //Log("Pitch: %f, Yaw: %f\n",T->Pitch,T->Yaw);
-            T->WorldT = T->WorldP * T->WorldR * M4(T->WorldS);
-            //Log("Entity: %i",EntityIndex);LOG_P(GetMatrixPos(T->WorldP));
-        }
-    }
-}
-
-void
-UpdateEntitiesModel(game_state * GameState)
-{
-    for (uint32 EntityIndex = 0;
-                EntityIndex < GameState->TotalEntities;
-                ++EntityIndex)
-    {
-        entity Entity = GetEntity(GameState,EntityIndex);
-        uint32 EntityID = Entity.ID;
-        if (EntityHasFlag(GameState,EntityID,component_transform))
-        {
-            entity Parent = GameState->EntitiesParent[EntityID]; 
-            entity_transform * T = GameState->EntitiesTransform + EntityID;
-            if (VALID_ENTITY(Parent))
-            {
-                uint32 ParentID = Parent.ID;
-                entity_transform * ParentT = GameState->EntitiesTransform + ParentID;
-                T->WorldP = ParentT->WorldP + (ParentT->WorldR * T->LocalP);
-                T->WorldR = ParentT->WorldR * T->LocalR;
-                T->WorldS = { 
-                    ParentT->WorldS.x * T->LocalS.x,
-                    ParentT->WorldS.y * T->LocalS.y,
-                    ParentT->WorldS.z * T->LocalS.z
-                };
-            }
-            else
-            {
-                T->WorldP = T->LocalP;
-                T->WorldR = T->LocalR;
-                T->WorldS = T->LocalS;
-            }
-            T->WorldT = T->WorldP * T->WorldR * M4(T->WorldS);
-        }
-    }
-}
 
 
 extern "C"
@@ -758,50 +473,26 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
             }
 
             GameState->EntitiesMomentum[EntityID].dP = V3(dP.x * Speed, dP.y * Speed, dP.z * Speed);
+
             T->Yaw += Yaw * 5.0f; 
             T->Pitch += Pitch * 5.0f; 
 
             if (T->Pitch > 89.9f)
             {
                 T->Pitch = 89.9f;
+                Pitch = 0.0f;
             } 
             else if (T->Pitch < -89.9f)
             {
                 T->Pitch = -89.9f;
+                Pitch = 0.0f;
             }
 
-#if 1
-            if (Yaw)
-            {
-                Quaternion Rotate;
-                real32 Angle = Yaw;
-                Quaternion_fromYRotation(Angle, &Rotate);
-                Quaternion_multiply(&Rotate,&GameState->DebugOrientation,&GameState->DebugOrientation);
-                m4 R = Quaternion_toMatrix(GameState->DebugOrientation);
-                T->LocalR = R;
-                T->LocalR[0].x = -T->LocalR[0].x;
-                T->LocalR[1].x = -T->LocalR[1].x;
-                T->LocalR[2].x = -T->LocalR[2].x;
-            }
-#else
-
-            // TODO rotation sensitivity
-            Pitch = ToRadians(T->Pitch);
-            //Yaw = -ToRadians(T->Yaw);
-            //RotateFill(&T->LocalR, Pitch, Yaw, 0);
-            if (ToRadians(Yaw))
-            {
-                RotateEntity(GameState,Entity,0.0f,Yaw);
-                T->LocalR[0].x = -T->LocalR[0].x;
-                T->LocalR[1].x = -T->LocalR[1].x;
-                T->LocalR[2].x = -T->LocalR[2].x;
-            }
-            //Log("Current Yaw: %f, calculated: %f\n", GameState->EntitiesTransform[EntityID].Yaw,GetYawFromRotationMatrix(&GameState->EntitiesTransform[EntityID].LocalR));
-            
-            //RotateRight(&GameState->EntitiesTransform[EntityID].LocalR,-Yaw);
-#endif
+            //RotateEntityRight(T,Yaw);
+            RotateEntityFill(T, -ToRadians(T->Pitch), ToRadians(T->Yaw), 0);
 
             EntityRemoveFlag(GameState,Entity,component_input);
+
             if (dP.x != 0.0f || dP.y != 0.0f || dP.z != 0.0f)
             {
                 EntityAddFlag(GameState,Entity,component_momentum);
@@ -820,16 +511,8 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
         if (EntityHasFlag(GameState,EntityID,component_momentum))
         {
             v3 dP = GameState->EntitiesMomentum[EntityID].dP;
-            entity_transform * ET = GameState->EntitiesTransform + EntityID;
-            v3 EntityP = GetMatrixPos(ET->LocalP);
-            v3 Fw = GetMatrixDirection(ET->LocalR);
-            v3 Right = GetMatrixRight(ET->LocalR);
-            LOG_P(Fw);LOG_P(Right);
-
-            v3 MoveFw =  Fw * dP.z;
-            v3 MoveRight = Right * dP.x;
-            v3 DesiredP = EntityP + MoveFw + MoveRight + V3(0,-1,0) * dP.y;
-
+            entity_transform * T = GetEntityTransform(GameState,Entity);
+            v3 DesiredP = TestEntityMoveForward(T,&dP);
             v3 MaxMove = { 1.0f, 1.0f, 1.0f };
 
             if (EntityHasFlag(GameState,EntityID,component_collision))
@@ -855,11 +538,7 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
 #endif
             } // entity has collision
 
-            EntityP = VectorMultiply(DesiredP,MaxMove);
-
-            Translate(ET->LocalP, EntityP);
-
-            //LOG_P((EntityP - GetViewPos(GameState->ViewMoveMatrix)));
+            T->LocalP = VectorMultiply(DesiredP,MaxMove);
 
             // TODO: explore other non-dampening techniques
             GameState->EntitiesMomentum[EntityID].dP *= 0.85f;//dP - dP*0.5f;
@@ -875,7 +554,6 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
     }
 
     /* ----------------------- Model Transform ------------------------------- */
-
 #if 1
     uint32 TotalEntities = GameState->TotalEntities;
     uint32 MaxThreads;
@@ -935,14 +613,10 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
 
     if (VALID_ENTITY(GameState->Player))
     {
-        v3 P = GetEntityPos(GameState,GameState->Player);
-        v3 D = GetMatrixDirection(GameState->EntitiesTransform[GameState->Player.ID].WorldR);
+        //v3 P = GetEntityPos(GameState,GameState->Player);
+        //v3 D = GetMatrixDirection(GameState->EntitiesTransform[GameState->Player.ID].WorldR);
         //SetViewBehindObject(GameState,P, D, 5.0f, 3.0f);
     }
-
-
-    //ViewLookAt(GameState,V3(-5.0f,3.0f,0),GetEntityPos(GameState,GameState->Entities[0]));
-    //RotateRight(&GameState->ViewRotationMatrix, ((sinf(Input->TimeElapsed) + 1.0f) * 0.5f)*PI*0.01f);
 
     /* ------------------------- GAME RENDER ------------------------- */
 

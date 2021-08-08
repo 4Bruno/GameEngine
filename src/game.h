@@ -60,20 +60,6 @@ struct camera
     v3 D;
 };
 
-enum component_flags
-{
-    component_none = 0 << 0,
-
-    component_input     = 1 << 0,
-    component_collision = 1 << 1,
-    component_render_3d = 1 << 2,
-    component_transform = 1 << 3,
-    component_momentum  = 1 << 4,
-    component_ground    = 1 << 5
-
-};
-
-
 struct render_3D
 {
     uint32 MeshID;
@@ -143,10 +129,6 @@ struct game_state
     scene_handler * CurrentSceneHandler;
     void * SceneData;
     bool32 SceneLoaded;
-
-
-    Quaternion DebugOrientation;
-
 };
 
 

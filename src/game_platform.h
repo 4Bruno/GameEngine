@@ -31,7 +31,7 @@ typedef int32       bool32;
 typedef float       real32;
 typedef double      real64;
 
-#define PI 3.141684f
+#define PI 3.14159265358979323846
 
 #define VULKAN_CREATE_SURFACE(name) int32 name(void * SurfaceData, void * pfnOSSurface, VkInstance Instance, VkSurfaceKHR * Surface)
 typedef VULKAN_CREATE_SURFACE(vulkan_create_surface);

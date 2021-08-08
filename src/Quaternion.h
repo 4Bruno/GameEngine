@@ -17,37 +17,43 @@
  * @brief   A basic quaternion library written in C
  * @date    2019-11-28
  */
+
+/*
+ * Modifications to the above software:
+ * - converted to cpp
+ * - no std libs
+ * - redefinition data types for common platform
+ * - redefinition of #define
+ * - added quaternions to matrix
+ */
+
 #pragma once
-#include <stdbool.h>
-#include <stdint.h>
-#include <stdio.h>
+#include "game_platform.h"
 #include "game_math.h"
 
-#define M_PI 3.14159265358979323846
-
 /**
- * Maximum floating point difference that is considered as equal.
+ * Maximum real32ing point difference that is considered as equal.
  */
 #define QUATERNION_EPS (1e-4)
 
 /**
  * Data structure to hold a quaternion.
  */
-typedef struct Quaternion {
-    float w;       /**< Scalar part */
+struct Quaternion {
+    real32 w;       /**< Scalar part */
     union
     {
-        float v[3];    /**< Vector part */
+        real32 v[3];    /**< Vector part */
         struct {
-            float x,y,z;
+            real32 x,y,z;
         };
     };
-} Quaternion; 
+}; 
 
 /**
  * Sets the given values to the output quaternion.
  */
-void Quaternion_set(float w, float v1, float v2, float v3, Quaternion* output);
+void Quaternion_set(real32 w, real32 v1, real32 v2, real32 v3, Quaternion* output);
 
 /**
  * Sets quaternion to its identity.
@@ -76,7 +82,7 @@ void Quaternion_fprint(FILE* file, Quaternion* q);
  * @param angle
  *      Rotation angle in radians.
  */
-void Quaternion_fromAxisAngle(float axis[3], float angle, Quaternion* output);
+void Quaternion_fromAxisAngle(real32 axis[3], real32 angle, Quaternion* output);
 
 /**
  * Calculates the rotation vector and angle of a quaternion.
@@ -85,48 +91,48 @@ void Quaternion_fromAxisAngle(float axis[3], float angle, Quaternion* output);
  * @return
  *      The rotation angle in radians.
  */
-float Quaternion_toAxisAngle(Quaternion* q, float output[3]);
+real32 Quaternion_toAxisAngle(Quaternion* q, real32 output[3]);
 
 /**
  * Set the quaternion to the equivalent of euler angles.
  * @param eulerZYX
  *      Euler angles in ZYX, but stored in array as [x'', y', z].
  */
-void Quaternion_fromEulerZYX(float eulerZYX[3], Quaternion* output);
+void Quaternion_fromEulerZYX(v3 * eulerZYX, Quaternion* output);
 
 /**
  * Calculates the euler angles of a quaternion.
  * @param output
  *      Euler angles in ZYX, but stored in array as [x'', y', z].
  */
-void Quaternion_toEulerZYX(Quaternion* q, float output[3]);
+void Quaternion_toEulerZYX(Quaternion* q, real32 output[3]);
 
 /**
  * Set the quaternion to the equivalent a rotation around the X-axis.
  * @param angle
  *      Rotation angle in radians.
  */
-void Quaternion_fromXRotation(float angle, Quaternion* output);
+void Quaternion_fromXRotation(real32 angle, Quaternion* output);
 
 /**
  * Set the quaternion to the equivalent a rotation around the Y-axis.
  * @param angle
  *      Rotation angle in radians.
  */
-void Quaternion_fromYRotation(float angle, Quaternion* output);
+void Quaternion_fromYRotation(real32 angle, Quaternion* output);
 
 /**
  * Set the quaternion to the equivalent a rotation around the Z-axis.
  * @param angle
  *      Rotation angle in radians.
  */
-void Quaternion_fromZRotation(float angle, Quaternion* output);
+void Quaternion_fromZRotation(real32 angle, Quaternion* output);
 
 /**
  * Calculates the norm of a given quaternion:
  * norm = sqrt(w*w + v1*v1 + v2*v2 + v3*v3)
  */
-float Quaternion_norm(Quaternion* q);
+real32 Quaternion_norm(Quaternion* q);
 
 /**
  * Normalizes the quaternion.
@@ -150,7 +156,7 @@ void Quaternion_multiply(Quaternion* q1, Quaternion* q2, Quaternion* output);
 /**
  * Applies quaternion rotation to a given vector.
  */
-void Quaternion_rotate(Quaternion* q, float v[3], float output[3]);
+void Quaternion_rotate(Quaternion* q, v3 * v, v3 * output);
 
 /**
  * Interpolates between two quaternions.
@@ -158,7 +164,10 @@ void Quaternion_rotate(Quaternion* q, float v[3], float output[3]);
  *      Interpolation between the two quaternions [0, 1].
  *      0 is equal with q1, 1 is equal with q2, 0.5 is the middle between q1 and q2.
  */
-void Quaternion_slerp(Quaternion* q1, Quaternion* q2, float t, Quaternion* output);
+void Quaternion_slerp(Quaternion* q1, Quaternion* q2, real32 t, Quaternion* output);
 
+/**
+ * Transforms quaternion to 4x4 matrix (column major)
+ */
 m4 
 Quaternion_toMatrix(const Quaternion& quat);

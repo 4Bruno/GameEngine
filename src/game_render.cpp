@@ -251,6 +251,7 @@ GetYawFromRotationMatrix(m4 * R)
     real32 Yaw = atanf(R->Columns[0].y / R->Columns[0].x);
     return Yaw;
 }
+#if 0
 inline void
 UpdateEntityYaw(game_state * GameState, entity * Entity)
 {
@@ -291,6 +292,7 @@ EntityLookAt(game_state * GameState,entity Entity, v3 P)
     GameState->EntitiesTransform[Entity.ID].LocalR = R;
     UpdateEntityYaw(GameState,&Entity);
 }
+#endif
 
 m4
 ProjectionMatrix(real32 FOV,real32 AspectRatio, real32 n, real32 f)
@@ -317,3 +319,52 @@ ProjectionMatrix(real32 FOV,real32 AspectRatio, real32 n, real32 f)
 
     return m;
 } 
+
+void
+EntityAdd3DRender(game_state * GameState, entity Entity, uint32 MeshID, v3 Color)
+{
+    Assert(VALID_MESH_ID(MeshID));
+    (GameState->Render3D + Entity.ID)->MeshID = MeshID;
+    (GameState->Render3D + Entity.ID)->Color = Color;
+    EntityAddFlag(GameState,Entity,component_render_3d);
+}
+
+int32
+LoadShader(game_memory * Memory,memory_arena * Arena,const char * Filepath)
+{
+    int32 Result = -1;
+    file_contents GetFileResult = GetFileContents(Memory, Arena,Filepath);
+    if (GetFileResult.Success)
+    {
+        Result = RenderCreateShaderModule((char *)GetFileResult.Base, (size_t)GetFileResult.Size);
+        // data lives on gpu side now
+        Arena->CurrentSize -= GetFileResult.Size;
+    }
+    return Result;
+}
+
+void
+CreatePipeline(game_memory * Memory,game_state * GameState)
+{
+    GameState->ShadersArena.CurrentSize = 0;
+    RenderFreeShaders();
+    VulkanDestroyPipeline();
+
+    GameState->VertexShaders[shader_type_vertex_default] 
+        = LoadShader(Memory,&GameState->ShadersArena,"shaders\\triangle.vert");
+    GameState->FragmentShaders[shader_type_fragment_default] 
+        = LoadShader(Memory,&GameState->ShadersArena,"shaders\\triangle.frag");
+
+    GameState->PipelineIndex = 
+        RenderCreatePipeline(GameState->VertexShaders[shader_type_vertex_default], 
+                GameState->FragmentShaders[shader_type_fragment_default]);
+
+    // TODO: destroy shaders after pipeline creation
+
+    if (GameState->PipelineIndex < 0)
+    {
+        Log("Error during creation of main pipeline\n");
+    }
+
+    Assert(GameState->PipelineIndex >= 0);
+}
