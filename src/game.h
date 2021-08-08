@@ -1,14 +1,16 @@
 #ifndef GAME_H
+
+#include "vulkan_initializer.h"
 #include "game_platform.h"
 #include "game_memory.h"
-#include "mesh.h"
+#include "game_entity.h"
+#include "game_mesh.h"
+#include "game_render.h"
+
+#include "data_load.h"
 #include "collision.h"
-#include "Quaternion\Quaternion.h"
+#include "Quaternion.h"
 
-#define DEFAULT_WORLD_UP V3(0,1,0)
-
-#define NULL_ENTITY UINT32_MAX
-#define VALID_ENTITY(E) (E.ID != NULL_ENTITY)
 #define NULL_MESH   UINT32_MAX
 #define VALID_MESH_ID(ID) (ID != NULL_MESH)
 
@@ -25,19 +27,7 @@ struct sphere
     real32 r;
 };
 
-struct entity
-{
-    uint32 ID;
-};
 
-inline entity
-NullEntity()
-{
-    return { NULL_ENTITY };
-}
-
-
-struct game_state;
 struct scene;
 
 #define SCENE_LOADER(name) void name(game_state * GameState, int32 ScreenX, int32 ScreenY)
@@ -83,19 +73,6 @@ enum component_flags
 
 };
 
-struct entity_transform
-{
-    m4 LocalP;
-    v3 LocalS;
-    m4 LocalR;    
-    real32 Yaw, Pitch;
-
-    m4 WorldP;
-    v3 WorldS;
-    m4 WorldR;    
-
-    m4 WorldT;
-};
 
 struct render_3D
 {
@@ -106,12 +83,6 @@ struct render_3D
 struct entity_input
 {
     v3 dP;
-};
-
-struct thread_memory_arena
-{
-    bool32 InUse;
-    memory_arena Arena;
 };
 
 

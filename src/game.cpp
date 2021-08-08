@@ -1,10 +1,4 @@
 #include "game.h"
-#include "math.h"
-#include "render_2.cpp"
-#include "collision.cpp"
-#include "data_load.h"
-#include "Quaternion\Quaternion.c"
-
 
 #define LOG_P(P) Log("x: %f y: %f z: %f \n", P.x, P.y, P.z);
 
@@ -29,14 +23,6 @@ GetEntity(game_state * GameState,uint32 Index)
 {
     entity Entity = GameState->Entities[Index];
     return Entity;
-}
-
-void
-InitializeArena(memory_arena * Arena,uint8 * BaseAddr, uint32 MaxSize)
-{
-    Arena->MaxSize = MaxSize;
-    Arena->CurrentSize = 0;
-    Arena->Base = BaseAddr;
 }
 
 
@@ -220,7 +206,6 @@ FreeCameraView(game_state * GameState, v3 dP, real32 Yaw, real32 Pitch)
     }
     GameState->ViewRotationMatrix = M4();
     RotateFill(&GameState->ViewRotationMatrix, ToRadians(GameState->Camera.Pitch), ToRadians(GameState->Camera.Yaw), 0);
-    UpdateView(GameState);
 }
 
 bool32
@@ -357,7 +342,7 @@ SetEntityPosRelativeToDirection(game_state * GameState,entity Center, entity T, 
 void
 SetEntityPosRelativeToRight(game_state * GameState,entity Center, entity T, real32 Meters, real32 Height = 0.0f)
 {
-    v3 CenterR = GetMatrixRight(GameState->EntitiesTransform[Center.ID].LocalR);
+    v3 CenterR = -GetMatrixRight(GameState->EntitiesTransform[Center.ID].LocalR);
     v3 CenterP = GetEntityPos(GameState,Center);
 
     v3 P = CenterP + CenterR * Meters;
@@ -789,20 +774,28 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
             if (Yaw)
             {
                 Quaternion Rotate;
-                real32 Angle = -Yaw;
+                real32 Angle = Yaw;
                 Quaternion_fromYRotation(Angle, &Rotate);
                 Quaternion_multiply(&Rotate,&GameState->DebugOrientation,&GameState->DebugOrientation);
                 m4 R = Quaternion_toMatrix(GameState->DebugOrientation);
                 T->LocalR = R;
+                T->LocalR[0].x = -T->LocalR[0].x;
+                T->LocalR[1].x = -T->LocalR[1].x;
+                T->LocalR[2].x = -T->LocalR[2].x;
             }
-            //T->WorldT = T->WorldP * T->WorldR * M4(T->WorldS);
 #else
 
             // TODO rotation sensitivity
             Pitch = ToRadians(T->Pitch);
-            Yaw = ToRadians(T->Yaw);
+            //Yaw = -ToRadians(T->Yaw);
             //RotateFill(&T->LocalR, Pitch, Yaw, 0);
-            //RotateEntity(GameState,Entity,Pitch,Yaw);
+            if (ToRadians(Yaw))
+            {
+                RotateEntity(GameState,Entity,0.0f,Yaw);
+                T->LocalR[0].x = -T->LocalR[0].x;
+                T->LocalR[1].x = -T->LocalR[1].x;
+                T->LocalR[2].x = -T->LocalR[2].x;
+            }
             //Log("Current Yaw: %f, calculated: %f\n", GameState->EntitiesTransform[EntityID].Yaw,GetYawFromRotationMatrix(&GameState->EntitiesTransform[EntityID].LocalR));
             
             //RotateRight(&GameState->EntitiesTransform[EntityID].LocalR,-Yaw);
@@ -948,7 +941,7 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
     }
 
 
-    ViewLookAt(GameState,V3(-10.0f,3.0f,0),GetEntityPos(GameState,GameState->Entities[0]));
+    //ViewLookAt(GameState,V3(-5.0f,3.0f,0),GetEntityPos(GameState,GameState->Entities[0]));
     //RotateRight(&GameState->ViewRotationMatrix, ((sinf(Input->TimeElapsed) + 1.0f) * 0.5f)*PI*0.01f);
 
     /* ------------------------- GAME RENDER ------------------------- */

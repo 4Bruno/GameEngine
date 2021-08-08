@@ -1,6 +1,7 @@
 #ifndef COLLISION_H
 
 #include "game_platform.h"
+#include "game_mesh.h"
 
 struct AABB
 {

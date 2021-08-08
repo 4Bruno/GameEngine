@@ -1,6 +1,4 @@
 #include "collision.h"
-#include "mesh.h"
-#include "math.h"
 #include <float.h>
 
 

@@ -148,6 +148,9 @@ struct game_memory
     thread_work_queue * RenderWorkQueue;
 };
 
+// defined in game.h used across all headers
+struct game_state;
+
 #define GAME_UPDATE_AND_RENDER(name) void name(game_memory * Memory,game_input * Input, int32 ScreenWidth, int32 ScreenHeight)
 typedef GAME_UPDATE_AND_RENDER(game_update_and_render);
 

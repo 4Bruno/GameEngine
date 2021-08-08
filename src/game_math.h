@@ -1,4 +1,5 @@
-#ifndef MATH_H
+#ifndef GAME_MATH_H
+
 #include "game_platform.h"
 #include <math.h>
 
@@ -21,27 +22,27 @@ V2(real32 x, real32 y)
     v2 Result = { x, y};
     return Result;
 }
-real32
+inline real32
 LengthSqr(v2 A)
 {
     real32 Result = A.x*A.x + A.y*A.y;
     return Result;
 }
-real32
+inline real32
 Length(v2 A)
 {
     real32 Result = (real32)sqrtf(LengthSqr(A));
     return Result;
 }
 
-v2
+inline v2
 operator *(v2 A, real32 B)
 {
     v2 Result = {A.x * B, A.y * B};
     return Result;
 }
 
-v2
+inline v2
 operator /(v2 A, real32 B)
 {
     real32 OneOver = 1.0f / B;
@@ -49,7 +50,7 @@ operator /(v2 A, real32 B)
     return Result;
 }
 
-v2
+inline v2
 operator -(v2 A, v2 B)
 {
     v2 Result = {A.x - B.x, A.y - B.y};
@@ -100,14 +101,14 @@ V3(v2 A, real32 z)
     return Result;
 }
 
-v3
+inline v3
 operator -(v3 A)
 {
     v3 Result = { -A.x, -A.y, -A.z};
     return Result;
 }
 
-v3
+inline v3
 Cross(v3 A, v3 B)
 {
     v3 Result = {
@@ -120,14 +121,14 @@ Cross(v3 A, v3 B)
     return Result;
 }
 
-v3
+inline v3
 operator -(v3 A, v3 B)
 {
     v3 Result = { A.x - B.x, A.y - B.y, A.z - B.z };
 
     return Result;
 }
-v3
+inline v3
 operator +(v3 A, v3 B)
 {
     v3 Result = { A.x + B.x, A.y + B.y, A.z + B.z };
@@ -135,7 +136,7 @@ operator +(v3 A, v3 B)
     return Result;
 }
 
-v3
+inline v3
 operator +=(v3 &A, v3 B)
 {
     A = A + B;
@@ -143,7 +144,7 @@ operator +=(v3 &A, v3 B)
     return A;
 }
 
-v3
+inline v3
 operator *(v3 A, real32 B)
 {
     v3 Result = {A.x * B, A.y * B, A.z * B};
@@ -152,7 +153,7 @@ operator *(v3 A, real32 B)
 }
 
 
-v3
+inline v3
 operator *=(v3 &A, real32 B)
 {
     A = A*B;
@@ -160,7 +161,7 @@ operator *=(v3 &A, real32 B)
     return A;
 }
 
-v3
+inline v3
 operator /(v3 A, real32 B)
 {
     v3 Result = A * (1.0f / B);
@@ -169,7 +170,7 @@ operator /(v3 A, real32 B)
 }
 
 
-v3
+inline v3
 VectorMultiply(v3 A, v3 B)
 {
     v3 R = {
@@ -181,19 +182,19 @@ VectorMultiply(v3 A, v3 B)
     return R;
 }
 
-real32
+inline real32
 Inner(v3 A, v3 B)
 {
     real32 Result = (A.x * B.x + A.y * B.y + A.z * B.z);
     return Result;
 }
-real32
+inline real32
 LengthSqr(v3 A)
 {
     real32 Result = Inner(A, A);
     return Result;
 }
-real32
+inline real32
 Length(v3 A)
 {
     real32 Result = sqrtf(LengthSqr(A));
@@ -252,14 +253,14 @@ V4(v3 v, real32 w)
     return Result;
 }
 
-real32
+inline real32
 Inner(v4 A, v4 B)
 {
     real32 Result = (A.x * B.x + A.y * B.y + A.z * B.z + A.w * B.w);
     return Result;
 }
 
-v3
+inline v3
 operator *(real32 R, v3 V)
 {
     v3 Result = { V.x * R, V.y * R, V.z * R };
@@ -315,7 +316,7 @@ M4(v3 V)
     return Result;
 }
 
-v4
+inline v4
 operator +(const v4& A, const v4& B)
 {
     v4 R = { A.x + B.x, A.y + B.y, A.z + B.z, A.w + B.w };
@@ -323,7 +324,7 @@ operator +(const v4& A, const v4& B)
     return R;
 }
 
-m4
+inline m4
 operator +(const m4& A, const m4& B)
 {
     m4 R;
@@ -336,7 +337,7 @@ operator +(const m4& A, const m4& B)
 }
 
 // pre-multiply
-v4
+inline v4
 operator *(const m4& M, const v4& V)
 {
     v4 R = V4( 
@@ -348,7 +349,7 @@ operator *(const m4& M, const v4& V)
     return R;
 }
 // post-multiply
-v4
+inline v4
 operator *(const v4& V, const m4& M)
 {
     v4 R = V4( 
@@ -360,7 +361,7 @@ operator *(const v4& V, const m4& M)
 
     return R;
 }
-m4
+inline m4
 operator *(const m4 &M1, const m4 &M2)
 {
     m4 MR;
@@ -381,5 +382,5 @@ Normalize(v3 A)
 }
 
 
-#define MATH_H
+#define GAME_MATH_H
 #endif
