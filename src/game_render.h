@@ -24,7 +24,7 @@ void
 CreatePipeline(game_memory * Memory,game_state * GameState);
 
 void
-EntityAdd3DRender(game_state * GameState, entity Entity, uint32 MeshID, v3 Color);
+EntityAdd3DRender(game_state * GameState, entity Entity, u32 MeshID, v3 Color);
 
 void
 BeginRender(game_state * GameState, v4 ClearColor);
@@ -41,19 +41,19 @@ RenderEntities(game_memory * Memory, game_state * GameState);
 
 void
 WorldInitializeView(game_state * GameState,
-               real32 FOV,
-               int32 ScreenWidth, int32 ScreenHeight, 
-               real32 n, real32 f, 
+               r32 FOV,
+               i32 ScreenWidth, i32 ScreenHeight, 
+               r32 n, r32 f, 
                v3 P, v3 WorldUp = DEFAULT_WORLD_UP);
 
 void 
-RotateFill(m4 * M, real32 AngleX, real32 AngleY, real32 AngleZ);
+RotateFill(m4 * M, r32 AngleX, r32 AngleY, r32 AngleZ);
 
 void
-MoveViewRight(game_state * GameState,real32 N);
+MoveViewRight(game_state * GameState,r32 N);
 
 void
-MoveViewForward(game_state * GameState,real32 N);
+MoveViewForward(game_state * GameState,r32 N);
 
 
 GAME_API inline v3
@@ -68,14 +68,14 @@ GetMatrixPos(m4 &M);
 GAME_API inline v3
 GetMatrixDirection(m4 &RotationMatrix);
 
-int32
+i32
 ViewLookAt(game_state * GameState, v3 P, v3 TargetP);
 
 void
 EntityLookAt(game_state * GameState,entity Entity, v3 P);
 
 m4
-ProjectionMatrix(real32 FOV,real32 AspectRatio, real32 n, real32 f);
+ProjectionMatrix(r32 FOV,r32 AspectRatio, r32 n, r32 f);
 
 
 #define GAME_RENDER_H

@@ -4,14 +4,17 @@
 #include "game_platform.h"
 #include "game_memory.h"
 #include "game_entity.h"
+#include "game_world.h"
 #include "game_mesh.h"
 #include "game_render.h"
+#include "game_platform.h"
+#include "game_animation.h"
 
 #include "data_load.h"
 #include "collision.h"
 #include "Quaternion.h"
 
-#define NULL_MESH   UINT32_MAX
+#define NULL_MESH   u32_MAX
 #define VALID_MESH_ID(ID) (ID != NULL_MESH)
 
 #define RGB_RED   V3(1.0f,0,0)
@@ -20,20 +23,21 @@
 #define RGB_WHITE V3(1.0f,1.0f,1.0f)
 #define RGB_GREY  V3(0.5f,0.5f,0.5f)
 
+#define LOG_P(P) Log("x: %f y: %f z: %f \n", P.x, P.y, P.z);
 
 struct sphere
 {
     v3 c;
-    real32 r;
+    r32 r;
 };
 
 
 struct scene;
 
-#define SCENE_LOADER(name) void name(game_state * GameState, int32 ScreenX, int32 ScreenY)
+#define SCENE_LOADER(name) void name(game_state * GameState, i32 ScreenX, i32 ScreenY)
 typedef SCENE_LOADER(scene_loader);
 
-#define SCENE_HANDLER(name) void name(game_state * GameState,game_input * Input,v3 dP, real32 Yaw, real32 Pitch, int32 ScreenX, int32 ScreenY)
+#define SCENE_HANDLER(name) void name(game_state * GameState,game_input * Input,v3 dP, r32 Yaw, r32 Pitch, i32 ScreenX, i32 ScreenY)
 typedef SCENE_HANDLER(scene_handler);
 
 
@@ -41,40 +45,41 @@ struct scene
 {
     scene_loader  * Loader;
     scene_handler * Handler;
-    bool32          Loaded;
+    b32          Loaded;
     entity * Entities[10];
-    uint32 EntityCount;
+    u32 EntityCount;
     entity * LightSources[1];
 };
 
 struct mouse_drag
 {
     v2 StartP;
-    real32 StartTime;
+    r32 StartTime;
 };
 
 struct camera
 {
-    real32 Yaw;
-    real32 Pitch;    
+    r32 Yaw;
+    r32 Pitch;    
     v3 D;
 };
 
 struct render_3D
 {
-    uint32 MeshID;
+    u32 MeshID;
     v3 Color;
 };
 
-struct entity_input
+struct bucket_world_pos
 {
-    v3 dP;
+    world_pos WorldP;
+    entity Entity;
+    bucket_world_pos * Next;
 };
-
 
 struct game_state
 {
-    bool32 IsInitialized;
+    b32 IsInitialized;
 
     memory_arena PermanentArena;
     memory_arena TemporaryArena;
@@ -83,38 +88,20 @@ struct game_state
     memory_arena VertexArena;
     memory_arena IndicesArena;
 
+    memory_arena WorldArena;
+    world World;
+
+    simulation * Simulation;
+
     thread_memory_arena * ThreadArena;
-    uint32 LimitThreadArenas;
+    u32 LimitThreadArenas;
 
-    int32 PipelineIndex;
-    int32 VertexShaders[2];
-    int32 FragmentShaders[2];
-
-    entity * Entities;
-    uint32 LimitEntities;
-    uint32 TotalEntities;
-
-    component_flags * EntitiesFlags;
-
-    entity * EntitiesParent;
-
-    // Component position/rotation/scale
-    entity_transform * EntitiesTransform;
-
-    // Component Input
-    entity_input * EntitiesInput;
-    entity_input * EntitiesMomentum;
-
-    // Component collision
-    collision * Collisions;
-
-    // Component rendering
-    render_3D * Render3D;
+    i32 PipelineIndex;
+    i32 VertexShaders[2];
+    i32 FragmentShaders[2];
 
     mesh * Meshes;
-    uint32 LimitMeshes;
-
-    entity Player;
+    u32 LimitMeshes;
 
     v3 WorldUp;
     m4 ViewMoveMatrix;
@@ -122,13 +109,10 @@ struct game_state
     m4 ViewTransform;
     m4 Projection;
 
-    bool32 CameraMode;
+    b32 CameraMode;
     camera Camera;
 
-    scene_loader * CurrentSceneLoader;
-    scene_handler * CurrentSceneHandler;
-    void * SceneData;
-    bool32 SceneLoaded;
+    animation DebugAnimate;
 };
 
 

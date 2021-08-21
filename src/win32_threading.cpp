@@ -1,27 +1,27 @@
 #include "game_platform.h"
 #include <windows.h>
 
-inline bool32
-CompareAndExchangeIfMatches(volatile uint32 * This, uint32 UpdateTo, uint32 IfMatchesThis)
+inline b32
+CompareAndExchangeIfMatches(volatile u32 * This, u32 UpdateTo, u32 IfMatchesThis)
 {
-    uint32 OriginalValue = 
+    u32 OriginalValue = 
         InterlockedCompareExchange(
             (LONG volatile *)This,
             UpdateTo,
             IfMatchesThis);
 
-    bool32 Result = (IfMatchesThis == OriginalValue);
+    b32 Result = (IfMatchesThis == OriginalValue);
 
     return Result;
 }
 
-bool32
+b32
 DoWorkOnQueue(thread_work_queue * Queue)
 {
-    bool32 GoToSleep = false;
+    b32 GoToSleep = false;
 
-    uint32 CurrentRead = Queue->CurrentRead;
-    uint32 NextReadEntry = (CurrentRead + 1) % ArrayCount(Queue->Entries);
+    u32 CurrentRead = Queue->CurrentRead;
+    u32 NextReadEntry = (CurrentRead + 1) % ArrayCount(Queue->Entries);
 
     if (CurrentRead != Queue->CurrentWrite)
     {
@@ -55,7 +55,7 @@ CompleteWorkQueue(thread_work_queue * Queue)
 void
 AddWorkToQueue(thread_work_queue * Queue, thread_work_handler * Handler, void * Data)
 {
-    uint32 NextWriteEntry = (Queue->CurrentWrite + 1) % ArrayCount(Queue->Entries);
+    u32 NextWriteEntry = (Queue->CurrentWrite + 1) % ArrayCount(Queue->Entries);
     Assert(NextWriteEntry != Queue->CurrentRead);
 
     thread_work_queue_entry * Entry = (Queue->Entries + Queue->CurrentWrite);
@@ -98,12 +98,12 @@ CleanWorkQueue(thread_work_queue * Queue)
 }
 
 void
-CreateWorkQueue(thread_work_queue * Queue, uint32 CountThreads)
+CreateWorkQueue(thread_work_queue * Queue, u32 CountThreads)
 {
     SECURITY_ATTRIBUTES * NullSecAttrib = 0;
     const char * NullName               = 0;
     DWORD NullReservedFlags             = 0;
-    int32 SizeStack                     = Megabytes(1);
+    i32 SizeStack                     = Megabytes(1);
     DWORD RunInmediate                  = 0;
     DWORD ThreadID;
 
@@ -114,7 +114,7 @@ CreateWorkQueue(thread_work_queue * Queue, uint32 CountThreads)
     HANDLE Semaphore = CreateSemaphoreExA( NullSecAttrib, 0, CountThreads, NullName, NullReservedFlags, DesiredAccess);
     Queue->Semaphore = Semaphore;
 
-    for (uint32 ThreadIndex = 0;
+    for (u32 ThreadIndex = 0;
                 ThreadIndex < CountThreads;
                 ++ThreadIndex)
     {

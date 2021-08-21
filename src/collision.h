@@ -19,7 +19,7 @@ struct collision
     collision_type CollisionType;
 };
 
-bool32
+b32
 CollisionTestAABBAABB(AABB a, AABB b);
 
 void 

@@ -33,15 +33,60 @@ RenderEntities(game_memory * Memory, game_state * GameState)
     v3 ViewPos = GetViewPos(GameState);
     v3 ViewDirection = GetMatrixDirection(GameState->ViewRotationMatrix);
 
-    for (uint32 EntityIndex = 0;
+    simulation_iterator SimIter = BeginSimIterator(&GameState->World, GameState->Simulation);
+
+    for (entity * Entity = SimIter.Entity;
+            Entity;
+            Entity = AdvanceSimIterator(&SimIter))
+    {
+        entity_transform * T = &Entity->Transform;
+        mesh * Mesh = GetMesh(Memory,GameState,0);
+
+        if (Mesh->Loaded)
+        {
+            m4 ModelTransform = T->WorldT;
+
+            mesh_push_constant Constants;
+            m4 MVP = GameState->Projection * GameState->ViewTransform * ModelTransform;
+
+            Constants.RenderMatrix = MVP;
+            Constants.SourceLight = SourceLight;
+            Constants.Model = ModelTransform;
+            v4 ColorDebug = V4(V3(0.0f),1.0f);
+            ColorDebug._V[Entity->ID.ID % 3] = 1.0f;
+            Constants.DebugColor = ColorDebug;
+            Constants.DebugColor = V4(Entity->Color,1.0f);
+
+            RenderPushVertexConstant(sizeof(mesh_push_constant),(void *)&Constants);
+            //RenderPushMesh(1,(Mesh->IndicesSize / sizeof(uint16)),Mesh->OffsetVertices,Mesh->OffsetIndices);
+            //RenderPushMesh(1, Mesh->VertexSize / sizeof(vertex_point), 0);
+            RenderPushMesh(1, Mesh->VertexSize / sizeof(vertex_point), Mesh->OffsetVertices);
+        }
+    }
+
+}
+
+#if 0
+void
+RenderEntities(game_memory * Memory, game_state * GameState)
+{
+    v3 SourceLight = V3(0,10.0f,0);
+    v4 Color = V4(1.0f,0.5f,0.2f,1.0f);
+
+    UpdateView(GameState);
+
+    v3 ViewPos = GetViewPos(GameState);
+    v3 ViewDirection = GetMatrixDirection(GameState->ViewRotationMatrix);
+
+    for (u32 EntityIndex = 0;
                 EntityIndex < GameState->TotalEntities;
                 ++EntityIndex)
     {
-        uint32 EntityID = GameState->Entities[EntityIndex].ID;
+        u32 EntityID = GameState->Entities[EntityIndex].ID;
         entity_transform * T = (GameState->EntitiesTransform + EntityID);
 
         v3 ViewToEntity = GetMatrixPos(T->WorldP) - ViewPos;
-        real32 ViewProjectionOntoEntity = Inner(ViewToEntity,ViewDirection); 
+        r32 ViewProjectionOntoEntity = Inner(ViewToEntity,ViewDirection); 
 
         // We are culling entities behind camera
         // TODO: Fix ground as it will be behind camera and dissapear
@@ -74,6 +119,7 @@ RenderEntities(game_memory * Memory, game_state * GameState)
         }
     }
 }
+#endif
 
 inline void
 Translate(m4 &M,v3 P)
@@ -86,13 +132,13 @@ Translate(m4 &M,v3 P)
 
 void
 WorldInitializeView(game_state * GameState,
-               real32 FOV,
-               int32 ScreenWidth, int32 ScreenHeight, 
-               real32 n, real32 f, 
+               r32 FOV,
+               i32 ScreenWidth, i32 ScreenHeight, 
+               r32 n, r32 f, 
                v3 P, v3 WorldUp)
 {
     GameState->WorldUp = WorldUp;
-    GameState->Projection = ProjectionMatrix(FOV,((real32)ScreenWidth / (real32)ScreenHeight), n,f);
+    GameState->Projection = ProjectionMatrix(FOV,((r32)ScreenWidth / (r32)ScreenHeight), n,f);
 
     // Depends on world up
     Translate(GameState->ViewMoveMatrix,-P);
@@ -101,7 +147,7 @@ WorldInitializeView(game_state * GameState,
 }
 
 void
-MoveViewRight(game_state * GameState,real32 N)
+MoveViewRight(game_state * GameState,r32 N)
 {
     v3 P = GetViewPos(GameState);
     v3 Right = GetMatrixRight(GameState->ViewRotationMatrix);
@@ -112,40 +158,40 @@ MoveViewRight(game_state * GameState,real32 N)
     UpdateView(GameState);
 }
 void
-MoveViewForward(game_state * GameState,real32 N)
+MoveViewForward(game_state * GameState,r32 N)
 {
     v3 P = GetViewPos(GameState);
     v3 Out = GetMatrixDirection(GameState->ViewRotationMatrix);
     // do not alter Y
-    //Out.y = 0.0f;
+    Out.y = 0.0f;
     v3 R = P + (N * Out);
     Translate(GameState->ViewMoveMatrix, -R);
     UpdateView(GameState);
 }
 
 void
-RotateFill(m4 * M, real32 AngleX, real32 AngleY, real32 AngleZ)
+RotateFill(m4 * M, r32 AngleX, r32 AngleY, r32 AngleZ)
 { 
-    real32 cx = cosf(AngleX);
-    real32 sx = sinf(AngleX);
-    real32 cy = cosf(AngleY);
-    real32 sy = sinf(AngleY);
-    real32 cz = cosf(AngleZ);
-    real32 sz = sinf(AngleZ);
+    r32 cx = cosf(AngleX);
+    r32 sx = sinf(AngleX);
+    r32 cy = cosf(AngleY);
+    r32 sy = sinf(AngleY);
+    r32 cz = cosf(AngleZ);
+    r32 sz = sinf(AngleZ);
 
-    m4 AxisZ = {
+    m4 AxisX = {
         1, 0 , 0, 0,
         0, cx, -sx, 0,
         0, sx, cx, 0,
         0, 0, 0, 1
     };
-    m4 AxisX = {
+    m4 AxisY = {
         cy, 0, sy, 0,
         0,  1,  0,  0,
         -sy, 0,  cy, 0,
         0,  0,  0,  1
     };
-    m4 AxisY = {
+    m4 AxisZ = {
         cz, -sz, 0, 0,
         sz,  cz, 0, 0,
         0,    0,  1, 0,
@@ -191,14 +237,14 @@ GetMatrixDirection(m4 &RotationMatrix)
     return D;
 }
 
-int32
+i32
 ViewLookAt(game_state * GameState, v3 P, v3 TargetP)
 {
     v3 Right, Up, Out;
 
     Out = TargetP - P;
 
-    real32 LengthOut = Length(Out);
+    r32 LengthOut = Length(Out);
 
     if (LengthOut < 0.000001)
     {
@@ -209,7 +255,7 @@ ViewLookAt(game_state * GameState, v3 P, v3 TargetP)
 
     Up = GameState->WorldUp - (Inner(GameState->WorldUp, Out)*Out);
 
-    real32 LengthSqrUp = LengthSqr(Up);
+    r32 LengthSqrUp = LengthSqr(Up);
 
     // too close
     Assert(LengthSqrUp > 0.000001f);
@@ -245,10 +291,10 @@ ViewLookAt(game_state * GameState, v3 P, v3 TargetP)
     return 0;
 }
 
-inline real32
+inline r32
 GetYawFromRotationMatrix(m4 * R)
 {
-    real32 Yaw = atanf(R->Columns[0].y / R->Columns[0].x);
+    r32 Yaw = atanf(R->Columns[0].y / R->Columns[0].x);
     return Yaw;
 }
 #if 0
@@ -256,7 +302,7 @@ inline void
 UpdateEntityYaw(game_state * GameState, entity * Entity)
 {
     m4 * R = &GameState->EntitiesTransform[Entity->ID].LocalR;
-    real32 Yaw = GetYawFromRotationMatrix(R); 
+    r32 Yaw = GetYawFromRotationMatrix(R); 
     GameState->EntitiesTransform[Entity->ID].Yaw = Yaw;
 }
 
@@ -295,17 +341,17 @@ EntityLookAt(game_state * GameState,entity Entity, v3 P)
 #endif
 
 m4
-ProjectionMatrix(real32 FOV,real32 AspectRatio, real32 n, real32 f)
+ProjectionMatrix(r32 FOV,r32 AspectRatio, r32 n, r32 f)
 {
     m4 m = {};
 
-    real32 HalfTanFOV = (real32)(tan(FOV * 0.5f));
+    r32 HalfTanFOV = (r32)(tan(FOV * 0.5f));
 #if 1
-    real32 A = -(f + n) / (f - n);
-    real32 B = (-2*f*n) / (f - n);
+    r32 A = -(f + n) / (f - n);
+    r32 B = (-2*f*n) / (f - n);
 #else
-    real32 A = -f / (f - n);
-    real32 B = (-2*f*n) / (f - n);
+    r32 A = -f / (f - n);
+    r32 B = (-2*f*n) / (f - n);
 #endif
 
     m[0].x = 1.0f / (HalfTanFOV * AspectRatio); // (2 * n) / (r - l);
@@ -320,19 +366,10 @@ ProjectionMatrix(real32 FOV,real32 AspectRatio, real32 n, real32 f)
     return m;
 } 
 
-void
-EntityAdd3DRender(game_state * GameState, entity Entity, uint32 MeshID, v3 Color)
-{
-    Assert(VALID_MESH_ID(MeshID));
-    (GameState->Render3D + Entity.ID)->MeshID = MeshID;
-    (GameState->Render3D + Entity.ID)->Color = Color;
-    EntityAddFlag(GameState,Entity,component_render_3d);
-}
-
-int32
+i32
 LoadShader(game_memory * Memory,memory_arena * Arena,const char * Filepath)
 {
-    int32 Result = -1;
+    i32 Result = -1;
     file_contents GetFileResult = GetFileContents(Memory, Arena,Filepath);
     if (GetFileResult.Success)
     {

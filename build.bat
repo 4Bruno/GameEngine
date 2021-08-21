@@ -25,6 +25,9 @@ erase game_*.pdb
 
 set WinLibs=kernel32.lib User32.lib Gdi32.lib shell32.lib vcruntime.lib winmm.lib
 set CompilationFlags=%BUILD_COMPILATION_FLAGS%
+if !%Mode%!==!release!  (
+    set CompilationFlags=%CompilationFlags% /O2
+)
 set ExternalLibs=
 set IncludePaths=/I..\..\include
 set GenerateCompleteDebuggingInfo=/Zi
@@ -38,26 +41,14 @@ set IgnoreWarnings=%IWPadding% %IWInitializedNotReferenced% %IWUnusedParam% %IWN
 set VulkanLib=vulkan_initializer
 set dllname=%VulkanLib%
 cl /nologo ^
-  /LD ^
-  %WarningLevel% ^
-  %IgnoreWarnings% ^
-  %GenerateCompleteDebuggingInfo% ^
-  %CompilationFlags% ^
-  %IncludePaths% ^
-  ..\%dllname%.cpp ^
-  /link ^
-  /DLL ^
+ /LD %WarningLevel% %IgnoreWarnings% %GenerateCompleteDebuggingInfo% %CompilationFlags% %IncludePaths% ..\%dllname%.cpp /link ^
+ /DLL ^
   /incremental:no /opt:ref /PDB:%VulkanLib%.pdb ^
   %ExternalLibs%
 
 set dllname=win32_platform
 cl /nologo ^
-  %WarningLevel% ^
-  %IgnoreWarnings% ^
-  %GenerateCompleteDebuggingInfo% ^
-  %CompilationFlags% ^
-  %IncludePaths% ^
-  ..\%dllname%.cpp ^
+ %WarningLevel% %IgnoreWarnings% %GenerateCompleteDebuggingInfo% %CompilationFlags% %IncludePaths% ..\%dllname%.cpp ^
   /Fm%dllname%.map ^
   /link ^
   /PDB:%dllname%.pdb ^
@@ -68,13 +59,8 @@ set dllname=game
 set dllnameOutput=%dllname%%Dllreload%
 cl /nologo ^
   /LD /MTd ^
-  /Fm%dllname%.map ^
-  %WarningLevel% ^
-  %IgnoreWarnings% ^
-  %GenerateCompleteDebuggingInfo% ^
-  %CompilationFlags% ^
-  %IncludePaths% ^
-  ..\%dllname%.cpp ..\data_load.cpp ^
+ /Fm%dllname%.map %WarningLevel% %IgnoreWarnings% %GenerateCompleteDebuggingInfo% %CompilationFlags% %IncludePaths% ..\%dllname%.cpp ^
+  ..\data_load.cpp ..\game_memory.cpp ..\game_entity.cpp ..\Quaternion.cpp ..\game_render.cpp ..\game_mesh.cpp ..\game_world.cpp ..\game_simulation.cpp ^
   /Fe:%dllnameOutput%.dll ^
   /link ^
   /DLL ^

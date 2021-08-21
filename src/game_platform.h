@@ -8,6 +8,8 @@
 #include <intrin.h>
 
 #define GAME_API __declspec( dllexport )
+#define IS_NOT_NULL(Ptr) (Ptr != 0)
+#define IS_NULL(Ptr) (Ptr == 0)
 
 #define Kilobytes(x) x*1024
 #define Megabytes(x) x*1024*Kilobytes(1)
@@ -21,31 +23,33 @@
 #define BIT_SET(Byte,Bit) ((Byte) & (1<<Bit))
 
 #define Log(format, ...) printf(format, __VA_ARGS__)
+#define Logn(format, ...) printf(format "\n", __VA_ARGS__)
 
-typedef int32_t     int32;
-typedef uint8_t     uint8;
-typedef uint16_t    uint16;
-typedef uint32_t    uint32;
-typedef uint64_t    uint64;
-typedef int32       bool32;
-typedef float       real32;
-typedef double      real64;
+typedef int16_t  i16;
+typedef int32_t  i32;
+typedef uint8_t  u8;
+typedef uint16_t u16;
+typedef uint32_t u32;
+typedef uint64_t u64;
+typedef int32_t  b32;
+typedef float    r32;
+typedef double   r64;
 
-#define PI 3.14159265358979323846
+#define PI (r32)3.14159265358979323846
 
-#define VULKAN_CREATE_SURFACE(name) int32 name(void * SurfaceData, void * pfnOSSurface, VkInstance Instance, VkSurfaceKHR * Surface)
+#define VULKAN_CREATE_SURFACE(name) i32 name(void * SurfaceData, void * pfnOSSurface, VkInstance Instance, VkSurfaceKHR * Surface)
 typedef VULKAN_CREATE_SURFACE(vulkan_create_surface);
 
 struct platform_open_file_result
 {
-    bool32 Success;    
+    b32 Success;    
     void * Handle;
-    uint32 Size;
+    u32 Size;
 };
 
 #define DEBUG_OPEN_FILE(name) platform_open_file_result name(const char * Filepath)
 typedef DEBUG_OPEN_FILE(debug_open_file);
-#define DEBUG_READ_FILE(name) bool32 name(platform_open_file_result OpenFileResult, void * Buffer)
+#define DEBUG_READ_FILE(name) b32 name(platform_open_file_result OpenFileResult, void * Buffer)
 typedef DEBUG_READ_FILE(debug_read_file);
 #define DEBUG_CLOSE_FILE(name) void name(platform_open_file_result OpenFileResult)
 typedef DEBUG_CLOSE_FILE(debug_close_file);
@@ -75,11 +79,11 @@ struct thread_work_queue
 {
     void * Semaphore;
 
-    volatile uint32 ThingsToDo;
-    volatile uint32 ThingsDone;
+    volatile u32 ThingsToDo;
+    volatile u32 ThingsDone;
 
-    volatile uint32 CurrentRead;
-    volatile uint32 CurrentWrite;
+    volatile u32 CurrentRead;
+    volatile u32 CurrentWrite;
 
     thread_work_queue_entry Entries[256];
 };
@@ -87,16 +91,16 @@ struct thread_work_queue
 
 struct game_button
 {
-    bool32 IsPressed;
-    bool32 WasPressed;
-    uint32 Transitions;
+    b32 IsPressed;
+    b32 WasPressed;
+    u32 Transitions;
 };
 
 struct game_controller
 {
-    real32 MouseX;
-    real32 MouseY;
-    int32 RelMouseX, RelMouseY;
+    r32 MouseX;
+    r32 MouseY;
+    i32 RelMouseX, RelMouseY;
     game_button Numbers[10];
     union
     {
@@ -119,22 +123,22 @@ struct game_controller
 };
 struct game_input
 {
-    bool32 ShaderHasChanged;
-    bool32 Reloaded;
-    bool32 CloseGame; // game -> platform
-    real32 DtFrame;
-    real32 TimeElapsed;
+    b32 ShaderHasChanged;
+    b32 Reloaded;
+    b32 CloseGame; // game -> platform
+    r32 DtFrame;
+    r32 TimeElapsed;
     game_controller Controller;
-    bool32 LockMouse;
+    b32 LockMouse;
 };
 
 struct game_memory
 {
     void * PermanentMemory;
-    uint32 PermanentMemorySize;
+    u32 PermanentMemorySize;
 
     void * TransientMemory;
-    uint32 TransientMemorySize;
+    u32 TransientMemorySize;
     
     debug_open_file  * DebugOpenFile;
     debug_read_file  * DebugReadFile;
@@ -151,7 +155,7 @@ struct game_memory
 // defined in game.h used across all headers
 struct game_state;
 
-#define GAME_UPDATE_AND_RENDER(name) void name(game_memory * Memory,game_input * Input, int32 ScreenWidth, int32 ScreenHeight)
+#define GAME_UPDATE_AND_RENDER(name) void name(game_memory * Memory,game_input * Input, i32 ScreenWidth, i32 ScreenHeight)
 typedef GAME_UPDATE_AND_RENDER(game_update_and_render);
 
 #define GAME_PLATFORM_H

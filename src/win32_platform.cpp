@@ -32,10 +32,10 @@
 #define QUAD_TO_MS(Q) Q.QuadPart * (1.0f / 1000.0f)
 
 
-global_variable bool32  GlobalAppRunning = false;
+global_variable b32  GlobalAppRunning = false;
 global_variable RECT GlobalOldRectClip;
 global_variable RECT GlobalNewRectClip;
-global_variable bool32 AllowMouseConfinement = false;
+global_variable b32 AllowMouseConfinement = false;
 
 
 /* BEGIN of OS Specific calls to be replicated in other OS */
@@ -43,25 +43,25 @@ global_variable bool32 AllowMouseConfinement = false;
 LRESULT CALLBACK 
 WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam);
 
-bool32
+b32
 Win32BuildRelativePath(char * Buffer, const char * Filename)
 {
-    uint32 Size = 255;
+    u32 Size = 255;
     char cd[255];
     DWORD cdSize= GetModuleFileNameA(0,&cd[0],Size);
 
-    bool32 Result = false;
+    b32 Result = false;
 
     if (Result)
     {
-        uint32 c = 0;
+        u32 c = 0;
         for (;
              c < cdSize;
              ++c)
         {
             Buffer[c] = cd[c];
         }
-        for (uint32 i = 0;
+        for (u32 i = 0;
              ((c + i < Size) && Filename[i]);
              ++i)
         {
@@ -119,7 +119,7 @@ Win32ConfineCursor(HWND WindowHandle)
 
     //SetCursorPos(cx + 1,cy + 1);
 
-    int32 ConfineBoxSize = (int32)APP_MOUSE_CONFINE_RECT_SIZE;
+    i32 ConfineBoxSize = (i32)APP_MOUSE_CONFINE_RECT_SIZE;
     Rect.left   = cx - ConfineBoxSize;
     Rect.right  = cx + ConfineBoxSize;
     Rect.top    = cy - ConfineBoxSize;
@@ -205,7 +205,7 @@ GetVulkanHandler()
 /* END of vulkan OS calls */
 
 void
-UpdateGameButton(game_button * Button, bool32 IsPressed)
+UpdateGameButton(game_button * Button, b32 IsPressed)
 {
     Button->WasPressed = !IsPressed;
     Button->IsPressed = IsPressed;
@@ -214,7 +214,7 @@ UpdateGameButton(game_button * Button, bool32 IsPressed)
 
 
 void
-HandleInput(game_controller * Controller,HWND WindowHandle, int32 Width, int32 Height)
+HandleInput(game_controller * Controller,HWND WindowHandle, i32 Width, i32 Height)
 {
     MSG msg = {};
     for (;;)
@@ -234,13 +234,13 @@ HandleInput(game_controller * Controller,HWND WindowHandle, int32 Width, int32 H
             case WM_KEYDOWN: 
             case WM_KEYUP:
             {
-                uint32 VKCode = (uint32)msg.wParam;
+                u32 VKCode = (u32)msg.wParam;
 
-                bool32 IsAltPressed = (msg.lParam & (1 << 29));
+                b32 IsAltPressed = (msg.lParam & (1 << 29));
                 // https://docs.microsoft.com/en-us/windows/win32/inputdev/using-keyboard-input
-                bool32 IsShiftPressed = (GetKeyState(VK_SHIFT) & (1 << 15));
-                bool32 IsPressed = (msg.lParam & (1UL << 31)) == 0;
-                bool32 WasPressed = (msg.lParam & (1 << 30)) != 0;
+                b32 IsShiftPressed = (GetKeyState(VK_SHIFT) & (1 << 15));
+                b32 IsPressed = (msg.lParam & (1UL << 31)) == 0;
+                b32 WasPressed = (msg.lParam & (1 << 30)) != 0;
 
                 if (IsPressed != WasPressed)
                 {
@@ -287,14 +287,14 @@ HandleInput(game_controller * Controller,HWND WindowHandle, int32 Width, int32 H
             {
                 RECT Rect;
                 GetWindowRect(WindowHandle, &Rect);
-                int32 yHeight =  Rect.bottom - Rect.top;
-                int32 xWidth = Rect.right - Rect.left;
-                int32 xPos = (int32)GET_X_LPARAM(msg.lParam) + 1;
-                int32 yPos = (int32)GET_Y_LPARAM(msg.lParam) + 1; 
-                real32 HalfWidth = ((real32)(Width) * 0.5f);
-                real32 HalfHeight = ((real32)(Height) * 0.5f);
-                Controller->MouseX = ((real32)xPos - HalfWidth)  / APP_MOUSE_CONFINE_RECT_SIZE;
-                Controller->MouseY = ((real32)yPos - HalfHeight) / APP_MOUSE_CONFINE_RECT_SIZE;
+                i32 yHeight =  Rect.bottom - Rect.top;
+                i32 xWidth = Rect.right - Rect.left;
+                i32 xPos = (i32)GET_X_LPARAM(msg.lParam) + 1;
+                i32 yPos = (i32)GET_Y_LPARAM(msg.lParam) + 1; 
+                r32 HalfWidth = ((r32)(Width) * 0.5f);
+                r32 HalfHeight = ((r32)(Height) * 0.5f);
+                Controller->MouseX = ((r32)xPos - HalfWidth)  / APP_MOUSE_CONFINE_RECT_SIZE;
+                Controller->MouseY = ((r32)yPos - HalfHeight) / APP_MOUSE_CONFINE_RECT_SIZE;
             } break;
 #endif
             case WM_INPUT:
@@ -347,8 +347,8 @@ WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
         case WM_SIZING:
         {
             RECT * Rect = (RECT *)lParam;
-            int32 Height =  Rect->bottom - Rect->top;
-            int32 Width = Rect->right - Rect->left;
+            i32 Height =  Rect->bottom - Rect->top;
+            i32 Width = Rect->right - Rect->left;
             if ((Height < APP_WINDOW_HEIGHT))
             {
                 Rect->bottom = Rect->top + APP_WINDOW_HEIGHT;
@@ -362,8 +362,8 @@ WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
         {
             RECT Rect;
             GetWindowRect(hWnd, &Rect);
-            int32 Height =  Rect.bottom - Rect.top;
-            int32 Width = Rect.right - Rect.left;
+            i32 Height =  Rect.bottom - Rect.top;
+            i32 Width = Rect.right - Rect.left;
             if (VulkanOnWindowResize(Width,Height))
             {
                 OutputDebugStringA("Error swap chain creation during window resize\n");
@@ -408,7 +408,7 @@ struct game_state
 
 
 
-bool32
+b32
 LoadGameDll(game_state * GameState)
 {
     if (GameState->Lib)
@@ -444,7 +444,7 @@ LoadGameDll(game_state * GameState)
         }
     }
 
-    bool32 Result = (GameState->Lib && GameState->pfnGameUpdateAndRender);
+    b32 Result = (GameState->Lib && GameState->pfnGameUpdateAndRender);
 
     return Result;
 }
@@ -458,15 +458,15 @@ int main()
 {
     /* ------------------------- THREADS ----------------------------------- */
     thread_work_queue HighPriorityWorkQueue = {};
-    uint32 HighPriorityWorkQueueThreadCount = 8;
+    u32 HighPriorityWorkQueueThreadCount = 8;
     CreateWorkQueue(&HighPriorityWorkQueue, HighPriorityWorkQueueThreadCount);
 
     thread_work_queue LowPriorityWorkQueue = {};
-    uint32 LowPriorityWorkQueueThreadCount = 4;
+    u32 LowPriorityWorkQueueThreadCount = 4;
     CreateWorkQueue(&LowPriorityWorkQueue, LowPriorityWorkQueueThreadCount);
 
     thread_work_queue RenderWorkQueue = {};
-    uint32 RenderWorkQueueCount = 1;
+    u32 RenderWorkQueueCount = 1;
     CreateWorkQueue(&RenderWorkQueue, 1);
     /* ------------------------- THREADS ----------------------------------- */
 
@@ -509,9 +509,9 @@ int main()
 
     if (LoadGameDll(&GameState))
     {
-        uint32 PermanentMemorySize = Megabytes(30);
+        u32 PermanentMemorySize = Megabytes(30);
         void * PermanentMemory = VirtualAlloc(0, PermanentMemorySize, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
-        uint32 TransientMemorySize = Gigabytes(1);
+        u32 TransientMemorySize = Gigabytes(1);
         void * TransientMemory = VirtualAlloc(0, TransientMemorySize, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
 
         game_memory GameMemory     = {};
@@ -520,9 +520,9 @@ int main()
         GameMemory.DebugReadFile       = Win32ReadFile;       // debug_read_file DebugReadFile;
         GameMemory.DebugCloseFile      = Win32CloseFile;      // debug_close_file DebugCloseFile;
         GameMemory.PermanentMemory     = PermanentMemory;     // Void * PermanentMemory;
-        GameMemory.PermanentMemorySize = PermanentMemorySize; // uint32 PermanentMemorySize;
+        GameMemory.PermanentMemorySize = PermanentMemorySize; // u32 PermanentMemorySize;
         GameMemory.TransientMemory     = TransientMemory;     // Void * TransientMemory;
-        GameMemory.TransientMemorySize = TransientMemorySize; // uint32 TransientMemorySize;
+        GameMemory.TransientMemorySize = TransientMemorySize; // u32 TransientMemorySize;
 
         GameMemory.AddWorkToWorkQueue    = AddWorkToQueue;
         GameMemory.CompleteWorkQueue     = CompleteWorkQueue;
@@ -532,8 +532,8 @@ int main()
 
         /* ------------------------- END GAME MEMORY ------------------------- */
 
-        int32 ExpectedFramesPerSecond = 30;
-        real32 ExpectedMillisecondsPerFrame = (1.0f / (real32)ExpectedFramesPerSecond) * 1000.0f;
+        i32 ExpectedFramesPerSecond = 30;
+        r32 ExpectedMillisecondsPerFrame = (1.0f / (r32)ExpectedFramesPerSecond) * 1000.0f;
         GlobalAppRunning = true;
         game_input Input = {};
         Input.DtFrame = ExpectedMillisecondsPerFrame / 1000.0f;
@@ -550,12 +550,12 @@ int main()
 
         Win32RegisterRawInput(WindowHandle);
 
-        //bool32 AllowMouseConfinement = false;
+        //b32 AllowMouseConfinement = false;
 
         GameState.ShaderVertexLastModified = Win32GetLastWriteTime((char *)SHADER_VERTEX_DEBUG);
 
-        uint64 GameCycles[100] = {};
-        uint32 CurrentCycle = 0;
+        u64 GameCycles[100] = {};
+        u32 CurrentCycle = 0;
 
         // Main loop
         while (GlobalAppRunning)
@@ -585,17 +585,17 @@ int main()
 #endif
             LARGE_INTEGER TimeElapsed = 
                 Win32QueryPerformanceDiff(Win32QueryPerformance(), StartingTime, PerfFreq);
-            Input.TimeElapsed = (real32)(TimeElapsed.QuadPart * (1.0f / 1000000.0f));
+            Input.TimeElapsed = (r32)(TimeElapsed.QuadPart * (1.0f / 1000000.0f));
             LARGE_INTEGER TimeFrameStart = Win32QueryPerformance();
 
-            for (uint32 ButtonIndex = 0;
+            for (u32 ButtonIndex = 0;
                         ButtonIndex < ArrayCount(Input.Controller.Buttons);
                         ++ButtonIndex)
             {
                 game_button * Button = Input.Controller.Buttons + ButtonIndex;
                 Button->WasPressed = Button->IsPressed;
             }
-            for (uint32 ButtonIndex = 0;
+            for (u32 ButtonIndex = 0;
                         ButtonIndex < ArrayCount(Input.Controller.Numbers);
                         ++ButtonIndex)
             {
@@ -611,8 +611,8 @@ int main()
             // TODO: function call
             RECT Rect;
             GetWindowRect(WindowHandle, &Rect);
-            int32 Height =  Rect.bottom - Rect.top;
-            int32 Width = Rect.right - Rect.left;
+            i32 Height =  Rect.bottom - Rect.top;
+            i32 Width = Rect.right - Rect.left;
 
             //Log("Left: %i Bottom: %i\n",Rect.left, Rect.bottom - Rect.top);
 
@@ -635,14 +635,14 @@ int main()
             GameCycles[CurrentCycle++] = GameCycleStart;
             CurrentCycle = CurrentCycle % ArrayCount(GameCycles);
             
-            real64 AvgCycle = 0.0f;
-            for (uint32 CyCleIndex = 0;
+            r64 AvgCycle = 0.0f;
+            for (u32 CyCleIndex = 0;
                         CyCleIndex < ArrayCount(GameCycles);
                         ++CyCleIndex)
             {
-                AvgCycle += (real64)GameCycles[CyCleIndex];
+                AvgCycle += (r64)GameCycles[CyCleIndex];
             }
-            AvgCycle /= (real64)ArrayCount(GameCycles);
+            AvgCycle /= (r64)ArrayCount(GameCycles);
 
             //Log("Avg: %f Last: %I64u\n",AvgCycle,GameCycleStart);
 #else
@@ -651,7 +651,7 @@ int main()
 
             LARGE_INTEGER TimeFrameElapsed = 
                 Win32QueryPerformanceDiff(Win32QueryPerformance(), TimeFrameStart, PerfFreq);
-            real32 TimeFrameRemaining = ExpectedMillisecondsPerFrame - QUAD_TO_MS(TimeFrameElapsed);
+            r32 TimeFrameRemaining = ExpectedMillisecondsPerFrame - QUAD_TO_MS(TimeFrameElapsed);
 
             //Log("Time frame remaining %f\n",TimeFrameRemaining);
 
@@ -667,7 +667,7 @@ int main()
                 }
             }
 
-            //Log("Time frame work %f\n",(real32)(TimeFrameElapsed.QuadPart * (1.0f / 1000.0f)));
+            //Log("Time frame work %f\n",(r32)(TimeFrameElapsed.QuadPart * (1.0f / 1000.0f)));
 
         } // AppRunning loop
 

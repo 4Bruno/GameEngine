@@ -3,87 +3,74 @@
 #include "game_platform.h"
 #include "game_math.h"
 #include "Quaternion.h"
+#include "game_world.h"
 
 #define NULL_ENTITY UINT32_MAX
 #define VALID_ENTITY(E) (E.ID != NULL_ENTITY)
 
-enum component_flags
+struct entity_transform
 {
-    component_none = 0 << 0,
+    v3 LocalP; // 12
+    v3 LocalS; // 24
+    Quaternion LocalR; // 40
 
-    component_input     = 1 << 0,
-    component_collision = 1 << 1,
-    component_render_3d = 1 << 2,
-    component_transform = 1 << 3,
-    component_momentum  = 1 << 4,
-    component_ground    = 1 << 5
+    r32 Yaw, Pitch; // 48
 
+    m4 WorldP; // 12 * 4 = 48 + 48 = 96
+    v3 WorldS; // 108
+    Quaternion WorldR; // 122
+
+    m4 WorldT; // 122 + 48 = 170
+};
+
+struct entity_id
+{
+    u32 ID;
 };
 
 struct entity
 {
-    uint32 ID;
+    // Global identifier. Must be unique
+    entity_id ID;    // 4
+    // Position relative to the world center
+    world_pos WorldP; // 28
+
+    component_flags Flags; // 32
+
+    v3 Color; // 36
+
+    entity_transform Transform; // 170 + 36 = 206
 };
 
-struct entity_transform
+struct entity_input
 {
-    v3 LocalP;
-    v3 LocalS;
-    Quaternion LocalR;
-
-    real32 Yaw, Pitch;
-
-    m4 WorldP;
-    v3 WorldS;
-    Quaternion WorldR;
-
-    m4 WorldT;
+    v3 dP;
+    v3 EulerXYZ;
 };
+
 
 struct async_update_entities_model
 {
-    uint32 StartIndex;
-    uint32 EntitiesCount;
+    u32 StartIndex;
+    u32 EntitiesCount;
     game_state * GameState;
 };
 
-entity
-NullEntity();
-
-entity_transform *
-GetEntityTransform(game_state * GameState,entity Entity);
-
-v3
-GetEntityPos(game_state * GameState,entity Entity);
-
-entity
-GetEntity(game_state * GameState,uint32 Index);
-
-entity
-AddEntity(game_state * GameState);
-
-void
-EntityAddTranslation(game_state * GameState, entity Entity, entity Parent, v3 P, v3 Scale, real32 Speed);
-
-void
-EntityRemoveFlag(game_state * GameState, entity Entity, component_flags Flag);
-
-void
-EntityAddFlag(game_state * GameState, entity Entity, component_flags Flag);
-
-bool32
-EntityHasFlag(game_state * GameState,uint32 EntityIndex,component_flags Flag);
-
-v3
-TestEntityMoveForward(entity_transform * T, v3 * dP);
-
-void
-RotateEntityRight(entity_transform * T, real32 Angle);
-
-void
-RotateEntityFill(entity_transform * T, real32 AngleX, real32 AngleY, real32 AngleZ);
-
 THREAD_WORK_HANDLER(AsyncUpdateEntitiesModel);
 
+inline b32 
+EntityHasFlag(entity * Entity, component_flags Flag)
+{
+    return (Entity->Flags & Flag);
+}
+
+void
+EntityAddTranslation(entity * Entity, entity * Parent, v3 P, v3 Scale, r32 Speed);
+
+inline entity
+NullEntity()
+{
+    return { NULL_ENTITY };
+}
 #define GAME_ENTITY_H
 #endif

@@ -2,26 +2,26 @@
 #include <float.h>
 
 
-inline bool32 
+inline b32 
 TestSphereSphere(sphere a, sphere b)
 {
     v3 d = a.c - b.c;
-    real32 LengthSquare = LengthSqr(d);
-    real32 SumR = a.r + b.r;
+    r32 LengthSquare = LengthSqr(d);
+    r32 SumR = a.r + b.r;
 
-    bool32 Result = (LengthSquare <= (SumR * SumR));
+    b32 Result = (LengthSquare <= (SumR * SumR));
 
     return Result;
 }
 
 void
-FindPointsFarthestApart(vertex_point * Vertices, uint32 VertexCount, uint32 * Min, uint32 * Max)
+FindPointsFarthestApart(vertex_point * Vertices, u32 VertexCount, u32 * Min, u32 * Max)
 {
-    uint32 MinX = 0, MaxX = 0;
-    uint32 MinZ = 0, MaxZ = 0;
-    uint32 MinY = 0, MaxY = 0;
+    u32 MinX = 0, MaxX = 0;
+    u32 MinZ = 0, MaxZ = 0;
+    u32 MinY = 0, MaxY = 0;
 
-    for (uint32 VertexIndex = 0;
+    for (u32 VertexIndex = 0;
                 VertexIndex < VertexCount;
                 ++VertexIndex)
     {
@@ -35,9 +35,9 @@ FindPointsFarthestApart(vertex_point * Vertices, uint32 VertexCount, uint32 * Mi
         if (Vertices[VertexIndex].P.z > Vertices[MaxZ].P.z) MaxZ = VertexIndex;
     }
 
-    real32 LengthSquareX = LengthSqr(Vertices[MaxX].P - Vertices[MinX].P);
-    real32 LengthSquareY = LengthSqr(Vertices[MaxY].P - Vertices[MinY].P);
-    real32 LengthSquareZ = LengthSqr(Vertices[MaxZ].P - Vertices[MinZ].P);
+    r32 LengthSquareX = LengthSqr(Vertices[MaxX].P - Vertices[MinX].P);
+    r32 LengthSquareY = LengthSqr(Vertices[MaxY].P - Vertices[MinY].P);
+    r32 LengthSquareZ = LengthSqr(Vertices[MaxZ].P - Vertices[MinZ].P);
 
     *Min = MinX;
     *Max = MaxX;
@@ -55,9 +55,9 @@ FindPointsFarthestApart(vertex_point * Vertices, uint32 VertexCount, uint32 * Mi
 }
 
 void
-SphereFromDistantPoints(sphere * S, vertex_point * Vertices, uint32 VertexCount)
+SphereFromDistantPoints(sphere * S, vertex_point * Vertices, u32 VertexCount)
 {
-    uint32 Min,Max;
+    u32 Min,Max;
     FindPointsFarthestApart(Vertices, VertexCount, &Min, &Max);
     S->c = (Vertices[Min].P + Vertices[Max].P) * 0.5f;
     S->r = Length(Vertices[Max].P - S->c);
@@ -67,22 +67,22 @@ void
 SphereOfSphereAndPoint(sphere * S, v3 * P)
 {
     v3 CenterToP = (*P) - S->c;
-    real32 LengthSquare = LengthSqr(CenterToP);
+    r32 LengthSquare = LengthSqr(CenterToP);
     if (LengthSquare > (S->r * S->r))
     {
-        real32 Dist = sqrtf(LengthSquare);
-        real32 NewR = (S->r + Dist) * 0.5f;
-        real32 k = (NewR - S->r) / Dist;
+        r32 Dist = sqrtf(LengthSquare);
+        r32 NewR = (S->r + Dist) * 0.5f;
+        r32 k = (NewR - S->r) / Dist;
         S->r = NewR;
         S->c += CenterToP * k;
     }
 }
 
 void
-RitterSphere(sphere * S, vertex_point * Vertices, uint32 VertexCount)
+RitterSphere(sphere * S, vertex_point * Vertices, u32 VertexCount)
 {
     SphereFromDistantPoints(S,Vertices,VertexCount);
-    for (uint32 VertexIndex = 0;
+    for (u32 VertexIndex = 0;
             VertexIndex < VertexCount;
             ++VertexIndex)
     {
@@ -90,7 +90,7 @@ RitterSphere(sphere * S, vertex_point * Vertices, uint32 VertexCount)
     }
 }
 
-bool32
+b32
 CollisionTestAABBAABB(AABB a, AABB b)
 {
     if (fabs(a.c.x - b.c.x) > (a.r.x + b.r.x)) return false;
@@ -102,10 +102,10 @@ CollisionTestAABBAABB(AABB a, AABB b)
 void 
 ExtremePointsAlongDirection(v3 dir, vertex_point * pt, int n, int *imin, int *imax)
 {
-    real32 minproj = FLT_MAX, maxproj = -FLT_MAX;
+    r32 minproj = FLT_MAX, maxproj = -FLT_MAX;
     for (int i = 0; i < n; i++) {
         // Project vector from origin to point onto direction vector
-        real32 proj = Inner(pt[i].P, dir);
+        r32 proj = Inner(pt[i].P, dir);
         // Keep track of least distant point along direction vector
         if (proj < minproj) {
             minproj = proj;

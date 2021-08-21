@@ -23,12 +23,12 @@ inline void Translate(m4 &M,v3 P);
 
 
 void
-RotateEntity(game_state * GameState,entity Entity,real32 Pitch, real32 Yaw)
+RotateEntity(game_state * GameState,entity Entity,r32 Pitch, r32 Yaw)
 {
-    real32 cx = cosf(Pitch);
-    real32 sx = sinf(Pitch);
-    real32 cy = cosf(Yaw);
-    real32 sy = sinf(Yaw);
+    r32 cx = cosf(Pitch);
+    r32 sx = sinf(Pitch);
+    r32 cy = cosf(Yaw);
+    r32 sy = sinf(Yaw);
 
     v3 xaxis = { cy, 0, -sy};
     v3 yaxis = { sy* sx, cx, cy * sx};
@@ -52,10 +52,10 @@ RotateEntity(game_state * GameState,entity Entity,real32 Pitch, real32 Yaw)
 
 
 void
-RotateRight(m4 * M,real32 Angle)
+RotateRight(m4 * M,r32 Angle)
 {
-    real32 c = cosf(-Angle);
-    real32 s = sinf(-Angle);
+    r32 c = cosf(-Angle);
+    r32 s = sinf(-Angle);
     m4 R = {
         c, 0 , s , 0,
         0, 1, 0 , 0,
@@ -67,10 +67,10 @@ RotateRight(m4 * M,real32 Angle)
 }
 
 void
-RotateUp(m4 * M,real32 Angle)
+RotateUp(m4 * M,r32 Angle)
 {
-    real32 c = cosf(-Angle);
-    real32 s = sinf(-Angle);
+    r32 c = cosf(-Angle);
+    r32 s = sinf(-Angle);
     m4 R = {
         1, 0 , 0, 0,
         0, c, -s, 0,
@@ -82,7 +82,7 @@ RotateUp(m4 * M,real32 Angle)
 }
 
 void
-SetViewBehindObject(game_state * GameState, v3 T, v3 D, real32 Separation, real32 HeightOverObject = 0.0f)
+SetViewBehindObject(game_state * GameState, v3 T, v3 D, r32 Separation, r32 HeightOverObject = 0.0f)
 {
     D = (D / Length(D));
 

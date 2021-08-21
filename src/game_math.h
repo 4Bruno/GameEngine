@@ -3,49 +3,48 @@
 #include "game_platform.h"
 #include <math.h>
 
-
 struct v2
 {
     union
     {
-        real32 _V[2];
+        r32 _V[2];
         struct
         {
-            real32 x,y;
+            r32 x,y;
         };
     };
 };
 
 inline v2
-V2(real32 x, real32 y)
+V2(r32 x, r32 y)
 {
     v2 Result = { x, y};
     return Result;
 }
-inline real32
+inline r32
 LengthSqr(v2 A)
 {
-    real32 Result = A.x*A.x + A.y*A.y;
+    r32 Result = A.x*A.x + A.y*A.y;
     return Result;
 }
-inline real32
+inline r32
 Length(v2 A)
 {
-    real32 Result = (real32)sqrtf(LengthSqr(A));
+    r32 Result = (r32)sqrtf(LengthSqr(A));
     return Result;
 }
 
 inline v2
-operator *(v2 A, real32 B)
+operator *(v2 A, r32 B)
 {
     v2 Result = {A.x * B, A.y * B};
     return Result;
 }
 
 inline v2
-operator /(v2 A, real32 B)
+operator /(v2 A, r32 B)
 {
-    real32 OneOver = 1.0f / B;
+    r32 OneOver = 1.0f / B;
     v2 Result = A * OneOver;
     return Result;
 }
@@ -61,19 +60,19 @@ struct v3
 {
     union
     {
-        real32 _V[3];
+        r32 _V[3];
         struct
         {
-            real32 x,y,z;
+            r32 x,y,z;
         };
         struct
         {
             v2 xy;
-            real32 _Unused00;
+            r32 _Unused00;
         };
         struct
         {
-            real32 _Unused01;
+            r32 _Unused01;
             v2 yz;
         };
     };
@@ -81,21 +80,26 @@ struct v3
 
 
 inline v3
-V3(real32 x, real32 y, real32 z)
+V3()
+{
+    return {0.0f, 0.0f, 0.0f};
+}
+inline v3
+V3(r32 x, r32 y, r32 z)
 {
     v3 Result = { x, y, z};
     return Result;
 }
 
 inline v3
-V3(real32 w)
+V3(r32 w)
 {
     v3 Result = { w, w, w};
     return Result;
 }
 
 inline v3
-V3(v2 A, real32 z)
+V3(v2 A, r32 z)
 {
     v3 Result = { A.x, A.y, z};
     return Result;
@@ -145,7 +149,15 @@ operator +=(v3 &A, v3 B)
 }
 
 inline v3
-operator *(v3 A, real32 B)
+operator -=(v3 &A, v3 B)
+{
+    A = A - B;
+
+    return A;
+}
+
+inline v3
+operator *(v3 A, r32 B)
 {
     v3 Result = {A.x * B, A.y * B, A.z * B};
 
@@ -154,7 +166,7 @@ operator *(v3 A, real32 B)
 
 
 inline v3
-operator *=(v3 &A, real32 B)
+operator *=(v3 &A, r32 B)
 {
     A = A*B;
 
@@ -162,7 +174,7 @@ operator *=(v3 &A, real32 B)
 }
 
 inline v3
-operator /(v3 A, real32 B)
+operator /(v3 A, r32 B)
 {
     v3 Result = A * (1.0f / B);
 
@@ -182,22 +194,34 @@ VectorMultiply(v3 A, v3 B)
     return R;
 }
 
-inline real32
+inline v3
+VectorDivide(v3 A, v3 B)
+{
+    v3 R = {
+        A.x / B.x,
+        A.y / B.y,
+        A.z / B.z
+    };
+
+    return R;
+}
+
+inline r32
 Inner(v3 A, v3 B)
 {
-    real32 Result = (A.x * B.x + A.y * B.y + A.z * B.z);
+    r32 Result = (A.x * B.x + A.y * B.y + A.z * B.z);
     return Result;
 }
-inline real32
+inline r32
 LengthSqr(v3 A)
 {
-    real32 Result = Inner(A, A);
+    r32 Result = Inner(A, A);
     return Result;
 }
-inline real32
+inline r32
 Length(v3 A)
 {
-    real32 Result = sqrtf(LengthSqr(A));
+    r32 Result = sqrtf(LengthSqr(A));
     return Result;
 }
 
@@ -205,74 +229,74 @@ struct v4
 {
     union
     {
-        real32 _V[4];
+        r32 _V[4];
         struct
         {
-            real32 x,y,z,w;
+            r32 x,y,z,w;
         };
         struct
         {
-            real32 r,g,b,a;
+            r32 r,g,b,a;
         };
         struct
         {
             v2 xy;
-            real32 _Unused00,_Unused01;
+            r32 _Unused00,_Unused01;
         };
         struct
         {
             v3 xyz;
-            real32 _Unused02;
+            r32 _Unused02;
         };
         struct
         {
-            real32 _Unused03;
+            r32 _Unused03;
             v2 yzw;
         };
     };
-    const real32& operator[](int index) const
+    const r32& operator[](int index) const
     {
         return _V[index];
     }
-    real32& operator[](int index)
+    r32& operator[](int index)
     {
         return _V[index];
     }
 };
 
 inline v4
-V4(real32 x, real32 y, real32 z, real32 w)
+V4(r32 x, r32 y, r32 z, r32 w)
 {
     v4 Result = { x, y, z, w};
     return Result;
 }
 inline v4
-V4(v3 v, real32 w)
+V4(v3 v, r32 w)
 {
     v4 Result = { v.x, v.y, v.z, w};
     return Result;
 }
 
-inline real32
+inline r32
 Inner(v4 A, v4 B)
 {
-    real32 Result = (A.x * B.x + A.y * B.y + A.z * B.z + A.w * B.w);
+    r32 Result = (A.x * B.x + A.y * B.y + A.z * B.z + A.w * B.w);
     return Result;
 }
 
 inline v3
-operator *(real32 R, v3 V)
+operator *(r32 R, v3 V)
 {
     v3 Result = { V.x * R, V.y * R, V.z * R };
     return Result;
 }
 
 
-inline real32 
-ToRadians(real32 Degrees)
+inline r32 
+ToRadians(r32 Degrees)
 {
-    //real32 Result = Degree * 2 * PI * (1.0f / 360.0f);
-    real32 Result = Degrees * (real32)PI * (1.0f / 180.0f);
+    //r32 Result = Degree * 2 * PI * (1.0f / 360.0f);
+    r32 Result = Degrees * (r32)PI * (1.0f / 180.0f);
     return Result; 
 }
 

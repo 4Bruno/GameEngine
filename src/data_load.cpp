@@ -14,7 +14,7 @@ GetFileContents(game_memory * GameMemory,memory_arena * Arena,const char * Filep
         if (GameMemory->DebugReadFile(OpenFileResult,Buffer))
         {
             Result.Size = OpenFileResult.Size;
-            Result.Base = (uint8 *)Buffer;
+            Result.Base = (u8 *)Buffer;
             Result.Success = true;
         }
         else

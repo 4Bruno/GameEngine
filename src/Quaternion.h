@@ -32,7 +32,7 @@
 #include "game_math.h"
 
 /**
- * Maximum real32ing point difference that is considered as equal.
+ * Maximum r32ing point difference that is considered as equal.
  */
 #define QUATERNION_EPS (1e-4)
 
@@ -40,12 +40,12 @@
  * Data structure to hold a quaternion.
  */
 struct Quaternion {
-    real32 w;       /**< Scalar part */
+    r32 w;       /**< Scalar part */
     union
     {
-        real32 v[3];    /**< Vector part */
+        r32 v[3];    /**< Vector part */
         struct {
-            real32 x,y,z;
+            r32 x,y,z;
         };
     };
 }; 
@@ -53,7 +53,7 @@ struct Quaternion {
 /**
  * Sets the given values to the output quaternion.
  */
-void Quaternion_set(real32 w, real32 v1, real32 v2, real32 v3, Quaternion* output);
+void Quaternion_set(r32 w, r32 v1, r32 v2, r32 v3, Quaternion* output);
 
 /**
  * Sets quaternion to its identity.
@@ -82,7 +82,7 @@ void Quaternion_fprint(FILE* file, Quaternion* q);
  * @param angle
  *      Rotation angle in radians.
  */
-void Quaternion_fromAxisAngle(real32 axis[3], real32 angle, Quaternion* output);
+void Quaternion_fromAxisAngle(r32 axis[3], r32 angle, Quaternion* output);
 
 /**
  * Calculates the rotation vector and angle of a quaternion.
@@ -91,7 +91,7 @@ void Quaternion_fromAxisAngle(real32 axis[3], real32 angle, Quaternion* output);
  * @return
  *      The rotation angle in radians.
  */
-real32 Quaternion_toAxisAngle(Quaternion* q, real32 output[3]);
+r32 Quaternion_toAxisAngle(Quaternion* q, r32 output[3]);
 
 /**
  * Set the quaternion to the equivalent of euler angles.
@@ -105,34 +105,34 @@ void Quaternion_fromEulerZYX(v3 * eulerZYX, Quaternion* output);
  * @param output
  *      Euler angles in ZYX, but stored in array as [x'', y', z].
  */
-void Quaternion_toEulerZYX(Quaternion* q, real32 output[3]);
+void Quaternion_toEulerZYX(Quaternion* q, r32 output[3]);
 
 /**
  * Set the quaternion to the equivalent a rotation around the X-axis.
  * @param angle
  *      Rotation angle in radians.
  */
-void Quaternion_fromXRotation(real32 angle, Quaternion* output);
+void Quaternion_fromXRotation(r32 angle, Quaternion* output);
 
 /**
  * Set the quaternion to the equivalent a rotation around the Y-axis.
  * @param angle
  *      Rotation angle in radians.
  */
-void Quaternion_fromYRotation(real32 angle, Quaternion* output);
+void Quaternion_fromYRotation(r32 angle, Quaternion* output);
 
 /**
  * Set the quaternion to the equivalent a rotation around the Z-axis.
  * @param angle
  *      Rotation angle in radians.
  */
-void Quaternion_fromZRotation(real32 angle, Quaternion* output);
+void Quaternion_fromZRotation(r32 angle, Quaternion* output);
 
 /**
  * Calculates the norm of a given quaternion:
  * norm = sqrt(w*w + v1*v1 + v2*v2 + v3*v3)
  */
-real32 Quaternion_norm(Quaternion* q);
+r32 Quaternion_norm(Quaternion* q);
 
 /**
  * Normalizes the quaternion.
@@ -164,7 +164,7 @@ void Quaternion_rotate(Quaternion* q, v3 * v, v3 * output);
  *      Interpolation between the two quaternions [0, 1].
  *      0 is equal with q1, 1 is equal with q2, 0.5 is the middle between q1 and q2.
  */
-void Quaternion_slerp(Quaternion* q1, Quaternion* q2, real32 t, Quaternion* output);
+void Quaternion_slerp(Quaternion* q1, Quaternion* q2, r32 t, Quaternion* output);
 
 /**
  * Transforms quaternion to 4x4 matrix (column major)

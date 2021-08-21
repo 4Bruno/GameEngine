@@ -3,14 +3,14 @@
 
 struct memory_arena
 {
-    uint8 * Base;
-    uint32 MaxSize;
-    uint32 CurrentSize;
+    u8 * Base;
+    u32 MaxSize;
+    u32 CurrentSize;
 };
 
 struct thread_memory_arena
 {
-    bool32 InUse;
+    b32 InUse;
     memory_arena Arena;
 };
 
@@ -19,8 +19,8 @@ struct thread_memory_arena
 #define PushArray(Arena,Count,Struct) (Struct *)_PushSize(Arena,Count*sizeof(Struct))
 #define PushStruct(Arena,Struct) (Struct *)PushArray(Arena,1,Struct)
 
-GAME_API inline uint8 *
-_PushSize(memory_arena * Arena,uint32 Size);
+GAME_API inline u8 *
+_PushSize(memory_arena * Arena,u32 Size);
 
 memory_arena *
 ThreadBeginArena(thread_memory_arena * ThreadArena);
@@ -29,7 +29,7 @@ void
 ThreadEndArena(thread_memory_arena * ThreadArena);
 
 void
-InitializeArena(memory_arena * Arena,uint8 * BaseAddr, uint32 MaxSize);
+InitializeArena(memory_arena * Arena,u8 * BaseAddr, u32 MaxSize);
 
 /*
  *  ONLY MAIN THREAD CAN USE THIS METHOD
@@ -42,6 +42,8 @@ InitializeArena(memory_arena * Arena,uint8 * BaseAddr, uint32 MaxSize);
 thread_memory_arena *
 GetThreadArena(game_state * GameState);
 
+void
+MemCopy(u8 * Dest,u8 * Src,u32 EntitySize);
 
 #define GAME_MEMORY_H
 #endif

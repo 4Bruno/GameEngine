@@ -13,16 +13,16 @@ struct vertex_point
 struct mesh
 {
     vertex_point * Vertices;
-    uint32         VertexSize;
+    u32         VertexSize;
 
-    uint16       * Indices;
-    uint32         IndicesSize;
+    u16       * Indices;
+    u32         IndicesSize;
 
-    uint32 OffsetVertices;
-    uint32 OffsetIndices;
+    u32 OffsetVertices;
+    u32 OffsetIndices;
 
-    bool32 Loaded;
-    bool32 LoadInProcess;
+    b32 Loaded;
+    b32 LoadInProcess;
 };
 
 struct async_load_mesh
@@ -33,11 +33,11 @@ struct async_load_mesh
     mesh * Mesh;
     thread_memory_arena * ThreadArena;
     void * BufferVertices;
-    uint32 BaseOffset;
+    u32 BaseOffset;
 };
 
 mesh *
-GetMesh(game_memory * Memory, game_state * GameState,uint32 ID);
+GetMesh(game_memory * Memory, game_state * GameState,u32 ID);
 
 #define GAME_MESH_H
 #endif

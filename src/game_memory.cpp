@@ -17,17 +17,17 @@ ThreadEndArena(thread_memory_arena * ThreadArena)
     ThreadArena->InUse = false;
 }
 
-inline uint8 *
-_PushSize(memory_arena * Arena,uint32 Size)
+inline u8 *
+_PushSize(memory_arena * Arena,u32 Size)
 {
     Assert((Arena->CurrentSize + Size) < Arena->MaxSize);
-    uint8 * BaseAddr = Arena->Base + Arena->CurrentSize;
+    u8 * BaseAddr = Arena->Base + Arena->CurrentSize;
     Arena->CurrentSize += Size;
     return BaseAddr;
 }
 
 void
-InitializeArena(memory_arena * Arena,uint8 * BaseAddr, uint32 MaxSize)
+InitializeArena(memory_arena * Arena,u8 * BaseAddr, u32 MaxSize)
 {
     Arena->MaxSize = MaxSize;
     Arena->CurrentSize = 0;
@@ -46,7 +46,7 @@ GetThreadArena(game_state * GameState)
 {
     thread_memory_arena * ThreadArena = 0;
 
-    for (uint32 ThreadArenaIndex = 0;
+    for (u32 ThreadArenaIndex = 0;
                 ThreadArenaIndex < GameState->LimitThreadArenas;
                 ++ThreadArenaIndex)
     {
@@ -60,4 +60,18 @@ GetThreadArena(game_state * GameState)
     }
 
     return ThreadArena;
+}
+
+void
+MemCopy(u8 * Dest,u8 * Src,u32 EntitySize)
+{
+    Assert(Dest);
+    Assert(Src);
+    Assert(EntitySize > 0);
+    for (u32 b = 0;
+            b < EntitySize;
+            ++b)
+    {
+        Dest[b] = Src[b];
+    }
 }

@@ -16,20 +16,20 @@ Win32GetLastWriteTime(char * Filename)
     return LastWriteTime;
 }
 
-inline bool32
+inline b32
 Win32HasFileBeenModified(FILETIME LastModified, char * Filename)
 {
     FILETIME CurrentTime = Win32GetLastWriteTime(Filename);
     
-    bool32 Result = (CompareFileTime(&CurrentTime, &LastModified) != 0);
+    b32 Result = (CompareFileTime(&CurrentTime, &LastModified) != 0);
 
     return Result;
 }
 
-inline bool32
+inline b32
 Win32DeleteFile(const char * Filename)
 {
-    bool32 Result = DeleteFile(Filename);
+    b32 Result = DeleteFile(Filename);
     return Result;
 }
 
@@ -41,12 +41,12 @@ Win32CloseFile(platform_open_file_result Result)
         CloseHandle(Result.Handle);
     }
 }
-inline bool32
+inline b32
 Win32FileExists(const char * Filename)
 {
     HANDLE Hnd = 
         CreateFileA(Filename, GENERIC_WRITE,FILE_SHARE_READ, 0, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, 0);
-    bool32 Result = (Hnd != INVALID_HANDLE_VALUE);
+    b32 Result = (Hnd != INVALID_HANDLE_VALUE);
     if (Result)
     {
         platform_open_file_result OpenFileResult;
@@ -55,11 +55,11 @@ Win32FileExists(const char * Filename)
     }
     return Result;
 }
-inline bool32
+inline b32
 Win32CopyFile(const char * Source, const char * Destination)
 {
     BOOL Result = CopyFile(Source,Destination, false);
-    return (bool32)Result;
+    return (b32)Result;
 }
 
 
@@ -86,7 +86,7 @@ Win32OpenFile(const char * Filepath)
     return Result;
 }
 
-bool32
+b32
 Win32ReadFile(platform_open_file_result OpenFileResult, void * Buffer)
 {
 

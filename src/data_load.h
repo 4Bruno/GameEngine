@@ -4,9 +4,9 @@
 
 struct file_contents
 {
-    uint8 * Base;
-    uint32 Size;
-    bool32 Success;
+    u8 * Base;
+    u32 Size;
+    b32 Success;
 };
 
 file_contents

@@ -56,12 +56,12 @@ RenderUpdateObject(renderer_3d * Renderer)
     Renderer->MVP = Renderer->Projection * Renderer->WorldTransform * Renderer->ObjectTransform;
 }
 void
-RenderRotateView(renderer_3d * Renderer, real32 Pitch, real32 Yaw)
+RenderRotateView(renderer_3d * Renderer, r32 Pitch, r32 Yaw)
 {
-    real32 cx = cosf(Pitch);
-    real32 sx = sinf(Pitch);
-    real32 cy = cosf(Yaw);
-    real32 sy = sinf(Yaw);
+    r32 cx = cosf(Pitch);
+    r32 sx = sinf(Pitch);
+    r32 cy = cosf(Yaw);
+    r32 sy = sinf(Yaw);
 
     v3 xaxis = { cy, 0, -sy};
     v3 yaxis = { sy* sx, cx, cy * sx};
@@ -79,11 +79,11 @@ RenderRotateView(renderer_3d * Renderer, real32 Pitch, real32 Yaw)
     RenderUpdateView(Renderer);
 }
 void
-RotateObjectUp(m4 * M,real32 Angle)
+RotateObjectUp(m4 * M,r32 Angle)
 {
 
-    real32 c = cosf(-Angle);
-    real32 s = sinf(-Angle);
+    r32 c = cosf(-Angle);
+    r32 s = sinf(-Angle);
     m4 R = {
         1, 0 , 0 , 0,
         0, c, -s , 0,
@@ -96,7 +96,7 @@ RotateObjectUp(m4 * M,real32 Angle)
 
 
 void
-RotateObject(v3 * D, real32 Yaw, real32 Pitch)
+RotateObject(v3 * D, r32 Yaw, r32 Pitch)
 {
     m4 R;
     RenderRotateFill(&R, Pitch , Yaw ,0);
@@ -104,10 +104,10 @@ RotateObject(v3 * D, real32 Yaw, real32 Pitch)
 }
 
 void
-RenderRotateObjectRight(renderer_3d * Renderer,real32 Angle)
+RenderRotateObjectRight(renderer_3d * Renderer,r32 Angle)
 {
-    real32 c = cosf(-Angle);
-    real32 s = sinf(-Angle);
+    r32 c = cosf(-Angle);
+    r32 s = sinf(-Angle);
     m4 R = {
         c, 0 , s , 0,
         0, 1, 0 , 0,
@@ -119,11 +119,11 @@ RenderRotateObjectRight(renderer_3d * Renderer,real32 Angle)
     RenderUpdateObject(Renderer);
 }
 void
-RenderRotateViewRight(renderer_3d * Renderer,real32 Angle)
+RenderRotateViewRight(renderer_3d * Renderer,r32 Angle)
 {
 
-    real32 c = cosf(-Angle);
-    real32 s = sinf(-Angle);
+    r32 c = cosf(-Angle);
+    r32 s = sinf(-Angle);
     m4 R = {
         c, 0 , s , 0,
         0, 1, 0 , 0,
@@ -135,10 +135,10 @@ RenderRotateViewRight(renderer_3d * Renderer,real32 Angle)
     RenderUpdateView(Renderer);
 }
 void
-RotateObjectRight(m4 * M,real32 Angle)
+RotateObjectRight(m4 * M,r32 Angle)
 {
-    real32 c = cosf(-Angle);
-    real32 s = sinf(-Angle);
+    r32 c = cosf(-Angle);
+    r32 s = sinf(-Angle);
     m4 R = {
         c, 0 , s , 0,
         0, 1, 0 , 0,
@@ -149,11 +149,11 @@ RotateObjectRight(m4 * M,real32 Angle)
     *M = R * (*M);
 }
 void
-RenderRotateViewUp(renderer_3d * Renderer,real32 Angle)
+RenderRotateViewUp(renderer_3d * Renderer,r32 Angle)
 {
 
-    real32 c = cosf(-Angle);
-    real32 s = sinf(-Angle);
+    r32 c = cosf(-Angle);
+    r32 s = sinf(-Angle);
     m4 R = {
         1, 0 , 0 , 0,
         0, c, -s , 0,
@@ -165,7 +165,7 @@ RenderRotateViewUp(renderer_3d * Renderer,real32 Angle)
     RenderUpdateView(Renderer);
 }
 void
-RenderMoveObjectForward(renderer_3d * Renderer,real32 N)
+RenderMoveObjectForward(renderer_3d * Renderer,r32 N)
 {
     v3 P = RenderGetObjectPos(Renderer);
     v3 Out = RenderGetObjectDirection(Renderer);
@@ -185,12 +185,12 @@ RenderMoveView(renderer_3d * Renderer,v3 AbsP)
 }
 
 void
-RenderRotateFill2(m4 * M, real32 AngleX, real32 AngleY)
+RenderRotateFill2(m4 * M, r32 AngleX, r32 AngleY)
 { 
-    real32 cosx = cosf(AngleX);
-    real32 sinx = sinf(AngleX);
-    real32 cosy = cosf(AngleY);
-    real32 siny = sinf(AngleY);
+    r32 cosx = cosf(AngleX);
+    r32 sinx = sinf(AngleX);
+    r32 cosy = cosf(AngleY);
+    r32 siny = sinf(AngleY);
 
     v3 xaxis = { cosy, 0, -siny };
     v3 yaxis = { siny * sinx, cosx, cosy * sinx };
@@ -317,7 +317,7 @@ SetObject(renderer_3d * Renderer, v3 P , v3 D, v3 Scale = {1,1,1})
 }
 
 void
-SetViewBehindObject(renderer_3d * Renderer, v3 T, v3 D, real32 Separation, real32 HeightOverObject = 0.0f)
+SetViewBehindObject(renderer_3d * Renderer, v3 T, v3 D, r32 Separation, r32 HeightOverObject = 0.0f)
 {
     D = (D / Length(D));
 
@@ -328,15 +328,15 @@ SetViewBehindObject(renderer_3d * Renderer, v3 T, v3 D, real32 Separation, real3
 
 
 renderer_3d
-CreateRenderer(real32 FOV,
-               int32 ScreenWidth, int32 ScreenHeight, 
-               real32 n, real32 f, 
+CreateRenderer(r32 FOV,
+               i32 ScreenWidth, i32 ScreenHeight, 
+               r32 n, r32 f, 
                v3 P, v3 WorldUp = DEFAULT_WORLD_UP)
 {
     renderer_3d Renderer = {};
 
     Renderer.WorldUp = WorldUp;
-    Renderer.Projection = ProjectionMatrix(FOV,((real32)ScreenWidth / (real32)ScreenHeight), n,f);
+    Renderer.Projection = ProjectionMatrix(FOV,((r32)ScreenWidth / (r32)ScreenHeight), n,f);
 
     // Depends on world up
     Translate(&Renderer.ViewMoveMatrix,-P);
@@ -363,7 +363,7 @@ RenderMesh(renderer_3d * Renderer, entity * Entity, v3 Rotation, v4 Color, v3 So
             
 }
 void
-RenderMeshAround(renderer_3d * Renderer, entity * Entity, v3 TargetP, v3 TargetD, real32 Radius, v3 Rotation, v4 Color, v3 SourceLight)
+RenderMeshAround(renderer_3d * Renderer, entity * Entity, v3 TargetP, v3 TargetD, r32 Radius, v3 Rotation, v4 Color, v3 SourceLight)
 {
     mesh * Mesh = Entity->Mesh;
     Assert(Mesh);

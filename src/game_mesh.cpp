@@ -3,30 +3,30 @@
 
 struct obj_file_header
 {
-    uint32 VertexStart;    
-    uint32 VertexCount;
+    u32 VertexStart;    
+    u32 VertexCount;
 
-    uint32 TextureCoordStart;
-    uint32 TextureCoordCount;
+    u32 TextureCoordStart;
+    u32 TextureCoordCount;
 
-    uint32 VertexNormalStart;
-    uint32 VertexNormalCount;
+    u32 VertexNormalStart;
+    u32 VertexNormalCount;
 
-    uint32 ParameterSpaceVerticesStart;
-    uint32 ParameterSpaceVerticesCount;
+    u32 ParameterSpaceVerticesStart;
+    u32 ParameterSpaceVerticesCount;
 
-    uint32 FaceElementsStart;
-    uint32 FaceElementsCount;
+    u32 FaceElementsStart;
+    u32 FaceElementsCount;
 
-    uint32 LineElementsStart;
-    uint32 LineElementsCount;
+    u32 LineElementsStart;
+    u32 LineElementsCount;
 };
 
 /* ------------------------- BEGIN MODEL LOADER EMBEDDED ------------------------- */
 void
-SkipLine(const char * Data, uint32 Size,uint32 * ci)
+SkipLine(const char * Data, u32 Size,u32 * ci)
 {
-    uint32 c = *ci;
+    u32 c = *ci;
     for (; (c < Size && Data[c] != '\n') ;++c)
     {
     };
@@ -35,9 +35,9 @@ SkipLine(const char * Data, uint32 Size,uint32 * ci)
 
 
 inline void
-AdvanceAfterWs(const char * Data, uint32 Size, uint32 * c)
+AdvanceAfterWs(const char * Data, u32 Size, u32 * c)
 {
-    uint32 ci = *c;
+    u32 ci = *c;
     for (; (ci < Size);++ci)
     {
         if ( (Data[ci] == ' ') || (Data[ci] == '\n') )
@@ -49,12 +49,12 @@ AdvanceAfterWs(const char * Data, uint32 Size, uint32 * c)
 }
 
 obj_file_header
-ReadObjFileHeader(const char * Data, uint32 Size)
+ReadObjFileHeader(const char * Data, u32 Size)
 {
     obj_file_header Description = {};
 
-    uint32 TotalPolys = 0;
-    uint32 ci = 0;
+    u32 TotalPolys = 0;
+    u32 ci = 0;
 
 
     // skip comment section
@@ -73,9 +73,9 @@ ReadObjFileHeader(const char * Data, uint32 Size)
 
     for (; (ci < Size);)
     {
-        uint32 * Count = 0;
-        uint32 * Start = 0;
-        uint32 LineCount = 0;
+        u32 * Count = 0;
+        u32 * Start = 0;
+        u32 LineCount = 0;
         char ContinueIfA = 0;
         char ContinueIfB = 0;
         switch (Data[ci])
@@ -194,55 +194,55 @@ ReadObjFileHeader(const char * Data, uint32 Size)
 }
 
 mesh
-CreateMeshFromObjHeader(memory_arena * Arena,void * BufferVertices,obj_file_header Header, const char * Data, uint32 Size)
-//CreateMeshFromObjHeader(memory_arena * Arena,obj_file_header Header, const char * Data, uint32 Size)
+CreateMeshFromObjHeader(memory_arena * Arena,void * BufferVertices,obj_file_header Header, const char * Data, u32 Size)
+//CreateMeshFromObjHeader(memory_arena * Arena,obj_file_header Header, const char * Data, u32 Size)
 {
     mesh Mesh = {};
 
-    uint32 FaceVertices = 3;
+    u32 FaceVertices = 3;
 
-    uint32 Vertices = Header.FaceElementsCount * FaceVertices; 
-    uint32 VerticesSize = Vertices * sizeof(vertex_point);
+    u32 Vertices = Header.FaceElementsCount * FaceVertices; 
+    u32 VerticesSize = Vertices * sizeof(vertex_point);
 
     Mesh.Vertices = (vertex_point *)BufferVertices;
     Mesh.VertexSize = VerticesSize;
 
     // create 2 temp arrays for vertices/normals we will shrink stack later
-    uint32 SizeUniqueVertices = Header.VertexCount * sizeof(v3);
+    u32 SizeUniqueVertices = Header.VertexCount * sizeof(v3);
     v3 * UniqueVertexArray = (v3 *)PushSize(Arena,SizeUniqueVertices);
 
     // Pre-load list of unique vertices
-    uint32 Line = 0;
+    u32 Line = 0;
 
-    for (uint32 ci = (Header.VertexStart); 
+    for (u32 ci = (Header.VertexStart); 
             (Line < Header.VertexCount); 
             ++Line)
     {
         ci += 2; // fixed
-        for (uint32 CoordinateIndex = 0;
+        for (u32 CoordinateIndex = 0;
                 CoordinateIndex < FaceVertices;
                 ++CoordinateIndex)
         {
-            UniqueVertexArray[Line]._V[CoordinateIndex] = (real32)atof(Data + ci);
+            UniqueVertexArray[Line]._V[CoordinateIndex] = (r32)atof(Data + ci);
             AdvanceAfterWs(Data,Size,&ci);
         }
     }
     
-    uint32 SizeUniqueNormals = Header.VertexNormalCount * sizeof(v3);
+    u32 SizeUniqueNormals = Header.VertexNormalCount * sizeof(v3);
     v3 * UniqueNormalArray = (v3 *)PushSize(Arena,SizeUniqueNormals);
 
     Line = 0;
 
-    for (uint32 ci = (Header.VertexNormalStart); 
+    for (u32 ci = (Header.VertexNormalStart); 
             (Line < Header.VertexNormalCount); 
             ++Line)
     {
         ci += 3; // fixed
-        for (uint32 CoordinateIndex = 0;
+        for (u32 CoordinateIndex = 0;
                 CoordinateIndex < FaceVertices;
                 ++CoordinateIndex)
         {
-            UniqueNormalArray[Line]._V[CoordinateIndex] = (real32)atof(Data + ci);
+            UniqueNormalArray[Line]._V[CoordinateIndex] = (r32)atof(Data + ci);
             AdvanceAfterWs(Data,Size,&ci);
         }
     }
@@ -250,20 +250,20 @@ CreateMeshFromObjHeader(memory_arena * Arena,void * BufferVertices,obj_file_head
     // Create all vertices indices data
     char * End;
     Line = 0;
-    uint32 Indice = 0;
-    uint32 Base10 = 10;
-    for (uint32 ci = (Header.FaceElementsStart); 
+    u32 Indice = 0;
+    u32 Base10 = 10;
+    for (u32 ci = (Header.FaceElementsStart); 
             (Line < Header.FaceElementsCount); 
             ++Line)
     {
         ci += 2; // fixed
-        for (uint32 VertexIndex = 0;
+        for (u32 VertexIndex = 0;
                 VertexIndex < FaceVertices;
                 ++VertexIndex)
         {
-            uint16 IndexVertexP = (uint16)strtoimax(Data + ci,&End, Base10) - (uint16)1;
-            uint16 IndexVertexT = (uint16)strtoimax(End + 1,&End, Base10) - (uint16)1;
-            uint16 IndexVertexN = (uint16)strtoimax(End + 1,&End, Base10) - (uint16)1;
+            i16 IndexVertexP = (i16)strtoimax(Data + ci,&End, Base10) - (i16)1;
+            i16 IndexVertexT = (i16)strtoimax(End + 1,&End, Base10) - (i16)1;
+            i16 IndexVertexN = (i16)strtoimax(End + 1,&End, Base10) - (i16)1;
             // P
             Mesh.Vertices[Indice].P = UniqueVertexArray[IndexVertexP];
             // TextCoord
@@ -281,7 +281,7 @@ CreateMeshFromObjHeader(memory_arena * Arena,void * BufferVertices,obj_file_head
 
 
 #if 0
-    for (uint32 i = 0; i < Vertices;++i)
+    for (u32 i = 0; i < Vertices;++i)
     {
         Log("Pos: %f %f %f Normal: %f %f %f\n",Mesh.Vertices[i].P.x,Mesh.Vertices[i].P.y,Mesh.Vertices[i].P.z,Mesh.Vertices[i].N.x,Mesh.Vertices[i].N.y,Mesh.Vertices[i].N.z);
     }
@@ -293,10 +293,10 @@ CreateMeshFromObjHeader(memory_arena * Arena,void * BufferVertices,obj_file_head
 /* ------------------------- END MODEL LOADER EMBEDDED ------------------------- */
 
 void
-PushMeshSize(memory_arena * Arena, uint32 DataSize, uint32 InstanceCount)
+PushMeshSize(memory_arena * Arena, u32 DataSize, u32 InstanceCount)
 {
-    uint32 TotalSize = (DataSize * InstanceCount);
-    uint32 Align = RenderGetVertexMemAlign() - 1;
+    u32 TotalSize = (DataSize * InstanceCount);
+    u32 Align = RenderGetVertexMemAlign() - 1;
     TotalSize = (TotalSize + Align) &  ~Align;
 
     Assert((Arena->CurrentSize + TotalSize) < Arena->MaxSize);
@@ -316,7 +316,7 @@ THREAD_WORK_HANDLER(LoadMesh)
     memory_arena * Arena = &WorkData->ThreadArena->Arena;
     Assert(!Mesh->Loaded);
 
-    int32 Result = -1;
+    i32 Result = -1;
     file_contents GetFileResult = GetFileContents(WorkData->Memory, Arena,WorkData->Path);
 
     if (GetFileResult.Success)
@@ -330,9 +330,9 @@ THREAD_WORK_HANDLER(LoadMesh)
                     (const char *)GetFileResult.Base, GetFileResult.Size);
 
         Mesh->Vertices       = TempMesh.Vertices; // vertex_point * Vertices;
-        Mesh->VertexSize     = TempMesh.VertexSize; // uint32   VertexSize;
+        Mesh->VertexSize     = TempMesh.VertexSize; // u32   VertexSize;
         Mesh->Indices        = TempMesh.Indices; // Typedef * Indices;
-        Mesh->IndicesSize    = TempMesh.IndicesSize; // uint32   IndicesSize;
+        Mesh->IndicesSize    = TempMesh.IndicesSize; // u32   IndicesSize;
 
         // TODO GPU barrier sync
         RenderPushVertexData(Mesh->Vertices,Mesh->VertexSize, WorkData->BaseOffset);
@@ -348,7 +348,7 @@ THREAD_WORK_HANDLER(LoadMesh)
         {1,0,0},{0,1,0},{0,0,1}
     };
 
-    for (uint32 VectorDirIndex = 0;
+    for (u32 VectorDirIndex = 0;
             VectorDirIndex < 3;
             ++VectorDirIndex)
     {
@@ -362,10 +362,10 @@ THREAD_WORK_HANDLER(LoadMesh)
     ThreadEndArena(WorkData->ThreadArena);
 }
 
-inline uint32
+inline u32
 StrLen(const char * c)
 {
-    uint32 ci = 0;
+    u32 ci = 0;
     for (;
             (c[ci] != 0);
             ++ci)
@@ -374,9 +374,9 @@ StrLen(const char * c)
 }
 
 inline void
-CopyStr(char * DestStr,const char * SrcStr ,uint32 Length)
+CopyStr(char * DestStr,const char * SrcStr ,u32 Length)
 {
-    for (uint32 ci = 0;
+    for (u32 ci = 0;
                 ci < Length;
                 ++ci)
     {
@@ -385,7 +385,7 @@ CopyStr(char * DestStr,const char * SrcStr ,uint32 Length)
 }
 
 mesh *
-GetMesh(game_memory * Memory, game_state * GameState,uint32 ID)
+GetMesh(game_memory * Memory, game_state * GameState,u32 ID)
 {
 
     mesh * Mesh = (GameState->Meshes + ID);
@@ -396,7 +396,7 @@ GetMesh(game_memory * Memory, game_state * GameState,uint32 ID)
             "assets\\cube.obj",
             "assets\\human_male_triangles.obj"
         };
-        const uint32 MeshSizes[2] = {
+        const u32 MeshSizes[2] = {
             36 * sizeof(vertex_point),
             4200 * sizeof(vertex_point),
         };
@@ -410,13 +410,13 @@ GetMesh(game_memory * Memory, game_state * GameState,uint32 ID)
             async_load_mesh * Data = PushStruct(Arena,async_load_mesh);
             Data->Memory    = Memory;                  // game_memory * Memory;
             Data->GameState = GameState;               // game_state * GameState;
-            uint32 LenPath  = StrLen(Paths[ID]) + 1;
+            u32 LenPath  = StrLen(Paths[ID]) + 1;
             Data->Path      = (char *)PushSize(Arena,LenPath); // Char_S * Path;
             CopyStr(Data->Path, Paths[ID], LenPath);
             Data->ThreadArena = ThreadArena;
             Data->Mesh = Mesh;
 
-            uint32 MeshSize = MeshSizes[ID];
+            u32 MeshSize = MeshSizes[ID];
             // For multi thread
             // Get current base for arena
             Data->BaseOffset = GameState->MeshesArena.CurrentSize;

@@ -27,70 +27,70 @@ struct mesh_push_constant
     m4 RenderMatrix;
     m4 Model;
     v3 SourceLight;
-    real32 Dummy;
+    r32 Dummy;
     v4 DebugColor;
 };
 
 RENDER_API
-int32
-InitializeVulkan(int32 Width, int32 Height, 
+i32
+InitializeVulkan(i32 Width, i32 Height, 
                  vulkan_platform_window PlatformWindow,
-                 bool32 EnableValidationLayer,
+                 b32 EnableValidationLayer,
                  PFN_vkGetInstanceProcAddr GetInstanceProcAddr);
 RENDER_API
 void
 CloseVulkan();
 
 RENDER_API
-int32
-VulkanOnWindowResize(int32 Width,int32 Height);
+i32
+VulkanOnWindowResize(i32 Width,i32 Height);
 
 RENDER_API
-int32
+i32
 WaitForRender();
 
 RENDER_API
-int32
+i32
 RenderCreateShaderModule(char * Buffer, size_t Size);
 RENDER_API
-int32
+i32
 RenderFreeShaders();
 
 RENDER_API
-int32
-RenderCreatePipeline(int32 VertexShaderIndex,
-                     int32 FragmentShaderIndex);
+i32
+RenderCreatePipeline(i32 VertexShaderIndex,
+                     i32 FragmentShaderIndex);
 RENDER_API
-int32
+i32
 RenderBeginPass(v4 ClearColor);
 
 RENDER_API
-int32
-RenderSetPipeline(int32 PipelineIndex);
+i32
+RenderSetPipeline(i32 PipelineIndex);
 
 RENDER_API
-int32
-RenderPushMesh(uint32 TotalMeshInstances, uint32 VertexSize, uint32 Offset);
+i32
+RenderPushMesh(u32 TotalMeshInstances, u32 VertexSize, u32 Offset);
 
 RENDER_API
-int32
-RenderPushMeshIndexed(uint32 TotalMeshInstances, uint32 IndicesSize, VkDeviceSize OffsetVertex = 0, VkDeviceSize OffsetIndices = 0);
+i32
+RenderPushMeshIndexed(u32 TotalMeshInstances, u32 IndicesSize, VkDeviceSize OffsetVertex = 0, VkDeviceSize OffsetIndices = 0);
 
 RENDER_API
-int32
+i32
 RenderEndPass();
 
 RENDER_API
-uint32
+u32
 RenderGetVertexMemAlign();
 
 RENDER_API
-int32
-RenderPushVertexData(void * Data, uint32 DataSize, uint32 BaseOffset);
+i32
+RenderPushVertexData(void * Data, u32 DataSize, u32 BaseOffset);
 
 RENDER_API
-int32
-RenderPushIndexData(void * Data, uint32 DataSize, uint32 BaseOffset);
+i32
+RenderPushIndexData(void * Data, u32 DataSize, u32 BaseOffset);
 
 RENDER_API
 memory_arena
@@ -98,7 +98,7 @@ RenderGetMemoryArena();
 
 RENDER_API
 void
-RenderPushVertexConstant(uint32 Size,void * Data);
+RenderPushVertexConstant(u32 Size,void * Data);
 
 RENDER_API
 void
