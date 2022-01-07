@@ -22,3 +22,13 @@ As for now using validator.exe. Everything hardcoded.
 
 # Dependencies
 * For now using Quaternion external lib to test my matrix math
+
+# How to build
+```
+git clone https://github.com/4Bruno/GameEngine.git
+cd GameEngine
+cd src
+..\debug_build.bat
+cd debug
+win32_platform.exe
+```
