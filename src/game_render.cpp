@@ -23,6 +23,51 @@ UpdateView(game_state * GameState)
 }
 
 void
+RenderGround(game_state * GameState, entity * Entity)
+{
+    v3 SourceLight = V3(0,10.0f,0);
+    entity_transform T = {};
+    T.LocalP               = V3(0.0f,-1.0f,0.0f); // RECORD   LocalP;
+    T.LocalS               = V3(2.0f); // RECORD   LocalS;
+    Quaternion_setIdentity(&T.LocalR);
+
+    mesh * Mesh = &GameState->GroundMesh;
+
+    entity_transform * ParentT = &Entity->Transform;
+    v3 LocalToWorldP;
+    Quaternion_rotate(&ParentT->WorldR,&T.LocalP,&LocalToWorldP);
+    Translate(T.WorldP,(ParentT->LocalP + LocalToWorldP));
+    Quaternion_multiply(&ParentT->WorldR,&T.LocalR,&T.WorldR);
+    T.WorldS = { 
+        ParentT->WorldS.x * T.LocalS.x,
+        ParentT->WorldS.y * T.LocalS.y,
+        ParentT->WorldS.z * T.LocalS.z
+    };
+
+    m4 R = Quaternion_toMatrix(T.WorldR);
+    R[0].x = -R[0].x;
+    R[1].x = -R[1].x;
+    R[2].x = -R[2].x;
+    //Log("Pitch: %f, Yaw: %f\n",T->Pitch,T->Yaw);
+    T.WorldT = T.WorldP * R * M4(T.WorldS);
+
+    m4 ModelTransform = T.WorldT;
+
+    mesh_push_constant Constants;
+    m4 MVP = GameState->Projection * GameState->ViewTransform * ModelTransform;
+
+    Constants.RenderMatrix = MVP;
+    Constants.SourceLight = SourceLight;
+    Constants.Model = ModelTransform;
+    Constants.DebugColor = V4(V3(1.0f,1.0f,0.0f),1.0f);
+
+    RenderPushVertexConstant(sizeof(mesh_push_constant),(void *)&Constants);
+    //RenderPushMesh(1,(Mesh->IndicesSize / sizeof(uint16)),Mesh->OffsetVertices,Mesh->OffsetIndices);
+    //RenderPushMesh(1, Mesh->VertexSize / sizeof(vertex_point), 0);
+    RenderPushMesh(1, Mesh->VertexSize / sizeof(vertex_point), Mesh->OffsetVertices);
+}
+
+void
 RenderEntities(game_memory * Memory, game_state * GameState)
 {
     v3 SourceLight = V3(0,10.0f,0);
@@ -120,15 +165,6 @@ RenderEntities(game_memory * Memory, game_state * GameState)
     }
 }
 #endif
-
-inline void
-Translate(m4 &M,v3 P)
-{
-    M.Columns[0] = {1, 0 , 0 , 0};
-    M.Columns[1] = {0, 1 , 0 , 0};
-    M.Columns[2] = {0, 0 , 1 , 0};
-    M.Columns[3] = {P.x, P.y , P.z , 1};
-}
 
 void
 WorldInitializeView(game_state * GameState,

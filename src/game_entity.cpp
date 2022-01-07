@@ -163,7 +163,7 @@ THREAD_WORK_HANDLER(AsyncUpdateEntitiesModel)
                 v3 LocalToWorldP;
                 Quaternion_rotate(&ParentT->WorldR,&T->LocalP,&LocalToWorldP);
                 Translate(T->WorldP,(ParentT->LocalP + LocalToWorldP));
-                Quaternion_multiply(&ParentT->WorldR,&T->LocalR,&ParentT->WorldR);
+                Quaternion_multiply(&ParentT->WorldR,&T->LocalR,&T->WorldR);
                 T->WorldS = { 
                     ParentT->WorldS.x * T->LocalS.x,
                     ParentT->WorldS.y * T->LocalS.y,

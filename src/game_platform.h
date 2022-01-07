@@ -15,7 +15,6 @@
 #define Megabytes(x) x*1024*Kilobytes(1)
 #define Gigabytes(x) x*1024*Megabytes(1)
 
-#define Assert(exp) if (!(exp)) { *(volatile int *)0 = 0; } 
 #define ArrayCount(a) (sizeof(a) / sizeof(a[0]))
 #define global_variable static
 #define local_persist   static
@@ -24,6 +23,7 @@
 
 #define Log(format, ...) printf(format, __VA_ARGS__)
 #define Logn(format, ...) printf(format "\n", __VA_ARGS__)
+#define Assert(exp) if (!(exp)) { Logn("------------- FAILED ASSERTION -------------\nFile:%s\nLine: %i\nExpc:%s",__FILE__,__LINE__,#exp);*(volatile int *)0 = 0; } 
 
 typedef int16_t  i16;
 typedef int32_t  i32;

@@ -56,6 +56,7 @@ struct async_update_entities_model
     game_state * GameState;
 };
 
+GAME_API
 THREAD_WORK_HANDLER(AsyncUpdateEntitiesModel);
 
 inline b32 
@@ -64,7 +65,7 @@ EntityHasFlag(entity * Entity, component_flags Flag)
     return (Entity->Flags & Flag);
 }
 
-void
+GAME_API void
 EntityAddTranslation(entity * Entity, entity * Parent, v3 P, v3 Scale, r32 Speed);
 
 inline entity

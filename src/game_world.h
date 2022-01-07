@@ -178,41 +178,41 @@ struct simulation_iterator
 };
 
 
-world
+GAME_API world
 NewWorld(memory_arena * Arena, u32 DimX, u32 DimY, u32 DimZ);
 
-world_pos
+GAME_API world_pos
 WorldPosition(i32 X, i32 Y, i32 Z, v3 Offset = {0 , 0, 0});
 
-world_pos
+GAME_API world_pos
 MapIntoCell(world * World, world_pos P, v3 dP);
 
-entity *
+GAME_API entity *
 AddEntity(world * World, world_pos P);
 
-neighbor_iterator
+GAME_API neighbor_iterator
 GetNeighborIterator(world * World,entity * Entity);
 
-void
+GAME_API void
 AdvanceIterator(world * World, neighbor_iterator * Iterator);
 
-void
+GAME_API void
 UpdateWorldLocation(world * World,simulation * Sim);
 
-v3
+GAME_API v3
 Substract(world * World, world_pos To, world_pos From);
 
 /* SIMULATION */
-void
+GAME_API void
 SimulationRegisterEntity(simulation * Sim, entity * Entity,  u32 StorageIndexID);
 
-void
+GAME_API void
 BeginSimulation(world * World, simulation * Sim);
 
-simulation_iterator
+GAME_API simulation_iterator
 BeginSimIterator(world * World, simulation * Sim);
 
-entity *
+GAME_API entity *
 AdvanceSimIterator(simulation_iterator * Iterator);
 
 #endif

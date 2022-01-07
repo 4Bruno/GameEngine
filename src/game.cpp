@@ -1,6 +1,7 @@
 #include "game.h"
 
 #include "game_animation.cpp"
+#include "game_ground_generator.cpp"
 
 void
 FreeCameraView(game_state * GameState, v3 dP, r32 Yaw, r32 Pitch)
@@ -188,7 +189,11 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
         u32 MeshesArenaSize = Megabytes(10);
         Base = PushSize(&GameState->TemporaryArena,MeshesArenaSize);
         InitializeArena(&GameState->MeshesArena, Base, MeshesArenaSize);
-        GameState->Meshes = PushArray(&GameState->MeshesArena, 100, mesh);
+        GameState->LimitMeshes = 100;
+        GameState->Meshes = PushArray(&GameState->MeshesArena, GameState->LimitMeshes, mesh);
+
+        // TODO: Procedural ground generation
+        GameState->GroundMesh = CreateHexaGroundMesh(&GameState->MeshesArena);
 
 
         // TODO: how to properly push vertex inputs to render?
@@ -333,12 +338,13 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
     BeginRender(GameState, ClearColor);
 
     RenderEntities(Memory, GameState);
+    RenderGround(GameState,Player);
     
     EndRender(GameState);
 
     v3 CameraP = GetViewPos(GameState);
     GameState->Simulation->Origin = MapIntoCell(World, World->CurrentWorldP, CameraP);
     Translate(GameState->ViewMoveMatrix, V3(0,0,0));
-    Logn("Camera P " STRP ", " STRWORLDP, FP(CameraP), FWORLDP(GameState->Simulation->Origin));
+    //Logn("Camera P " STRP ", " STRWORLDP, FP(CameraP), FWORLDP(GameState->Simulation->Origin));
 }
 

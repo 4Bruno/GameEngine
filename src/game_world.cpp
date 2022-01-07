@@ -1,5 +1,6 @@
 #include <intrin.h>
 #include "game.h"
+#include "game_simulation.cpp"
 
 #define MAX_LENGHTSQR_DISTANCE_ALLOWED (1000.0f * 1000.0f)
 //#define MAX_LENGHTSQR_DISTANCE_ALLOWED (450.0f)

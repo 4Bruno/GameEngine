@@ -405,6 +405,15 @@ Normalize(v3 A)
     return R;
 }
 
+inline void
+Translate(m4 &M,v3 P)
+{
+    M.Columns[0] = {1, 0 , 0 , 0};
+    M.Columns[1] = {0, 1 , 0 , 0};
+    M.Columns[2] = {0, 0 , 1 , 0};
+    M.Columns[3] = {P.x, P.y , P.z , 1};
+}
+
 
 #define GAME_MATH_H
 #endif

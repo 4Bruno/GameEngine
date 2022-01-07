@@ -1902,7 +1902,7 @@ VulkanGetPhysicalDevice()
             u32 TotalDeviceExtProp = 0;
             VK_CHECK(vkEnumerateDeviceExtensionProperties(PhysicalDevices[i], 0, &TotalDeviceExtProp, 0));
 
-            VkExtensionProperties DeviceExtensionProps[120] = {};
+            VkExtensionProperties DeviceExtensionProps[256] = {};
             Assert(ArrayCount(DeviceExtensionProps) >= TotalDeviceExtProp);
             VK_CHECK(vkEnumerateDeviceExtensionProperties(PhysicalDevices[i], 0, &TotalDeviceExtProp, &DeviceExtensionProps[0]));
 

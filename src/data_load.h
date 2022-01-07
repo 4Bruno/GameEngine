@@ -9,7 +9,7 @@ struct file_contents
     b32 Success;
 };
 
-file_contents
+GAME_API file_contents
 GetFileContents(game_memory * GameMemory,memory_arena * Arena,const char * Filepath);
 
 

@@ -20,39 +20,39 @@ enum  shader_type_fragment
     shader_type_fragment_total
 };
 
-void
+GAME_API void
 CreatePipeline(game_memory * Memory,game_state * GameState);
 
-void
+GAME_API void
 EntityAdd3DRender(game_state * GameState, entity Entity, u32 MeshID, v3 Color);
 
-void
+GAME_API void
 BeginRender(game_state * GameState, v4 ClearColor);
 
-void
+GAME_API void
 EndRender(game_state * GameState);
 
-inline void 
-Translate(m4 &M,v3 P);
-
-void
+GAME_API void
 RenderEntities(game_memory * Memory, game_state * GameState);
 
+GAME_API void
+RenderGround(game_state * GameState, entity * Entity);
 
-void
+
+GAME_API void
 WorldInitializeView(game_state * GameState,
                r32 FOV,
                i32 ScreenWidth, i32 ScreenHeight, 
                r32 n, r32 f, 
                v3 P, v3 WorldUp = DEFAULT_WORLD_UP);
 
-void 
+GAME_API void 
 RotateFill(m4 * M, r32 AngleX, r32 AngleY, r32 AngleZ);
 
-void
+GAME_API void
 MoveViewRight(game_state * GameState,r32 N);
 
-void
+GAME_API void
 MoveViewForward(game_state * GameState,r32 N);
 
 
@@ -71,7 +71,7 @@ GetMatrixDirection(m4 &RotationMatrix);
 i32
 ViewLookAt(game_state * GameState, v3 P, v3 TargetP);
 
-void
+GAME_API void
 EntityLookAt(game_state * GameState,entity Entity, v3 P);
 
 m4

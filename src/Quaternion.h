@@ -53,17 +53,17 @@ struct Quaternion {
 /**
  * Sets the given values to the output quaternion.
  */
-void Quaternion_set(r32 w, r32 v1, r32 v2, r32 v3, Quaternion* output);
+GAME_API void Quaternion_set(r32 w, r32 v1, r32 v2, r32 v3, Quaternion* output);
 
 /**
  * Sets quaternion to its identity.
  */
-void Quaternion_setIdentity(Quaternion* q);
+GAME_API void Quaternion_setIdentity(Quaternion* q);
 
 /**
  * Copies one quaternion to another.
  */
-void Quaternion_copy(Quaternion* q, Quaternion* output);
+GAME_API void Quaternion_copy(Quaternion* q, Quaternion* output);
 
 /**
  * Tests if all quaternion values are equal (using QUATERNION_EPS).
@@ -73,7 +73,7 @@ bool Quaternion_equal(Quaternion* q1, Quaternion* q2);
 /**
  * Print the quaternion to a given file (e.g., stderr).
  */
-void Quaternion_fprint(FILE* file, Quaternion* q);
+GAME_API void Quaternion_fprint(FILE* file, Quaternion* q);
 
 /**
  * Set the quaternion to the equivalent of axis-angle rotation.
@@ -82,7 +82,7 @@ void Quaternion_fprint(FILE* file, Quaternion* q);
  * @param angle
  *      Rotation angle in radians.
  */
-void Quaternion_fromAxisAngle(r32 axis[3], r32 angle, Quaternion* output);
+GAME_API void Quaternion_fromAxisAngle(r32 axis[3], r32 angle, Quaternion* output);
 
 /**
  * Calculates the rotation vector and angle of a quaternion.
@@ -98,35 +98,35 @@ r32 Quaternion_toAxisAngle(Quaternion* q, r32 output[3]);
  * @param eulerZYX
  *      Euler angles in ZYX, but stored in array as [x'', y', z].
  */
-void Quaternion_fromEulerZYX(v3 * eulerZYX, Quaternion* output);
+GAME_API void Quaternion_fromEulerZYX(v3 * eulerZYX, Quaternion* output);
 
 /**
  * Calculates the euler angles of a quaternion.
  * @param output
  *      Euler angles in ZYX, but stored in array as [x'', y', z].
  */
-void Quaternion_toEulerZYX(Quaternion* q, r32 output[3]);
+GAME_API void Quaternion_toEulerZYX(Quaternion* q, r32 output[3]);
 
 /**
  * Set the quaternion to the equivalent a rotation around the X-axis.
  * @param angle
  *      Rotation angle in radians.
  */
-void Quaternion_fromXRotation(r32 angle, Quaternion* output);
+GAME_API void Quaternion_fromXRotation(r32 angle, Quaternion* output);
 
 /**
  * Set the quaternion to the equivalent a rotation around the Y-axis.
  * @param angle
  *      Rotation angle in radians.
  */
-void Quaternion_fromYRotation(r32 angle, Quaternion* output);
+GAME_API void Quaternion_fromYRotation(r32 angle, Quaternion* output);
 
 /**
  * Set the quaternion to the equivalent a rotation around the Z-axis.
  * @param angle
  *      Rotation angle in radians.
  */
-void Quaternion_fromZRotation(r32 angle, Quaternion* output);
+GAME_API void Quaternion_fromZRotation(r32 angle, Quaternion* output);
 
 /**
  * Calculates the norm of a given quaternion:
@@ -137,12 +137,12 @@ r32 Quaternion_norm(Quaternion* q);
 /**
  * Normalizes the quaternion.
  */
-void Quaternion_normalize(Quaternion* q, Quaternion* output);
+GAME_API void Quaternion_normalize(Quaternion* q, Quaternion* output);
 
 /**
  * Calculates the conjugate of the quaternion: (w, -v)
  */
-void Quaternion_conjugate(Quaternion* q, Quaternion* output);
+GAME_API void Quaternion_conjugate(Quaternion* q, Quaternion* output);
 
 /**
  * Multiplies two quaternions: output = q1 * q2
@@ -151,12 +151,12 @@ void Quaternion_conjugate(Quaternion* q, Quaternion* output);
  * @param q2
  *      The orientation to be rotated.
  */
-void Quaternion_multiply(Quaternion* q1, Quaternion* q2, Quaternion* output);
+GAME_API void Quaternion_multiply(Quaternion* q1, Quaternion* q2, Quaternion* output);
 
 /**
  * Applies quaternion rotation to a given vector.
  */
-void Quaternion_rotate(Quaternion* q, v3 * v, v3 * output);
+GAME_API void Quaternion_rotate(Quaternion* q, v3 * v, v3 * output);
 
 /**
  * Interpolates between two quaternions.
@@ -164,10 +164,10 @@ void Quaternion_rotate(Quaternion* q, v3 * v, v3 * output);
  *      Interpolation between the two quaternions [0, 1].
  *      0 is equal with q1, 1 is equal with q2, 0.5 is the middle between q1 and q2.
  */
-void Quaternion_slerp(Quaternion* q1, Quaternion* q2, r32 t, Quaternion* output);
+GAME_API void Quaternion_slerp(Quaternion* q1, Quaternion* q2, r32 t, Quaternion* output);
 
 /**
  * Transforms quaternion to 4x4 matrix (column major)
  */
-m4 
+GAME_API m4 
 Quaternion_toMatrix(const Quaternion& quat);

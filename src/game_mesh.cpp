@@ -387,13 +387,12 @@ CopyStr(char * DestStr,const char * SrcStr ,u32 Length)
 mesh *
 GetMesh(game_memory * Memory, game_state * GameState,u32 ID)
 {
-
     mesh * Mesh = (GameState->Meshes + ID);
 
     if (!Mesh->Loaded && !Mesh->LoadInProcess)
     {
         const char * Paths[2] = {
-            "assets\\cube.obj",
+            "assets\\cube_triangles.obj",
             "assets\\human_male_triangles.obj"
         };
         const u32 MeshSizes[2] = {

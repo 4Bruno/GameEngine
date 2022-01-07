@@ -22,13 +22,13 @@ struct thread_memory_arena
 GAME_API inline u8 *
 _PushSize(memory_arena * Arena,u32 Size);
 
-memory_arena *
+GAME_API memory_arena *
 ThreadBeginArena(thread_memory_arena * ThreadArena);
 
-void
+GAME_API void
 ThreadEndArena(thread_memory_arena * ThreadArena);
 
-void
+GAME_API void
 InitializeArena(memory_arena * Arena,u8 * BaseAddr, u32 MaxSize);
 
 /*
@@ -39,10 +39,10 @@ InitializeArena(memory_arena * Arena,u8 * BaseAddr, u32 MaxSize);
  *  Any critical step that must be guaranteed to be handle
  *  in the current frame must be done using CompleteQueue 
  */
-thread_memory_arena *
+GAME_API thread_memory_arena *
 GetThreadArena(game_state * GameState);
 
-void
+GAME_API void
 MemCopy(u8 * Dest,u8 * Src,u32 EntitySize);
 
 #define GAME_MEMORY_H

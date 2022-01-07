@@ -36,8 +36,10 @@ struct async_load_mesh
     u32 BaseOffset;
 };
 
-mesh *
+GAME_API mesh *
 GetMesh(game_memory * Memory, game_state * GameState,u32 ID);
+GAME_API void
+PushMeshSize(memory_arena * Arena, u32 DataSize, u32 InstanceCount);
 
 #define GAME_MESH_H
 #endif

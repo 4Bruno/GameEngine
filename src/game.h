@@ -102,6 +102,7 @@ struct game_state
 
     mesh * Meshes;
     u32 LimitMeshes;
+    mesh GroundMesh;
 
     v3 WorldUp;
     m4 ViewMoveMatrix;
