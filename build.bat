@@ -57,10 +57,11 @@ cl /nologo ^
 
 set dllname=game
 set dllnameOutput=%dllname%%Dllreload%
+rem ..\data_load.cpp ..\game_memory.cpp ..\game_entity.cpp ..\Quaternion.cpp ..\game_render.cpp ..\game_mesh.cpp ..\game_world.cpp ..\game_simulation.cpp ^
 cl /nologo ^
   /LD /MTd ^
  /Fm%dllname%.map %WarningLevel% %IgnoreWarnings% %GenerateCompleteDebuggingInfo% %CompilationFlags% %IncludePaths% ..\%dllname%.cpp ^
-  ..\data_load.cpp ..\game_memory.cpp ..\game_entity.cpp ..\Quaternion.cpp ..\game_render.cpp ..\game_mesh.cpp ..\game_world.cpp ..\game_simulation.cpp ^
+  ..\data_load.cpp ..\game_memory.cpp ..\game_entity.cpp ..\Quaternion.cpp ..\game_render.cpp ..\game_mesh.cpp ..\game_world.cpp ^
   /Fe:%dllnameOutput%.dll ^
   /link ^
   /DLL ^
