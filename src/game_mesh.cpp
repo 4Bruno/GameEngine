@@ -184,9 +184,9 @@ ReadObjFileHeader(const char * Data, u32 Size)
     }
 
 #if 0
-    Log("File has %u vertices. Beginning at line %u",Description.VertexCount,Description.VertexStart);
-    Log("File has %u vertices normal. Beginning at line %u",Description.VertexNormalCount,Description.VertexNormalStart);
-    Log("File has %u faces. Beginning at line %u",Description.FaceElementsCount,Description.FaceElementsStart);
+    Logn("File has %u vertices. Beginning at line %u",Description.VertexCount,Description.VertexStart);
+    Logn("File has %u vertices normal. Beginning at line %u",Description.VertexNormalCount,Description.VertexNormalStart);
+    Logn("File has %u faces. Beginning at line %u",Description.FaceElementsCount,Description.FaceElementsStart);
 #endif
 
 

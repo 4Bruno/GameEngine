@@ -85,7 +85,7 @@ RenderEntities(game_memory * Memory, game_state * GameState)
             Entity = AdvanceSimIterator(&SimIter))
     {
         entity_transform * T = &Entity->Transform;
-        mesh * Mesh = GetMesh(Memory,GameState,0);
+        mesh * Mesh = GetMesh(Memory,GameState,1);
 
         if (Mesh->Loaded)
         {
