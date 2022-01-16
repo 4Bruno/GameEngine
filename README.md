@@ -30,5 +30,6 @@ cd GameEngine
 cd src
 ..\debug_build.bat
 cd debug
+robocopy /mir ..\..\assets assets
 win32_platform.exe
 ```
