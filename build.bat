@@ -70,3 +70,8 @@ cl /nologo ^
 
 popd
 
+if !%Mode%!==!release!  (
+    call ..\shaders.bat
+) else (
+    call ..\shaders.bat debug
+)
