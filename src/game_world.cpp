@@ -146,6 +146,7 @@ GetNeighborIterator(world * World,entity * Entity)
 
     Iterator.Current             = BottomLeft;     // world_cell * Current;
     Iterator.Neighbors           = Cell->Neighbor; // cell_neighbor_offset * Neighbors;
+    Iterator.Neighbors           = Cell->Neighbor; // cell_neighbor_offset * Neighbors;
     Iterator.CurrentNeighborIndex= 0;
     Iterator.CenterHashIndex     = CellHashIndex;
     Iterator.CanContinue         = true;
@@ -432,7 +433,7 @@ Substract(world * World, world_pos To, world_pos From)
     return V3(dP.x, dP.y, dP.z);
 }
 
-void
+inline void
 AppendCellDataToFreeList(world * World, world_cell_data * CellData)
 {
     world_cell_data * Temp = World->FreeListWorldCellData;
@@ -440,7 +441,7 @@ AppendCellDataToFreeList(world * World, world_cell_data * CellData)
     World->FreeListWorldCellData->Next = Temp;
 }
 
-void
+inline void
 AppendCellToFreeList(world * World, world_cell * Cell)
 {
 
@@ -448,7 +449,8 @@ AppendCellToFreeList(world * World, world_cell * Cell)
     World->FreeListWorldCells = Cell;
     Cell->NextCell = FirstFreeCell;
 }
-b32
+
+inline b32
 InVolume(v3 MinCorner,v3 MaxCorner,v3 P)
 {
     b32 NotInVolume = 
@@ -515,8 +517,6 @@ UpdateWorldLocation(world * World, simulation * Sim)
             {
                 world_pos NewWorldP = MapIntoCell(World, OldWorldP, EntityInSimulationP);
                 EntityNoLongerActive = true;
-                // For now player is always entity.ID(1). Debug that simulation
-                // is always sitting on player 1. Therefore never should be outside
                 Assert(Entity->ID.ID != 1);
                 // Storage back to grid
                 Entity->WorldP = NewWorldP;
