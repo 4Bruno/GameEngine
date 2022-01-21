@@ -100,9 +100,9 @@ struct game_state
     i32 VertexShaders[2];
     i32 FragmentShaders[2];
 
-    mesh * Meshes;
+    mesh_group * Meshes;
     u32 LimitMeshes;
-    mesh GroundMesh;
+    mesh_group GroundMeshGroup;
 
     v3 WorldUp;
     m4 ViewMoveMatrix;

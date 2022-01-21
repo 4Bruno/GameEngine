@@ -207,3 +207,8 @@ EntityAddTranslation(entity * Entity, entity * Parent, v3 P, v3 Scale, r32 Speed
 
     EntityAddFlag(Entity,component_transform);
 }
+
+void
+EntityAddMesh(entity * Entity)
+{
+}

@@ -31,40 +31,48 @@ RenderGround(game_state * GameState, entity * Entity)
     T.LocalS               = V3(2.0f); // RECORD   LocalS;
     Quaternion_setIdentity(&T.LocalR);
 
-    mesh * Mesh = &GameState->GroundMesh;
+    mesh_group * GroundMeshGroup = &GameState->GroundMeshGroup;
 
-    entity_transform * ParentT = &Entity->Transform;
-    v3 LocalToWorldP;
-    Quaternion_rotate(&ParentT->WorldR,&T.LocalP,&LocalToWorldP);
-    Translate(T.WorldP,(ParentT->LocalP + LocalToWorldP));
-    Quaternion_multiply(&ParentT->WorldR,&T.LocalR,&T.WorldR);
-    T.WorldS = { 
-        ParentT->WorldS.x * T.LocalS.x,
-        ParentT->WorldS.y * T.LocalS.y,
-        ParentT->WorldS.z * T.LocalS.z
-    };
+    for (u32 MeshObjectIndex = 0;
+            MeshObjectIndex < GroundMeshGroup->TotalMeshObjects;
+            ++MeshObjectIndex)
+    {
+        mesh * Mesh = GroundMeshGroup->Meshes + MeshObjectIndex;
 
-    m4 R = Quaternion_toMatrix(T.WorldR);
-    R[0].x = -R[0].x;
-    R[1].x = -R[1].x;
-    R[2].x = -R[2].x;
-    //Log("Pitch: %f, Yaw: %f\n",T->Pitch,T->Yaw);
-    T.WorldT = T.WorldP * R * M4(T.WorldS);
+        entity_transform * ParentT = &Entity->Transform;
+        v3 LocalToWorldP;
+        Quaternion_rotate(&ParentT->WorldR,&T.LocalP,&LocalToWorldP);
+        Translate(T.WorldP,(ParentT->LocalP + LocalToWorldP));
+        Quaternion_multiply(&ParentT->WorldR,&T.LocalR,&T.WorldR);
+        T.WorldS = { 
+            ParentT->WorldS.x * T.LocalS.x,
+            ParentT->WorldS.y * T.LocalS.y,
+            ParentT->WorldS.z * T.LocalS.z
+        };
 
-    m4 ModelTransform = T.WorldT;
+        m4 R = Quaternion_toMatrix(T.WorldR);
+        R[0].x = -R[0].x;
+        R[1].x = -R[1].x;
+        R[2].x = -R[2].x;
+        //Log("Pitch: %f, Yaw: %f\n",T->Pitch,T->Yaw);
+        T.WorldT = T.WorldP * R * M4(T.WorldS);
 
-    mesh_push_constant Constants;
-    m4 MVP = GameState->Projection * GameState->ViewTransform * ModelTransform;
+        m4 ModelTransform = T.WorldT;
 
-    Constants.RenderMatrix = MVP;
-    Constants.SourceLight = SourceLight;
-    Constants.Model = ModelTransform;
-    Constants.DebugColor = V4(V3(1.0f,1.0f,0.0f),1.0f);
+        mesh_push_constant Constants;
+        m4 MVP = GameState->Projection * GameState->ViewTransform * ModelTransform;
 
-    RenderPushVertexConstant(sizeof(mesh_push_constant),(void *)&Constants);
-    //RenderPushMesh(1,(Mesh->IndicesSize / sizeof(uint16)),Mesh->OffsetVertices,Mesh->OffsetIndices);
-    //RenderPushMesh(1, Mesh->VertexSize / sizeof(vertex_point), 0);
-    RenderPushMesh(1, Mesh->VertexSize / sizeof(vertex_point), Mesh->OffsetVertices);
+        Constants.RenderMatrix = MVP;
+        Constants.SourceLight = SourceLight;
+        Constants.Model = ModelTransform;
+        Constants.DebugColor = V4(V3(1.0f,1.0f,0.0f),1.0f);
+
+        RenderPushVertexConstant(sizeof(mesh_push_constant),(void *)&Constants);
+        //RenderPushMesh(1,(Mesh->IndicesSize / sizeof(uint16)),Mesh->OffsetVertices,Mesh->OffsetIndices);
+        //RenderPushMesh(1, Mesh->VertexSize / sizeof(vertex_point), 0);
+        RenderPushMesh(1, Mesh->VertexSize / sizeof(vertex_point), Mesh->OffsetVertices);
+    }
+
 }
 
 void
@@ -85,27 +93,34 @@ RenderEntities(game_memory * Memory, game_state * GameState)
             Entity = AdvanceSimIterator(&SimIter))
     {
         entity_transform * T = &Entity->Transform;
-        mesh * Mesh = GetMesh(Memory,GameState,1);
+        mesh_group * MeshGroup = GetMesh(Memory,GameState,2);
 
-        if (Mesh->Loaded)
+        if (MeshGroup->Loaded)
         {
-            m4 ModelTransform = T->WorldT;
+            for (u32 MeshObjectIndex = 0;
+                        MeshObjectIndex < MeshGroup->TotalMeshObjects;
+                        ++MeshObjectIndex)
+            {
+                mesh * Mesh = MeshGroup->Meshes + MeshObjectIndex;
 
-            mesh_push_constant Constants;
-            m4 MVP = GameState->Projection * GameState->ViewTransform * ModelTransform;
+                m4 ModelTransform = T->WorldT;
 
-            Constants.RenderMatrix = MVP;
-            Constants.SourceLight = SourceLight;
-            Constants.Model = ModelTransform;
-            v4 ColorDebug = V4(V3(0.0f),1.0f);
-            ColorDebug._V[Entity->ID.ID % 3] = 1.0f;
-            Constants.DebugColor = ColorDebug;
-            Constants.DebugColor = V4(Entity->Color,1.0f);
+                mesh_push_constant Constants;
+                m4 MVP = GameState->Projection * GameState->ViewTransform * ModelTransform;
 
-            RenderPushVertexConstant(sizeof(mesh_push_constant),(void *)&Constants);
-            //RenderPushMesh(1,(Mesh->IndicesSize / sizeof(uint16)),Mesh->OffsetVertices,Mesh->OffsetIndices);
-            //RenderPushMesh(1, Mesh->VertexSize / sizeof(vertex_point), 0);
-            RenderPushMesh(1, Mesh->VertexSize / sizeof(vertex_point), Mesh->OffsetVertices);
+                Constants.RenderMatrix = MVP;
+                Constants.SourceLight = SourceLight;
+                Constants.Model = ModelTransform;
+                v4 ColorDebug = V4(V3(0.0f),1.0f);
+                ColorDebug._V[Entity->ID.ID % 3] = 1.0f;
+                Constants.DebugColor = ColorDebug;
+                Constants.DebugColor = V4(Entity->Color,1.0f);
+
+                RenderPushVertexConstant(sizeof(mesh_push_constant),(void *)&Constants);
+                //RenderPushMesh(1,(Mesh->IndicesSize / sizeof(uint16)),Mesh->OffsetVertices,Mesh->OffsetIndices);
+                //RenderPushMesh(1, Mesh->VertexSize / sizeof(vertex_point), 0);
+                RenderPushMesh(1, Mesh->VertexSize / sizeof(vertex_point), Mesh->OffsetVertices);
+            }
         }
     }
 

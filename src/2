@@ -190,10 +190,10 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
         Base = PushSize(&GameState->TemporaryArena,MeshesArenaSize);
         InitializeArena(&GameState->MeshesArena, Base, MeshesArenaSize);
         GameState->LimitMeshes = 100;
-        GameState->Meshes = PushArray(&GameState->MeshesArena, GameState->LimitMeshes, mesh_group);
+        GameState->Meshes = PushArray(&GameState->MeshesArena, GameState->LimitMeshes, mesh);
 
         // TODO: Procedural ground generation
-        GameState->GroundMeshGroup = CreateHexaGroundMesh(&GameState->MeshesArena);
+        GameState->GroundMesh = CreateHexaGroundMesh(&GameState->MeshesArena);
 
 
         // TODO: how to properly push vertex inputs to render?

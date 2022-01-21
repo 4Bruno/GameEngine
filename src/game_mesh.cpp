@@ -1,8 +1,12 @@
 #include "game.h"
 #include <inttypes.h>
+#include "static_mesh_models.cpp"
 
 struct obj_file_header
 {
+    u32  CurrentByteIndex;
+    char Name[100];
+
     u32 VertexStart;    
     u32 VertexCount;
 
@@ -48,24 +52,44 @@ AdvanceAfterWs(const char * Data, u32 Size, u32 * c)
     *c = ++ci;
 }
 
+inline void
+CopyStrUntilChar(char * DestStr,const char * SrcStr, char CharExit, u32 MaxLength)
+{
+    for (u32 ci = 0;
+                ci < MaxLength;
+                ++ci)
+    {
+        if (SrcStr[ci] == CharExit)
+        {
+            break;
+        }
+        else
+        {
+            DestStr[ci] = SrcStr[ci];
+        }
+    }
+}
+
 obj_file_header
-ReadObjFileHeader(const char * Data, u32 Size)
+ReadObjFileHeader(const char * Data, u32 StartAtByte, u32 Size)
 {
     obj_file_header Description = {};
 
     u32 TotalPolys = 0;
-    u32 ci = 0;
+    u32 ci = StartAtByte;
 
 
-    // skip comment section
+    // find first object
     for (; (ci < Size);)
     {
-        if (Data[ci] == '#') 
+        if (Data[ci] != 'o') 
         {
             SkipLine(Data,Size,&ci);
         }
         else
         {
+            CopyStrUntilChar(Description.Name,Data + ci + 2,'\n',sizeof(Description.Name));
+            SkipLine(Data,Size,&ci);
             break;
         }
 
@@ -78,6 +102,11 @@ ReadObjFileHeader(const char * Data, u32 Size)
         u32 LineCount = 0;
         char ContinueIfA = 0;
         char ContinueIfB = 0;
+
+        // this will tell caller if multiple objects
+        // where is the current index
+        Description.CurrentByteIndex = ci;
+
         switch (Data[ci])
         {
             case 'v':
@@ -132,8 +161,10 @@ ReadObjFileHeader(const char * Data, u32 Size)
             } break;
             case 'o':
             {
-                ContinueIfA = 'o';
-                ContinueIfB = ' ';
+                // Early exit dont parse next object
+                // let caller handle it
+                return Description;
+
             } break;
             case 's':
             {
@@ -193,8 +224,13 @@ ReadObjFileHeader(const char * Data, u32 Size)
     return Description;
 }
 
+struct parsed_obj_header
+{
+};
+
 mesh
-CreateMeshFromObjHeader(memory_arena * Arena,void * BufferVertices,obj_file_header Header, const char * Data, u32 Size)
+CreateMeshFromObjHeader(memory_arena * Arena,void * BufferVertices,obj_file_header Header, const char * Data, u32 Size,
+                        u32 OffsetVertexP, u32 OffsetVertexN)
 //CreateMeshFromObjHeader(memory_arena * Arena,obj_file_header Header, const char * Data, u32 Size)
 {
     mesh Mesh = {};
@@ -264,6 +300,14 @@ CreateMeshFromObjHeader(memory_arena * Arena,void * BufferVertices,obj_file_head
             i16 IndexVertexP = (i16)strtoimax(Data + ci,&End, Base10) - (i16)1;
             i16 IndexVertexT = (i16)strtoimax(End + 1,&End, Base10) - (i16)1;
             i16 IndexVertexN = (i16)strtoimax(End + 1,&End, Base10) - (i16)1;
+
+            IndexVertexP = IndexVertexP - (i16)OffsetVertexP;
+            IndexVertexN = IndexVertexN - (i16)OffsetVertexN;
+
+            Assert(IndexVertexP <= (i16)Header.VertexCount);
+            //Assert(IndexVertexT <= ArrayCount(UniqueVertexArray));
+            Assert(IndexVertexN <= (i16)Header.VertexNormalCount);
+
             // P
             Mesh.Vertices[Indice].P = UniqueVertexArray[IndexVertexP];
             // TextCoord
@@ -310,37 +354,62 @@ THREAD_WORK_HANDLER(LoadMesh)
     Assert(WorkData->ThreadArena);
 
     game_state * GameState = WorkData->GameState;
-    mesh * Mesh = WorkData->Mesh;
-    Assert(Mesh);
+    mesh_group * MeshGroup = WorkData->MeshGroup;
+    Assert(MeshGroup);
 
     memory_arena * Arena = &WorkData->ThreadArena->Arena;
-    Assert(!Mesh->Loaded);
+    Assert(!MeshGroup->Loaded);
 
     i32 Result = -1;
     file_contents GetFileResult = GetFileContents(WorkData->Memory, Arena,WorkData->Path);
 
     if (GetFileResult.Success)
     {
-        obj_file_header Header = 
-            ReadObjFileHeader((const char *)GetFileResult.Base, GetFileResult.Size);
-        mesh TempMesh   = 
-            CreateMeshFromObjHeader(Arena,
-                    WorkData->BufferVertices,
-                    Header, 
-                    (const char *)GetFileResult.Base, GetFileResult.Size);
+        u32 CurrentByteIndex = 0;
+        u32 GPUVertexBufferBaseOffset = WorkData->BaseOffset;
+        u8 * BufferVertices = (u8 *)WorkData->BufferVertices;
+        // Object file stacks face index position 
+        u32 OffsetVertexP = 0;
+        u32 OffsetVertexN = 0;
 
-        Mesh->Vertices       = TempMesh.Vertices; // vertex_point * Vertices;
-        Mesh->VertexSize     = TempMesh.VertexSize; // u32   VertexSize;
-        Mesh->Indices        = TempMesh.Indices; // Typedef * Indices;
-        Mesh->IndicesSize    = TempMesh.IndicesSize; // u32   IndicesSize;
+        for (u32 MeshObject = 0;
+                    MeshObject < MeshGroup->TotalMeshObjects;
+                    ++MeshObject)
+        {
+            obj_file_header Header = 
+                ReadObjFileHeader((const char  *)GetFileResult.Base,CurrentByteIndex, GetFileResult.Size);
+            //Logn("Object %s",Header.Name);
+            mesh TempMesh   = 
+                CreateMeshFromObjHeader(Arena, BufferVertices, Header, (const char  *)GetFileResult.Base, GetFileResult.Size,
+                                        OffsetVertexP,OffsetVertexN);
 
-        // TODO GPU barrier sync
-        RenderPushVertexData(Mesh->Vertices,Mesh->VertexSize, WorkData->BaseOffset);
-        //RenderPushVertexData(Mesh->Vertices,Mesh->VertexSize, 1);
-        //RenderPushIndexData(&GameState->IndicesArena, Mesh->Indices,Mesh->IndicesSize, 1);
+            mesh * Mesh = MeshGroup->Meshes + MeshObject;
+            Mesh->Vertices       = TempMesh.Vertices; // vertex_point * Vertices;
+            Mesh->VertexSize     = TempMesh.VertexSize; // u32   VertexSize;
+            Mesh->Indices        = TempMesh.Indices; // Typedef * Indices;
+            Mesh->IndicesSize    = TempMesh.IndicesSize; // u32   IndicesSize;
+
+            // The GPU vertex buffer offset where this will live
+            // should be same offset as in our mesh arena
+            Mesh->OffsetVertices = GPUVertexBufferBaseOffset;
+
+            // TODO GPU barrier sync
+            RenderPushVertexData(Mesh->Vertices,Mesh->VertexSize, Mesh->OffsetVertices);
+            //RenderPushVertexData(Mesh->Vertices,Mesh->VertexSize, 1);
+            //RenderPushIndexData(&GameState->IndicesArena, Mesh->Indices,Mesh->IndicesSize, 1);
+
+            //
+            
+            BufferVertices = (BufferVertices + Mesh->VertexSize);
+            GPUVertexBufferBaseOffset = (GPUVertexBufferBaseOffset + Mesh->VertexSize);
+            CurrentByteIndex = Header.CurrentByteIndex;
+            OffsetVertexP += Header.VertexCount;
+            OffsetVertexN += Header.VertexNormalCount;
+        }
 
         COMPILER_DONOT_REORDER_BARRIER;
-        Mesh->Loaded = true;
+        MeshGroup->Loaded = true;
+        MeshGroup->LoadInProcess = false;
     }
 
 #if 0
@@ -373,6 +442,7 @@ StrLen(const char * c)
     return ci;
 }
 
+
 inline void
 CopyStr(char * DestStr,const char * SrcStr ,u32 Length)
 {
@@ -384,36 +454,34 @@ CopyStr(char * DestStr,const char * SrcStr ,u32 Length)
     }
 }
 
-mesh *
+mesh_group *
 GetMesh(game_memory * Memory, game_state * GameState,u32 ID)
 {
-    mesh * Mesh = (GameState->Meshes + ID);
+    mesh_group * MeshGroup = (GameState->Meshes + ID);
 
-    if (!Mesh->Loaded && !Mesh->LoadInProcess)
+    if (!MeshGroup->Loaded && !MeshGroup->LoadInProcess)
     {
-        const char * Paths[2] = {
-            "assets\\cube_triangles.obj",
-            "assets\\human_male_triangles.obj"
-        };
-        const u32 MeshSizes[2] = {
-            36 * sizeof(vertex_point),
-            4200 * sizeof(vertex_point),
-        };
         thread_memory_arena * ThreadArena = GetThreadArena(GameState);
         if (ThreadArena)
         {
-            Mesh->LoadInProcess = true;
+            MeshGroup->LoadInProcess = true;
 
             memory_arena * Arena = ThreadBeginArena(ThreadArena);
 
             async_load_mesh * Data = PushStruct(Arena,async_load_mesh);
+
+            MeshGroup->TotalMeshObjects = MeshObjects[ID];
+
+            // TODO: warning! use pushmeshsize for m64 boundaries memory
+            MeshGroup->Meshes = PushArray(&GameState->MeshesArena,MeshGroup->TotalMeshObjects,mesh);
+
+            Data->MeshGroup = MeshGroup;
             Data->Memory    = Memory;                  // game_memory * Memory;
             Data->GameState = GameState;               // game_state * GameState;
-            u32 LenPath  = StrLen(Paths[ID]) + 1;
+            u32 LenPath  = StrLen(MeshPaths[ID]) + 1;
             Data->Path      = (char *)PushSize(Arena,LenPath); // Char_S * Path;
-            CopyStr(Data->Path, Paths[ID], LenPath);
+            CopyStr(Data->Path, MeshPaths[ID], LenPath);
             Data->ThreadArena = ThreadArena;
-            Data->Mesh = Mesh;
 
             u32 MeshSize = MeshSizes[ID];
             // For multi thread
@@ -426,7 +494,6 @@ GetMesh(game_memory * Memory, game_state * GameState,u32 ID)
             // TODO I don't like this
             // Multi thread mesh load, push arena size based on size
             // of the current requested mesh
-            Mesh->OffsetVertices = Data->BaseOffset;
             PushSize(&GameState->VertexArena, MeshSize);
             
 
@@ -436,5 +503,5 @@ GetMesh(game_memory * Memory, game_state * GameState,u32 ID)
         }
     }
 
-    return Mesh;
+    return MeshGroup;
 }

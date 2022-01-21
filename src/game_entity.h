@@ -4,6 +4,7 @@
 #include "game_math.h"
 #include "Quaternion.h"
 #include "game_world.h"
+#include "game_mesh.h"
 
 #define NULL_ENTITY UINT32_MAX
 #define VALID_ENTITY(E) (E.ID != NULL_ENTITY)

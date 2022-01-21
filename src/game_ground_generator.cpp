@@ -11,10 +11,14 @@ FlatHexCorner(v3 Center, r32 Size, u32 i)
     return P;
 }
 
-mesh
+mesh_group
 CreateHexaGroundMesh(memory_arena * Arena)
 {
     u32 TotalVertices = 18;
+
+    mesh_group MeshGroup = {};
+    mesh * Mesh = PushArray(Arena, 1,mesh);
+
     vertex_point * Vertices = PushArray(Arena, TotalVertices, vertex_point);
 
     v3 CenterOrigin = V3(0,0,0);
@@ -61,20 +65,19 @@ CreateHexaGroundMesh(memory_arena * Arena)
 
     u32 BaseOffset = Arena->CurrentSize;
 
-    mesh Mesh = {};
+    Mesh->Vertices       = Vertices;                             // vertex_point * Vertices;
+    Mesh->VertexSize     = TotalVertices * sizeof(vertex_point); // u32 VertexSize;
+    Mesh->Indices        = 0;                                    // Typedef * Indices;
+    Mesh->IndicesSize    = 0;                                    // u32 IndicesSize;
+    Mesh->OffsetVertices = BaseOffset;                           // u32 OffsetVertices;
+    Mesh->OffsetIndices  = 0;                                    // u32 OffsetIndices;
 
-    Mesh.Vertices       = Vertices;                             // vertex_point * Vertices;
-    Mesh.VertexSize     = TotalVertices * sizeof(vertex_point); // u32 VertexSize;
-    Mesh.Indices        = 0;                                    // Typedef * Indices;
-    Mesh.IndicesSize    = 0;                                    // u32 IndicesSize;
-    Mesh.OffsetVertices = BaseOffset;                           // u32 OffsetVertices;
-    Mesh.OffsetIndices  = 0;                                    // u32 OffsetIndices;
-    Mesh.Loaded         = true;                                 // b32 Loaded;
-    Mesh.LoadInProcess  = false;                                // b32 LoadInProcess;
+    MeshGroup.Loaded         = true;                                 // b32 Loaded;
+    MeshGroup.LoadInProcess  = false;                                // b32 LoadInProcess;
 
-    RenderPushVertexData(Mesh.Vertices,Mesh.VertexSize, BaseOffset);
-    PushMeshSize(Arena, Mesh.VertexSize, 1);
+    RenderPushVertexData(Mesh->Vertices,Mesh->VertexSize, BaseOffset);
+    PushMeshSize(Arena, Mesh->VertexSize, 1);
 
-    return Mesh;
+    return MeshGroup;
 }
 
