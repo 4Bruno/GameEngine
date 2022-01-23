@@ -9,6 +9,15 @@ This is just for learning purposes.
 * Focus on simple C and plain data
 * Game dll hot reload
 
+# Current status
+* I have a bare bones working vulkan interface
+* I can push meshes to GPU vertex buffer
+* I can load assets (.obj only, using triangles only) with multiple objects
+* I can reload game dll during debug with memory intact
+* I can generate entities and simulate multiple world areas
+* I can render 1 simulation with spatial query
+![Visual sample of current status](game_engine_current_status_sample.gif)
+
 # QA
 * Why custom compilation?
 I learnt how to use msvc clang compiler and only few dlls are created.
