@@ -38,6 +38,7 @@ struct entity
 
     component_flags Flags; // 32
 
+    u32 MeshID;
     v3 Color; // 36
 
     entity_transform Transform; // 170 + 36 = 206

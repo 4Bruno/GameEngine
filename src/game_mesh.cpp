@@ -224,24 +224,37 @@ ReadObjFileHeader(const char * Data, u32 StartAtByte, u32 Size)
     return Description;
 }
 
-struct parsed_obj_header
+struct parsed_obj_file_result
 {
+    vertex_point * Vertices;
+    u16 *          Indices;
+
+    u32 VertexSize;
+    u32 IndicesSize;
+
+    char Name[100];
 };
 
-mesh
-CreateMeshFromObjHeader(memory_arena * Arena,void * BufferVertices,obj_file_header Header, const char * Data, u32 Size,
+parsed_obj_file_result
+CreateMeshFromObjHeader(memory_arena * Arena,obj_file_header Header, const char * Data, u32 Size,
                         u32 OffsetVertexP, u32 OffsetVertexN)
-//CreateMeshFromObjHeader(memory_arena * Arena,obj_file_header Header, const char * Data, u32 Size)
 {
-    mesh Mesh = {};
+    parsed_obj_file_result Result = {};
 
     u32 FaceVertices = 3;
 
     u32 Vertices = Header.FaceElementsCount * FaceVertices; 
     u32 VerticesSize = Vertices * sizeof(vertex_point);
 
-    Mesh.Vertices = (vertex_point *)BufferVertices;
-    Mesh.VertexSize = VerticesSize;
+    // pre-allocate size of vertices
+    u8 * BufferVertices = PushSize(Arena,VerticesSize);
+
+    // Use same arena to temporary allocate
+    // unique list of verticesP and normals
+    BeginTempArena(Arena,1);
+
+    Result.Vertices = (vertex_point *)BufferVertices;
+    Result.VertexSize = VerticesSize;
 
     // create 2 temp arrays for vertices/normals we will shrink stack later
     u32 SizeUniqueVertices = Header.VertexCount * sizeof(v3);
@@ -309,36 +322,37 @@ CreateMeshFromObjHeader(memory_arena * Arena,void * BufferVertices,obj_file_head
             Assert(IndexVertexN <= (i16)Header.VertexNormalCount);
 
             // P
-            Mesh.Vertices[Indice].P = UniqueVertexArray[IndexVertexP];
+            Result.Vertices[Indice].P = UniqueVertexArray[IndexVertexP];
             // TextCoord
             // TODO
             // N
-            Mesh.Vertices[Indice].N = UniqueNormalArray[IndexVertexN];
+            Result.Vertices[Indice].N = UniqueNormalArray[IndexVertexN];
 
             AdvanceAfterWs(Data,Size,&ci);
             ++Indice;
         }
     }
 
-    // reduce arena stack
-    Arena->CurrentSize -= (SizeUniqueVertices + SizeUniqueNormals);
-
-
 #if 0
     for (u32 i = 0; i < Vertices;++i)
     {
-        Log("Pos: %f %f %f Normal: %f %f %f\n",Mesh.Vertices[i].P.x,Mesh.Vertices[i].P.y,Mesh.Vertices[i].P.z,Mesh.Vertices[i].N.x,Mesh.Vertices[i].N.y,Mesh.Vertices[i].N.z);
+        Log("Pos: %f %f %f Normal: %f %f %f\n",Result.Vertices[i].P.x,Result.Vertices[i].P.y,Result.Vertices[i].P.z,Result.Vertices[i].N.x,Result.Vertices[i].N.y,Result.Vertices[i].N.z);
     }
 #endif
 
-    return Mesh;
+    EndTempArena(Arena,1);
+
+    return Result;
 }
 
 /* ------------------------- END MODEL LOADER EMBEDDED ------------------------- */
 
-void
+
+u32
 PushMeshSize(memory_arena * Arena, u32 DataSize, u32 InstanceCount)
 {
+    u32 OffsetBeforeUpdate = Arena->CurrentSize;
+
     u32 TotalSize = (DataSize * InstanceCount);
     u32 Align = RenderGetVertexMemAlign() - 1;
     TotalSize = (TotalSize + Align) &  ~Align;
@@ -346,6 +360,18 @@ PushMeshSize(memory_arena * Arena, u32 DataSize, u32 InstanceCount)
     Assert((Arena->CurrentSize + TotalSize) < Arena->MaxSize);
 
     Arena->CurrentSize += TotalSize;
+
+    return OffsetBeforeUpdate;
+}
+
+void
+PrepareArenaForGPUAlignment(memory_arena * Arena)
+{
+    u32 Align = RenderGetVertexMemAlign() - 1;
+    u8 * BaseAddr = ((u8 *)Arena->Base + Arena->CurrentSize);
+    memory_aligned_result AlignedMem = AlignMemoryAddress((void *)BaseAddr,Align);
+
+    Arena->CurrentSize += AlignedMem.Delta;
 }
 
 THREAD_WORK_HANDLER(LoadMesh)
@@ -366,46 +392,74 @@ THREAD_WORK_HANDLER(LoadMesh)
     if (GetFileResult.Success)
     {
         u32 CurrentByteIndex = 0;
-        u32 GPUVertexBufferBaseOffset = WorkData->BaseOffset;
-        u8 * BufferVertices = (u8 *)WorkData->BufferVertices;
+        u32 VertexBufferBeginOffset = WorkData->BaseOffset;
         // Object file stacks face index position 
         u32 OffsetVertexP = 0;
         u32 OffsetVertexN = 0;
+        u32 TotalMeshObjVerticesBytes = 0;
 
-        for (u32 MeshObject = 0;
-                    MeshObject < MeshGroup->TotalMeshObjects;
-                    ++MeshObject)
+        BeginTempArena(Arena,1);
+
+        PrepareArenaForGPUAlignment(Arena);
+
+        u8 * BeginBufferVertices = Arena->Base + Arena->CurrentSize;
+        u8 * BufferVertices = BeginBufferVertices;
+
+#if 0
+            for (u32 MeshObject = 1; MeshObject < 2; ++MeshObject)
+#else
+            for (u32 MeshObjectIndex = 0;
+                        MeshObjectIndex < MeshGroup->TotalMeshObjects;
+                        ++MeshObjectIndex)
+#endif
         {
             obj_file_header Header = 
                 ReadObjFileHeader((const char  *)GetFileResult.Base,CurrentByteIndex, GetFileResult.Size);
             //Logn("Object %s",Header.Name);
-            mesh TempMesh   = 
-                CreateMeshFromObjHeader(Arena, BufferVertices, Header, (const char  *)GetFileResult.Base, GetFileResult.Size,
-                                        OffsetVertexP,OffsetVertexN);
+            //if (MeshObjectIndex <= 1) {
+            parsed_obj_file_result MeshObj = 
+                CreateMeshFromObjHeader(Arena, Header, (const char  *)GetFileResult.Base, GetFileResult.Size,
+                        OffsetVertexP,OffsetVertexN);
 
-            mesh * Mesh = MeshGroup->Meshes + MeshObject;
-            Mesh->Vertices       = TempMesh.Vertices; // vertex_point * Vertices;
-            Mesh->VertexSize     = TempMesh.VertexSize; // u32   VertexSize;
-            Mesh->Indices        = TempMesh.Indices; // Typedef * Indices;
-            Mesh->IndicesSize    = TempMesh.IndicesSize; // u32   IndicesSize;
+            u32 Align = RenderGetVertexMemAlign() - 1;
+            // Align to gpu boundaries
+            u32 MeshObjSizeAligned = (MeshObj.VertexSize + Align) &  ~Align;
+
+            u32 DeltaMeshObjSizeAligned = MeshObjSizeAligned - MeshObj.VertexSize;
+            // zero array aligned
+            if (DeltaMeshObjSizeAligned)
+            {
+                Memset(BufferVertices + MeshObj.VertexSize,0,DeltaMeshObjSizeAligned);
+                Arena->CurrentSize += (MeshObjSizeAligned - MeshObj.VertexSize);
+            }
+
+            mesh * Mesh = MeshGroup->Meshes + MeshObjectIndex;
+            Mesh->VertexSize     = MeshObjSizeAligned; // u32   VertexSize;
+            Mesh->IndicesSize    = MeshObj.IndicesSize; // u32   IndicesSize;
 
             // The GPU vertex buffer offset where this will live
             // should be same offset as in our mesh arena
-            Mesh->OffsetVertices = GPUVertexBufferBaseOffset;
+            Mesh->OffsetVertices = VertexBufferBeginOffset;
 
-            // TODO GPU barrier sync
-            RenderPushVertexData(Mesh->Vertices,Mesh->VertexSize, Mesh->OffsetVertices);
-            //RenderPushVertexData(Mesh->Vertices,Mesh->VertexSize, 1);
-            //RenderPushIndexData(&GameState->IndicesArena, Mesh->Indices,Mesh->IndicesSize, 1);
+            TotalMeshObjVerticesBytes += MeshObjSizeAligned;
 
-            //
-            
-            BufferVertices = (BufferVertices + Mesh->VertexSize);
-            GPUVertexBufferBaseOffset = (GPUVertexBufferBaseOffset + Mesh->VertexSize);
+            BufferVertices = (BufferVertices + MeshObjSizeAligned);
+            VertexBufferBeginOffset = (VertexBufferBeginOffset + MeshObjSizeAligned);
+            Assert(((VertexBufferBeginOffset + Align) & ~Align) == VertexBufferBeginOffset);
+            //}
             CurrentByteIndex = Header.CurrentByteIndex;
             OffsetVertexP += Header.VertexCount;
             OffsetVertexN += Header.VertexNormalCount;
         }
+
+
+        Logn("Actual mesh size %i", TotalMeshObjVerticesBytes);
+        // TODO: GPU barrier sync
+        RenderPushVertexData(BeginBufferVertices, TotalMeshObjVerticesBytes, WorkData->BaseOffset);
+        //RenderPushVertexData(Mesh->Vertices,Mesh->VertexSize, 1);
+        //RenderPushIndexData(&GameState->IndicesArena, Mesh->Indices,Mesh->IndicesSize, 1);
+
+        EndTempArena(Arena,1);
 
         COMPILER_DONOT_REORDER_BARRIER;
         MeshGroup->Loaded = true;
@@ -429,6 +483,8 @@ THREAD_WORK_HANDLER(LoadMesh)
 #endif
 
     ThreadEndArena(WorkData->ThreadArena);
+
+    TempArenaSanityCheck(Arena);
 }
 
 inline u32
@@ -458,11 +514,13 @@ mesh_group *
 GetMesh(game_memory * Memory, game_state * GameState,u32 ID)
 {
     mesh_group * MeshGroup = (GameState->Meshes + ID);
+    Assert(IS_NOT_NULL(MeshGroup));
 
     if (!MeshGroup->Loaded && !MeshGroup->LoadInProcess)
     {
+        Assert(IS_NULL(MeshGroup->Meshes));
         thread_memory_arena * ThreadArena = GetThreadArena(GameState);
-        if (ThreadArena)
+        if (IS_NOT_NULL(ThreadArena))
         {
             MeshGroup->LoadInProcess = true;
 
@@ -472,7 +530,6 @@ GetMesh(game_memory * Memory, game_state * GameState,u32 ID)
 
             MeshGroup->TotalMeshObjects = MeshObjects[ID];
 
-            // TODO: warning! use pushmeshsize for m64 boundaries memory
             MeshGroup->Meshes = PushArray(&GameState->MeshesArena,MeshGroup->TotalMeshObjects,mesh);
 
             Data->MeshGroup = MeshGroup;
@@ -484,21 +541,15 @@ GetMesh(game_memory * Memory, game_state * GameState,u32 ID)
             Data->ThreadArena = ThreadArena;
 
             u32 MeshSize = MeshSizes[ID];
-            // For multi thread
-            // Get current base for arena
-            Data->BaseOffset = GameState->MeshesArena.CurrentSize;
-            Data->BufferVertices = GameState->MeshesArena.Base + GameState->MeshesArena.CurrentSize;
-            // Increment MeshArena with the known total size required
-            PushMeshSize(&GameState->MeshesArena, MeshSize, 1);
+            u32 MeshObjs = MeshObjects[ID];
+            // worst case all boundaries falls in next alignment byte
+            MeshSize = MeshSize + (MeshObjs * (RenderGetVertexMemAlign() - 2));
 
-            // TODO I don't like this
-            // Multi thread mesh load, push arena size based on size
-            // of the current requested mesh
-            PushSize(&GameState->VertexArena, MeshSize);
-            
+            Logn("Worst case scenario mesh size %i", MeshSize);
+            // calculate vertex arena new size in worst case scenario
+            // to avoid new any mesh overlapping
+            Data->BaseOffset = PushMeshSize(&GameState->VertexArena, MeshSize, 1);
 
-            //Mesh->OffsetIndices = GameState->IndicesArena.CurrentSize;
-            
             Memory->AddWorkToWorkQueue(Memory->RenderWorkQueue , LoadMesh,Data);
         }
     }

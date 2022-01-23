@@ -1,4 +1,6 @@
 #include "game.h"
+//TODO: remove this
+#include <memory.h>
 
 memory_arena *
 ThreadBeginArena(thread_memory_arena * ThreadArena)
@@ -63,6 +65,12 @@ GetThreadArena(game_state * GameState)
 }
 
 void
+Memset(u8 * Dest,u8 c,u32 Size)
+{
+    memset(Dest,(int)c,Size);
+}
+
+void
 MemCopy(u8 * Dest,u8 * Src,u32 EntitySize)
 {
     Assert(Dest);
@@ -75,3 +83,15 @@ MemCopy(u8 * Dest,u8 * Src,u32 EntitySize)
         Dest[b] = Src[b];
     }
 }
+
+memory_aligned_result
+AlignMemoryAddress(void * Addr,u32 Align)
+{
+    memory_aligned_result Rslt = {};
+    uintptr_t AddrBegin = (uintptr_t)Addr;
+    Rslt.AddressAligned = (AddrBegin + (uintptr_t)Align) & ~(uintptr_t)Align;
+    Rslt.Delta          = (u32)(Rslt.AddressAligned - AddrBegin);
+
+    return Rslt;
+}
+

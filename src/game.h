@@ -84,7 +84,12 @@ struct game_state
     memory_arena PermanentArena;
     memory_arena TemporaryArena;
     memory_arena ShadersArena;
+    // beginning of arena is for mesh_group
+    // (sizeof(mesh_group) * LimitMeshes)
+    // remaining buffer is for mesh children
     memory_arena MeshesArena;
+    // This arena has no memory backup
+    // it only tracks GPU vertex buffer offsets
     memory_arena VertexArena;
     memory_arena IndicesArena;
 

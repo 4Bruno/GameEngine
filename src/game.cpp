@@ -83,11 +83,13 @@ CreateWorld(world * World)
     entity * Entity = AddEntity(World, WC);
     EntityAddTranslation(Entity,0,V3(0), V3(1.0f),3.0f);
     Entity->Color = V3(1.0f,0,0);
+    Entity->MeshID = 2;
 
     WC.z -= 10;
     Entity = AddEntity(World, WC);
     EntityAddTranslation(Entity,0,V3(0), V3(1.0f),3.0f);
     Entity->Color = V3(0.0f,1.0f,0);
+    Entity->MeshID = 1;
 }
 void
 GenerateWorld(world * World, world_pos Origin)
@@ -104,7 +106,7 @@ GenerateWorld(world * World, world_pos Origin)
     u32 RandomCount = ArrayCount(RandomDecimal);
 
     for (i32 EntityIndex = 0;
-                EntityIndex < 1; 
+                EntityIndex < 100; 
                 ++EntityIndex)
     {
         i32 X = ((EntityIndex * 5) % BoundaryX) + Origin.x;
@@ -122,6 +124,7 @@ GenerateWorld(world * World, world_pos Origin)
         ColorDebug._V[EntityIndex % 3] = 1.0f;
 
         Entity->Color = ColorDebug.xyz;
+        Entity->MeshID = (EntityIndex % MAX_MESH_COUNT);
     }
 
 }
@@ -186,15 +189,11 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
         Base = PushSize(&GameState->TemporaryArena,ShaderArenaSize);
         InitializeArena(&GameState->ShadersArena,Base, ShaderArenaSize);
 
-        u32 MeshesArenaSize = Megabytes(10);
+        u32 MeshesArenaSize = Megabytes(1);
         Base = PushSize(&GameState->TemporaryArena,MeshesArenaSize);
         InitializeArena(&GameState->MeshesArena, Base, MeshesArenaSize);
         GameState->LimitMeshes = 100;
         GameState->Meshes = PushArray(&GameState->MeshesArena, GameState->LimitMeshes, mesh_group);
-
-        // TODO: Procedural ground generation
-        GameState->GroundMeshGroup = CreateHexaGroundMesh(&GameState->MeshesArena);
-
 
         // TODO: how to properly push vertex inputs to render?
         // Game should tell how much arena?
@@ -202,6 +201,9 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
         // or we always reserve a size and then use like we do with cpu memory
         GameState->VertexArena = RenderGetMemoryArena();
         GameState->IndicesArena = RenderGetMemoryArena();
+
+        // TODO: Procedural ground generation
+        GameState->GroundMeshGroup = CreateHexaGroundMesh(&GameState->MeshesArena,&GameState->TemporaryArena,&GameState->VertexArena);
 
         CreatePipeline(Memory,GameState);
 

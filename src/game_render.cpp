@@ -93,13 +93,22 @@ RenderEntities(game_memory * Memory, game_state * GameState)
             Entity = AdvanceSimIterator(&SimIter))
     {
         entity_transform * T = &Entity->Transform;
-        mesh_group * MeshGroup = GetMesh(Memory,GameState,2);
+        local_persist u32 LocalMeshID = 0;
 
-        if (MeshGroup->Loaded)
+        Assert(Entity->MeshID < MAX_MESH_COUNT);
+
+        mesh_group * MeshGroup = GetMesh(Memory,GameState,Entity->MeshID);
+        ++LocalMeshID;
+
+        if (IS_VALID_MESHID(Entity->MeshID) && MeshGroup->Loaded)
         {
+#if 0
+            for (u32 MeshObjectIndex = 1; MeshObjectIndex < 2; ++MeshObjectIndex)
+#else
             for (u32 MeshObjectIndex = 0;
                         MeshObjectIndex < MeshGroup->TotalMeshObjects;
                         ++MeshObjectIndex)
+#endif
             {
                 mesh * Mesh = MeshGroup->Meshes + MeshObjectIndex;
 

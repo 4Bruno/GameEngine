@@ -3,6 +3,12 @@
 #include "game_memory.h"
 #include "game_math.h"
 
+
+#define INVALID_MESHID UINT32_MAX
+#define IS_VALID_MESHID(ID) (ID < UINT32_MAX)
+
+#define MAX_MESH_COUNT 3
+
 struct vertex_point 
 {
     v3 P;
@@ -12,14 +18,14 @@ struct vertex_point
 
 struct mesh
 {
-    vertex_point * Vertices;
-    u32         VertexSize;
-
-    u32 OffsetVertices; 
+    //vertex_point * Vertices;
+    //u16       * Indices;
+    u32 VertexSize;
+    u32 IndicesSize;
+    
+    u32 OffsetVertices;
     u32 OffsetIndices;
 
-    u16       * Indices;
-    u32         IndicesSize;
 };
 
 struct mesh_group
@@ -38,13 +44,12 @@ struct async_load_mesh
     char * Path;
     mesh_group  * MeshGroup;
     thread_memory_arena * ThreadArena;
-    void * BufferVertices;
     u32 BaseOffset;
 };
 
 GAME_API mesh_group *
 GetMesh(game_memory * Memory, game_state * GameState,u32 ID);
-GAME_API void
+GAME_API u32
 PushMeshSize(memory_arena * Arena, u32 DataSize, u32 InstanceCount);
 
 #define GAME_MESH_H

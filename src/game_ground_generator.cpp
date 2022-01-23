@@ -12,14 +12,28 @@ FlatHexCorner(v3 Center, r32 Size, u32 i)
 }
 
 mesh_group
-CreateHexaGroundMesh(memory_arena * Arena)
+CreateHexaGroundMesh(memory_arena * MeshArena, memory_arena * TempArena, memory_arena * VertexBufferArena)
 {
     u32 TotalVertices = 18;
 
     mesh_group MeshGroup = {};
-    mesh * Mesh = PushArray(Arena, 1,mesh);
+    mesh * Mesh = PushArray(MeshArena, 1,mesh);
+    MeshGroup.Meshes = Mesh;
+    MeshGroup.TotalMeshObjects = 1;
 
-    vertex_point * Vertices = PushArray(Arena, TotalVertices, vertex_point);
+    BeginTempArena(TempArena,1);
+
+    u32 MeshSize = TotalVertices * sizeof(vertex_point);
+    // allocate local buffer for vertex array
+    vertex_point * Vertices = (vertex_point *)PushSize(TempArena, MeshSize);
+    // keep track of current offset in GPU vertex buffer
+    u32 VertexBufferBeginOffset = PushMeshSize(VertexBufferArena, MeshSize,1);
+    // Set mesh begin in vertex buffer
+    Mesh->OffsetVertices = VertexBufferBeginOffset;
+    Mesh->VertexSize = MeshSize;
+
+    Mesh->IndicesSize    = 0;          // u32 IndicesSize;
+    Mesh->OffsetIndices  = 0;          // u32 OffsetIndices;
 
     v3 CenterOrigin = V3(0,0,0);
     v3 VUp = V3(0,1.0f,0);
@@ -63,20 +77,12 @@ CreateHexaGroundMesh(memory_arena * Arena)
         }
     }
 
-    u32 BaseOffset = Arena->CurrentSize;
+    MeshGroup.Loaded        = true;  // b32 Loaded;
+    MeshGroup.LoadInProcess = false; // b32 LoadInProcess;
 
-    Mesh->Vertices       = Vertices;                             // vertex_point * Vertices;
-    Mesh->VertexSize     = TotalVertices * sizeof(vertex_point); // u32 VertexSize;
-    Mesh->Indices        = 0;                                    // Typedef * Indices;
-    Mesh->IndicesSize    = 0;                                    // u32 IndicesSize;
-    Mesh->OffsetVertices = BaseOffset;                           // u32 OffsetVertices;
-    Mesh->OffsetIndices  = 0;                                    // u32 OffsetIndices;
+    RenderPushVertexData(Vertices,Mesh->VertexSize, Mesh->OffsetVertices);
 
-    MeshGroup.Loaded         = true;                                 // b32 Loaded;
-    MeshGroup.LoadInProcess  = false;                                // b32 LoadInProcess;
-
-    RenderPushVertexData(Mesh->Vertices,Mesh->VertexSize, BaseOffset);
-    PushMeshSize(Arena, Mesh->VertexSize, 1);
+    EndTempArena(TempArena,1);
 
     return MeshGroup;
 }

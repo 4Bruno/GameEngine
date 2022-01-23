@@ -396,6 +396,8 @@ AddEntity(world * World, world_pos WorldP)
     entity * Entity = GetPtrToFreeCellData(World, WorldP);
     Entity->ID = ID;
 
+    Entity->MeshID = INVALID_MESHID;
+
     return Entity;
 }
 
