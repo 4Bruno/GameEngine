@@ -2,8 +2,8 @@
 #include "game.h"
 #include "game_simulation.cpp"
 
-//#define MAX_LENGHTSQR_DISTANCE_ALLOWED (1000.0f * 1000.0f)
-#define MAX_LENGHTSQR_DISTANCE_ALLOWED (950.0f)
+#define MAX_LENGHTSQR_DISTANCE_ALLOWED (1000.0f * 1000.0f)
+//#define MAX_LENGHTSQR_DISTANCE_ALLOWED (950.0f)
 //#define MAX_LENGHTSQR_DISTANCE_ALLOWED (450.0f)
 
 
@@ -522,8 +522,8 @@ UpdateWorldLocation(world * World, simulation * Sim)
             v3 EntityInSimulationP = Transform->LocalP - OldWorldPToNewP;
             b32 RoomForEntity      = (World->ActiveEntitiesCount < MAX_WORLD_ENTITY_COUNT);
             r32 LengthSqrToCenter  = LengthSqr(EntityInSimulationP);
-            //b32 EntityTooFar = LengthSqrToCenter > MAX_LENGHTSQR_DISTANCE_ALLOWED;
-            b32 EntityTooFar = LengthSqrToCenter > LengthSqr(Substract(World,MaxCell,MinCell));
+            b32 EntityTooFar = LengthSqrToCenter > MAX_LENGHTSQR_DISTANCE_ALLOWED;
+            //b32 EntityTooFar = LengthSqrToCenter > LengthSqr(Substract(World,MaxCell,MinCell));
 
             if (!RoomForEntity || EntityTooFar)
             {
