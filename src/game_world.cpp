@@ -2,7 +2,8 @@
 #include "game.h"
 #include "game_simulation.cpp"
 
-#define MAX_LENGHTSQR_DISTANCE_ALLOWED (1000.0f * 1000.0f)
+//#define MAX_LENGHTSQR_DISTANCE_ALLOWED (1000.0f * 1000.0f)
+#define MAX_LENGHTSQR_DISTANCE_ALLOWED (950.0f)
 //#define MAX_LENGHTSQR_DISTANCE_ALLOWED (450.0f)
 
 
@@ -396,7 +397,8 @@ AddEntity(world * World, world_pos WorldP)
     entity * Entity = GetPtrToFreeCellData(World, WorldP);
     Entity->ID = ID;
 
-    Entity->MeshID = INVALID_MESHID;
+    Entity->MeshID.ID = INVALID_MESHID;
+    Entity->MeshObjTransOcuppancyIndex = INVALID_MESHOBJ_TRANSFORM_INDEX;
 
     return Entity;
 }
@@ -477,18 +479,23 @@ UpdateWorldLocation(world * World, simulation * Sim)
     v3 MinCorner = Sim->Origin._Offset - Sim->Dim; 
     v3 MaxCorner = Sim->Origin._Offset + Sim->Dim; 
 
+    r32 DeltaZ = (MaxCorner.z - MinCorner.z);
+    r32 DeltaX = (MaxCorner.x - MinCorner.x);
+
+    //Logn("Z: %f, X: %f",DeltaZ, DeltaX);
+
     world_pos MinCell = MapIntoCell(World, Sim->Origin, MinCorner);
     world_pos MaxCell = MapIntoCell(World, Sim->Origin, MaxCorner);
 
-    world_pos OldWorldP = World->CurrentWorldP;
+    world_pos OldWorldP  = World->CurrentWorldP;
     World->CurrentWorldP = Sim->Origin;
-    v3 OldWorldPToNewP = Substract(World,Sim->Origin, OldWorldP);
+    v3 OldWorldPToNewP   = Substract(World,Sim->Origin, OldWorldP);
 
     u32 EntitySize = sizeof(entity);
 
-    u32 EntitiesPacked = 0;
+    u32 EntitiesPacked   = 0;
     u32 EntitiesUnpacked = 0;
-    u32 EntitiesDeleted = 0;
+    u32 EntitiesDeleted  = 0;
 
     // Check if current cached entities are still valid (not too far, not deleted)
     for (u32 EntityIndex = 0;
@@ -509,26 +516,36 @@ UpdateWorldLocation(world * World, simulation * Sim)
         }
         else
         {
-            // TODO: Check cell boundaries against entity size
+            // TODO: Better boundary check. Right now taking center P of entity
+            //       to choose whether is within region which excludes cases
+            //       like entity having big mesh volume
             v3 EntityInSimulationP = Transform->LocalP - OldWorldPToNewP;
-            b32 RoomForEntity = (World->ActiveEntitiesCount < MAX_WORLD_ENTITY_COUNT);
-            r32 LengthSqrToCenter = LengthSqr(EntityInSimulationP);
-            b32 EntityTooFar = LengthSqrToCenter > MAX_LENGHTSQR_DISTANCE_ALLOWED;
+            b32 RoomForEntity      = (World->ActiveEntitiesCount < MAX_WORLD_ENTITY_COUNT);
+            r32 LengthSqrToCenter  = LengthSqr(EntityInSimulationP);
+            //b32 EntityTooFar = LengthSqrToCenter > MAX_LENGHTSQR_DISTANCE_ALLOWED;
+            b32 EntityTooFar = LengthSqrToCenter > LengthSqr(Substract(World,MaxCell,MinCell));
 
             if (!RoomForEntity || EntityTooFar)
             {
+                Logn("Distance entity(%i) to center %f",Entity->ID.ID,LengthSqrToCenter);
                 world_pos NewWorldP = MapIntoCell(World, OldWorldP, EntityInSimulationP);
                 EntityNoLongerActive = true;
+#if 0
                 Assert(Entity->ID.ID != 1);
+#endif
                 // Storage back to grid
                 Entity->WorldP = NewWorldP;
                 entity * Dest = GetPtrToFreeCellData(World, NewWorldP);
+
+                // This call modifies entity state call before copy
+                SimulationUnregisterEntity(Sim,Entity,EntityIndex);
+
                 MemCopy((u8 *)Dest, (u8 *)Entity,EntitySize);
                 ++EntitiesPacked;
             }
             else 
             {
-                Transform->LocalP -= OldWorldPToNewP;
+                Transform->LocalP = EntityInSimulationP;
                 if (InVolume(MinCorner, MaxCorner, EntityInSimulationP))
                 {
                     SimulationRegisterEntity(Sim, Entity,EntityIndex);
@@ -541,6 +558,8 @@ UpdateWorldLocation(world * World, simulation * Sim)
             // Copy last active entity here
             // re-use the iteration index
             *Entity = World->ActiveEntities[--World->ActiveEntitiesCount];
+            // unnecessary but helps debugging
+            World->ActiveEntities[World->ActiveEntitiesCount].ID.ID = NULL_ENTITY;
         }
         else
         {
@@ -597,7 +616,7 @@ UpdateWorldLocation(world * World, simulation * Sim)
                                     Substract(World,Dest->WorldP,Sim->Origin);
                             }
                             ++EntitiesUnpacked;
-                            SimulationRegisterEntity(Sim, Src,EntityStorageIndex);
+                            SimulationRegisterEntity(Sim, Dest,EntityStorageIndex);
                         }
                         Next = Data->Next;
                         AppendCellDataToFreeList(World, Data);

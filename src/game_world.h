@@ -6,6 +6,7 @@
 
 #include "game_platform.h"
 #include "game_memory.h"
+#include "Quaternion.h"
 #include "game_math.h"
 
 #define MAX_WORLD_ENTITY_COUNT (1 << 14)
@@ -18,7 +19,6 @@
 #define FP(P) P.x, P.y, P.z
 
 // game_entity.h
-struct entity_transform;
 struct entity;
 struct entity_input;
 
@@ -52,22 +52,6 @@ struct world_pos
     v3 _Offset;
 };
 
-
-struct simulation
-{
-    world_pos Origin;    
-    v3 Dim;
-    
-    // sparse array to world entities access
-    sparse_entry EntityEntries[MAX_WORLD_ENTITY_COUNT];
-    u32 EntryCount;
-
-    sparse_entry TransformEntries[MAX_WORLD_ENTITY_COUNT];
-    u32 TransformCount;
-
-    u32 SortingBuckets[MAX_WORLD_ENTITY_COUNT];
-    
-};
 
 
 
@@ -107,6 +91,52 @@ struct world_cell
     world_cell_data * FirstCellData;
 
     world_cell * NextCell;
+};
+
+struct entity_transform
+{
+    v3 LocalP; // 12
+    v3 LocalS; // 24
+    Quaternion LocalR; // 40
+
+    r32 Yaw, Pitch; // 48
+
+    m4 WorldP; // 12 * 4 = 48 + 48 = 96
+    v3 WorldS; // 108
+    Quaternion WorldR; // 122
+
+    m4 WorldT; // 122 + 48 = 170
+};
+
+// In a simulation, how many entities can have multiple objects associated
+// to the mesh
+#define SIMULATION_TEMP_MESHOBJ_TRANSFORM (2 << 10)
+#define SIMULATION_AVG_MESH_OBJS 10
+
+struct simulation
+{
+    world_pos Origin;    
+    v3 Dim;
+    
+    // sparse array to world entities access
+    sparse_entry EntityEntries[MAX_WORLD_ENTITY_COUNT];
+    u32 EntryCount;
+
+    sparse_entry TransformEntries[MAX_WORLD_ENTITY_COUNT];
+    u32 TransformCount;
+
+    u32 MeshObjTransformCount;
+    u32 MeshObjTransLastAvailableIndex;
+    entity_transform MeshObjTransform[SIMULATION_TEMP_MESHOBJ_TRANSFORM*SIMULATION_AVG_MESH_OBJS];
+    // Index of MeshObjTransform where it begins
+    u32 MeshObjTransformID[SIMULATION_TEMP_MESHOBJ_TRANSFORM];
+    // in 64 bit system:
+    // buckets / array of 64bits
+    // we signal them to 1 if in use, 0 otherwise
+    uintptr_t MeshObjTransformOccupancy[(SIMULATION_TEMP_MESHOBJ_TRANSFORM / sizeof(uintptr_t))];
+
+    u32 SortingBuckets[MAX_WORLD_ENTITY_COUNT];
+    
 };
 
 /*

@@ -85,34 +85,27 @@ RenderEntities(game_memory * Memory, game_state * GameState)
 
     v3 ViewPos = GetViewPos(GameState);
     v3 ViewDirection = GetMatrixDirection(GameState->ViewRotationMatrix);
+    simulation * Sim = GameState->Simulation;
 
-    simulation_iterator SimIter = BeginSimIterator(&GameState->World, GameState->Simulation);
+    simulation_iterator SimIter = BeginSimIterator(&GameState->World, Sim);
 
     for (entity * Entity = SimIter.Entity;
             Entity;
             Entity = AdvanceSimIterator(&SimIter))
     {
-        entity_transform * T = &Entity->Transform;
-        local_persist u32 LocalMeshID = 0;
-
-        Assert(Entity->MeshID < MAX_MESH_COUNT);
+        Assert(Entity->MeshID.ID < MAX_MESH_COUNT);
 
         mesh_group * MeshGroup = GetMesh(Memory,GameState,Entity->MeshID);
-        ++LocalMeshID;
 
-        if (IS_VALID_MESHID(Entity->MeshID) && MeshGroup->Loaded)
+        if (
+                IS_VALID_MESHID(Entity->MeshID.ID) && 
+                MeshGroup->Loaded
+            )
         {
-#if 0
-            for (u32 MeshObjectIndex = 1; MeshObjectIndex < 2; ++MeshObjectIndex)
-#else
-            for (u32 MeshObjectIndex = 0;
-                        MeshObjectIndex < MeshGroup->TotalMeshObjects;
-                        ++MeshObjectIndex)
-#endif
+            if (MeshGroup->TotalMeshObjects == 1)
             {
-                mesh * Mesh = MeshGroup->Meshes + MeshObjectIndex;
-
-                m4 ModelTransform = T->WorldT;
+                mesh * Mesh = MeshGroup->Meshes;
+                m4 ModelTransform = Entity->Transform.WorldT;
 
                 mesh_push_constant Constants;
                 m4 MVP = GameState->Projection * GameState->ViewTransform * ModelTransform;
@@ -129,6 +122,39 @@ RenderEntities(game_memory * Memory, game_state * GameState)
                 //RenderPushMesh(1,(Mesh->IndicesSize / sizeof(uint16)),Mesh->OffsetVertices,Mesh->OffsetIndices);
                 //RenderPushMesh(1, Mesh->VertexSize / sizeof(vertex_point), 0);
                 RenderPushMesh(1, Mesh->VertexSize / sizeof(vertex_point), Mesh->OffsetVertices);
+            }
+            else
+            {
+                for (u32 MeshObjectIndex = 0;
+                        MeshObjectIndex < MeshGroup->TotalMeshObjects;
+                        ++MeshObjectIndex)
+                {
+                    mesh * Mesh = MeshGroup->Meshes + MeshObjectIndex;
+
+                    Assert(IS_VALID_MESHOBJ_TRANSFORM_INDEX(Entity->MeshObjTransOcuppancyIndex));
+
+                    u32 StartIndexTransform = Sim->MeshObjTransformID[Entity->MeshObjTransOcuppancyIndex];
+                    entity_transform * MeshObjT = 
+                        Sim->MeshObjTransform + StartIndexTransform + MeshObjectIndex;
+
+                    m4 ModelTransform = MeshObjT->WorldT;
+
+                    mesh_push_constant Constants;
+                    m4 MVP = GameState->Projection * GameState->ViewTransform * ModelTransform;
+
+                    Constants.RenderMatrix = MVP;
+                    Constants.SourceLight = SourceLight;
+                    Constants.Model = ModelTransform;
+                    v4 ColorDebug = V4(V3(0.0f),1.0f);
+                    ColorDebug._V[Entity->ID.ID % 3] = 1.0f;
+                    Constants.DebugColor = ColorDebug;
+                    Constants.DebugColor = V4(Entity->Color,1.0f);
+
+                    RenderPushVertexConstant(sizeof(mesh_push_constant),(void *)&Constants);
+                    //RenderPushMesh(1,(Mesh->IndicesSize / sizeof(uint16)),Mesh->OffsetVertices,Mesh->OffsetIndices);
+                    //RenderPushMesh(1, Mesh->VertexSize / sizeof(vertex_point), 0);
+                    RenderPushMesh(1, Mesh->VertexSize / sizeof(vertex_point), Mesh->OffsetVertices);
+                }
             }
         }
     }

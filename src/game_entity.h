@@ -2,27 +2,12 @@
 
 #include "game_platform.h"
 #include "game_math.h"
-#include "Quaternion.h"
 #include "game_world.h"
 #include "game_mesh.h"
 
-#define NULL_ENTITY UINT32_MAX
-#define VALID_ENTITY(E) (E.ID != NULL_ENTITY)
+#define NULL_ENTITY 0
+#define VALID_ENTITY(E) (E.ID > NULL_ENTITY)
 
-struct entity_transform
-{
-    v3 LocalP; // 12
-    v3 LocalS; // 24
-    Quaternion LocalR; // 40
-
-    r32 Yaw, Pitch; // 48
-
-    m4 WorldP; // 12 * 4 = 48 + 48 = 96
-    v3 WorldS; // 108
-    Quaternion WorldR; // 122
-
-    m4 WorldT; // 122 + 48 = 170
-};
 
 struct entity_id
 {
@@ -38,7 +23,12 @@ struct entity
 
     component_flags Flags; // 32
 
-    u32 MeshID;
+    u32 Height;
+
+    mesh_id MeshID;
+    u32 MeshObjCount;
+    u32 MeshObjTransOcuppancyIndex;
+
     v3 Color; // 36
 
     entity_transform Transform; // 170 + 36 = 206
@@ -69,6 +59,9 @@ EntityHasFlag(entity * Entity, component_flags Flag)
 
 GAME_API void
 EntityAddTranslation(entity * Entity, entity * Parent, v3 P, v3 Scale, r32 Speed);
+
+GAME_API void
+EntityAddMesh(entity * Entity, mesh_id MeshID);
 
 inline entity
 NullEntity()

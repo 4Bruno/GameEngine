@@ -510,10 +510,18 @@ CopyStr(char * DestStr,const char * SrcStr ,u32 Length)
     }
 }
 
-mesh_group *
-GetMesh(game_memory * Memory, game_state * GameState,u32 ID)
+mesh_group
+GetMeshInfo(mesh_id MeshID)
 {
-    mesh_group * MeshGroup = (GameState->Meshes + ID);
+    mesh_group MeshGroup = {};
+    MeshGroup.TotalMeshObjects = MeshObjects[MeshID.ID];
+    return MeshGroup;
+}
+
+mesh_group *
+GetMesh(game_memory * Memory, game_state * GameState,mesh_id MeshID)
+{
+    mesh_group * MeshGroup = (GameState->Meshes + MeshID.ID);
     Assert(IS_NOT_NULL(MeshGroup));
 
     if (!MeshGroup->Loaded && !MeshGroup->LoadInProcess)
@@ -528,20 +536,20 @@ GetMesh(game_memory * Memory, game_state * GameState,u32 ID)
 
             async_load_mesh * Data = PushStruct(Arena,async_load_mesh);
 
-            MeshGroup->TotalMeshObjects = MeshObjects[ID];
+            MeshGroup->TotalMeshObjects = MeshObjects[MeshID.ID];
 
             MeshGroup->Meshes = PushArray(&GameState->MeshesArena,MeshGroup->TotalMeshObjects,mesh);
 
             Data->MeshGroup = MeshGroup;
             Data->Memory    = Memory;                  // game_memory * Memory;
             Data->GameState = GameState;               // game_state * GameState;
-            u32 LenPath  = StrLen(MeshPaths[ID]) + 1;
+            u32 LenPath  = StrLen(MeshPaths[MeshID.ID]) + 1;
             Data->Path      = (char *)PushSize(Arena,LenPath); // Char_S * Path;
-            CopyStr(Data->Path, MeshPaths[ID], LenPath);
+            CopyStr(Data->Path, MeshPaths[MeshID.ID], LenPath);
             Data->ThreadArena = ThreadArena;
 
-            u32 MeshSize = MeshSizes[ID];
-            u32 MeshObjs = MeshObjects[ID];
+            u32 MeshSize = MeshSizes[MeshID.ID];
+            u32 MeshObjs = MeshObjects[MeshID.ID];
             // worst case all boundaries falls in next alignment byte
             MeshSize = MeshSize + (MeshObjs * (RenderGetVertexMemAlign() - 2));
 
@@ -555,4 +563,12 @@ GetMesh(game_memory * Memory, game_state * GameState,u32 ID)
     }
 
     return MeshGroup;
+}
+
+mesh_id
+Mesh(u32 ID)
+{
+    Assert(ID < ArrayCount(MeshObjects));
+    mesh_id MeshID = {ID};
+    return MeshID;
 }

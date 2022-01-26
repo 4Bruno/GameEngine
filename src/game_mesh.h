@@ -9,6 +9,11 @@
 
 #define MAX_MESH_COUNT 3
 
+struct mesh_id
+{
+    u32 ID;
+};
+
 struct vertex_point 
 {
     v3 P;
@@ -48,9 +53,13 @@ struct async_load_mesh
 };
 
 GAME_API mesh_group *
-GetMesh(game_memory * Memory, game_state * GameState,u32 ID);
+GetMesh(game_memory * Memory, game_state * GameState,mesh_id MeshID);
 GAME_API u32
 PushMeshSize(memory_arena * Arena, u32 DataSize, u32 InstanceCount);
+GAME_API mesh_group
+GetMeshInfo(mesh_id MeshID);
+GAME_API mesh_id
+Mesh(u32 ID);
 
 #define GAME_MESH_H
 #endif

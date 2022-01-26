@@ -1,5 +1,6 @@
 #include "game.h"
 
+
 #if 0
 entity
 GetEntity(game_state * GameState,u32 Index)
@@ -155,27 +156,11 @@ THREAD_WORK_HANDLER(AsyncUpdateEntitiesModel)
         entity * Entity = GameState->World.ActiveEntities + EntityIndex;
         if (EntityHasFlag(Entity,component_transform))
         {
-            entity * Parent = 0;
             entity_transform * T = &Entity->Transform;
-            if (Parent)
-            {
-                entity_transform * ParentT = &Parent->Transform;
-                v3 LocalToWorldP;
-                Quaternion_rotate(&ParentT->WorldR,&T->LocalP,&LocalToWorldP);
-                Translate(T->WorldP,(ParentT->LocalP + LocalToWorldP));
-                Quaternion_multiply(&ParentT->WorldR,&T->LocalR,&T->WorldR);
-                T->WorldS = { 
-                    ParentT->WorldS.x * T->LocalS.x,
-                    ParentT->WorldS.y * T->LocalS.y,
-                    ParentT->WorldS.z * T->LocalS.z
-                };
-            }
-            else
-            {
-                Translate(T->WorldP,T->LocalP);
-                T->WorldR = T->LocalR;
-                T->WorldS = T->LocalS;
-            }
+
+            Translate(T->WorldP,T->LocalP);
+            T->WorldR = T->LocalR;
+            T->WorldS = T->LocalS;
             m4 R = Quaternion_toMatrix(T->WorldR);
             R[0].x = -R[0].x;
             R[1].x = -R[1].x;
@@ -183,6 +168,40 @@ THREAD_WORK_HANDLER(AsyncUpdateEntitiesModel)
             //Log("Pitch: %f, Yaw: %f\n",T->Pitch,T->Yaw);
             T->WorldT = T->WorldP * R * M4(T->WorldS);
             //Log("Entity: %i",EntityIndex);LOG_P(GetMatrixPos(T->WorldP));
+            
+            simulation * Sim = GameState->Simulation;
+            if (
+                    (Entity->MeshObjCount > 1) &&
+                    IS_NOT_NULL(Sim) && 
+                    IS_VALID_MESHOBJ_TRANSFORM_INDEX(Entity->MeshObjTransOcuppancyIndex)
+                )
+            {
+                for (u32 MeshObjIndex = 0;
+                            MeshObjIndex < Entity->MeshObjCount;
+                            ++MeshObjIndex)
+                {
+                    // TODO: create an iterator for this to hide logic how to access ptr?
+                    u32 StartIndexTransform = Sim->MeshObjTransformID[Entity->MeshObjTransOcuppancyIndex];
+                    entity_transform * MeshObjT = 
+                            Sim->MeshObjTransform + StartIndexTransform + MeshObjIndex;
+                    v3 LocalToWorldP;
+                    Quaternion_rotate(&T->WorldR,&MeshObjT->LocalP,&LocalToWorldP);
+                    Translate(MeshObjT->WorldP,(T->LocalP + LocalToWorldP));
+                    Quaternion_multiply(&T->WorldR,&MeshObjT->LocalR,&MeshObjT->WorldR);
+                    MeshObjT->WorldS = { 
+                        T->WorldS.x * MeshObjT->LocalS.x,
+                        T->WorldS.y * MeshObjT->LocalS.y,
+                        T->WorldS.z * MeshObjT->LocalS.z
+                    };
+                    R = Quaternion_toMatrix(MeshObjT->WorldR);
+                    R[0].x = -R[0].x;
+                    R[1].x = -R[1].x;
+                    R[2].x = -R[2].x;
+                    //Log("Pitch: %f, Yaw: %f\n",MeshObjT->Pitch,MeshObjT->Yaw);
+                    MeshObjT->WorldT = MeshObjT->WorldP * R * M4(MeshObjT->WorldS);
+                }
+            }
+
         }
     }
 }
@@ -196,6 +215,8 @@ EntityAddFlag(entity * Entity, component_flags Flag)
 void
 EntityAddTranslation(entity * Entity, entity * Parent, v3 P, v3 Scale, r32 Speed)
 {
+    //TODO: child-parent
+    
     entity_transform * T = &Entity->Transform;
     T->LocalP = P;
     T->LocalS = Scale;
@@ -209,6 +230,21 @@ EntityAddTranslation(entity * Entity, entity * Parent, v3 P, v3 Scale, r32 Speed
 }
 
 void
-EntityAddMesh(entity * Entity)
+EntityAddMesh(entity * Entity, mesh_id MeshID)
 {
+    mesh_group Mesh = GetMeshInfo(MeshID);
+    Entity->MeshID = MeshID;
+    Entity->MeshObjCount = Mesh.TotalMeshObjects;
+#if 0
+    mesh_group Mesh = GestMeshInfo(MeshID.ID);
+    for (uint32 MeshIndex = 0;
+                MeshIndex < Mesh.TotalMeshObjects;
+                ++MeshIndex)
+    {
+        entity * MeshObjEntity = AddEntity(GameState->World,Entity->WorldP);
+        MeshObjEntity->Parent = Entity;
+    }
+    
+    Mesh.TotalMeshObjects
+#endif
 }

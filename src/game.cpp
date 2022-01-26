@@ -83,13 +83,16 @@ CreateWorld(world * World)
     entity * Entity = AddEntity(World, WC);
     EntityAddTranslation(Entity,0,V3(0), V3(1.0f),3.0f);
     Entity->Color = V3(1.0f,0,0);
-    Entity->MeshID = 2;
+    EntityAddMesh(Entity,Mesh(2));
 
-    WC.z -= 10;
     Entity = AddEntity(World, WC);
     EntityAddTranslation(Entity,0,V3(0), V3(1.0f),3.0f);
     Entity->Color = V3(0.0f,1.0f,0);
-    Entity->MeshID = 1;
+    Entity->WorldP._Offset.z += 1.5f;
+    Entity->WorldP._Offset.z += 1.5f;
+    Entity->WorldP._Offset.z += 1.5f;
+    Entity->WorldP._Offset.z += 1.5f;
+    EntityAddMesh(Entity,Mesh(0));
 }
 void
 GenerateWorld(world * World, world_pos Origin)
@@ -105,8 +108,8 @@ GenerateWorld(world * World, world_pos Origin)
 
     u32 RandomCount = ArrayCount(RandomDecimal);
 
-    for (i32 EntityIndex = 0;
-                EntityIndex < 100; 
+    for (u32 EntityIndex = 0;
+                EntityIndex < 1; 
                 ++EntityIndex)
     {
         i32 X = ((EntityIndex * 5) % BoundaryX) + Origin.x;
@@ -124,7 +127,7 @@ GenerateWorld(world * World, world_pos Origin)
         ColorDebug._V[EntityIndex % 3] = 1.0f;
 
         Entity->Color = ColorDebug.xyz;
-        Entity->MeshID = (EntityIndex % MAX_MESH_COUNT);
+        EntityAddMesh(Entity,Mesh(EntityIndex % MAX_MESH_COUNT));
     }
 
 }
@@ -184,6 +187,7 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
         GameState->Simulation = PushStruct(&GameState->TemporaryArena,simulation);
         GameState->Simulation->Origin = WorldCenter;
         GameState->Simulation->Dim = V3(30.0f, 5.0f, 30.0f);
+        GameState->Simulation->MeshObjTransformCount = 0;
 
         u32 ShaderArenaSize = Megabytes(30);
         Base = PushSize(&GameState->TemporaryArena,ShaderArenaSize);
@@ -287,6 +291,25 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
 #endif
 
     /* -------------- INPUT ---------------------------- */
+            //  void Quaternion_rotate(Quaternion * q, v3 * v, v3 * output)
+    for (u32 EntityIndex = 0;
+                EntityIndex < GameState->World.ActiveEntitiesCount;
+                ++EntityIndex)
+    {
+        entity * PalmTree = GameState->World.ActiveEntities + EntityIndex;
+        if (PalmTree->MeshObjCount > 1)
+        {
+            if (IS_VALID_MESHOBJ_TRANSFORM_INDEX(PalmTree->MeshObjTransOcuppancyIndex))
+            {
+                entity_transform * T = GameState->Simulation->MeshObjTransform + 
+                    GameState->Simulation->MeshObjTransformID[PalmTree->MeshObjTransOcuppancyIndex];
+                Quaternion qua;
+                Quaternion_fromYRotation((25.f / 180.f) * PI, &qua);
+                Quaternion_multiply(&qua,&T->LocalR,&T->LocalR);
+            }
+            break;
+        }
+    }
 
     /* -------------- COLLISION ------------------------ */
 
