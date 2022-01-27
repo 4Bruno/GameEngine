@@ -35,6 +35,46 @@ GetNextAvailableEntry(simulation * Sim)
 
     return Entry;
 }
+simulation_mesh_obj_transform_iterator
+BeginSimMeshObjTransformIterator(simulation * Sim, entity * Entity)
+{
+    simulation_mesh_obj_transform_iterator Iter;
+    Iter.Index = 0;
+    Iter.T = 0;
+    Iter.MeshObjCount = Entity->MeshObjCount;
+    if (Entity->MeshObjCount > 1)
+    {
+        if (IS_VALID_MESHOBJ_TRANSFORM_INDEX(Entity->MeshObjTransOcuppancyIndex))
+        {
+            u32 IndexStart = Sim->MeshObjTransformID[Entity->MeshObjTransOcuppancyIndex];
+            entity_transform * T = Sim->MeshObjTransform + IndexStart;
+            Iter.T = T;
+        }
+        else
+        {
+            Iter.T = 0;
+        }
+    }
+    else
+    {
+        Iter.T = &Entity->Transform;
+    }
+    return Iter;
+}
+entity_transform *
+AdvanceSimMeshObjTransformIterator(simulation_mesh_obj_transform_iterator * Iter)
+{
+    ++Iter->Index;
+    if (Iter->Index < Iter->MeshObjCount)
+    {
+        ++Iter->T;
+    }
+    else
+    {
+        Iter->T = 0;
+    }
+    return Iter->T;
+}
 
 simulation_iterator
 BeginSimIterator(world * World, simulation * Sim)

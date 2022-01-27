@@ -199,6 +199,13 @@ struct neighbor_iterator
     b32 CanContinue;
 };
 
+struct simulation_mesh_obj_transform_iterator
+{
+    u32 Index;
+    u32 MeshObjCount;
+    entity_transform * T;
+};
+
 struct simulation_iterator
 {
     entity * Entity;
@@ -244,5 +251,11 @@ BeginSimIterator(world * World, simulation * Sim);
 
 GAME_API entity *
 AdvanceSimIterator(simulation_iterator * Iterator);
+
+GAME_API simulation_mesh_obj_transform_iterator
+BeginSimMeshObjTransformIterator(simulation * Sim, entity * Entity);
+
+GAME_API entity_transform *  
+AdvanceSimMeshObjTransformIterator(simulation_mesh_obj_transform_iterator * Iter);
 
 #endif

@@ -102,6 +102,35 @@ RenderEntities(game_memory * Memory, game_state * GameState)
                 MeshGroup->Loaded
             )
         {
+            simulation_mesh_obj_transform_iterator Iterator =
+                BeginSimMeshObjTransformIterator(Sim, Entity);
+
+            for (entity_transform * MeshObjT = Iterator.T;
+                    IS_NOT_NULL(MeshObjT);
+                    MeshObjT = AdvanceSimMeshObjTransformIterator(&Iterator))
+            {
+                mesh * Mesh = MeshGroup->Meshes + Iterator.Index;
+
+                m4 ModelTransform = MeshObjT->WorldT;
+
+                mesh_push_constant Constants;
+                m4 MVP = GameState->Projection * GameState->ViewTransform * ModelTransform;
+
+                Constants.RenderMatrix = MVP;
+                Constants.SourceLight = SourceLight;
+                Constants.Model = ModelTransform;
+                v4 ColorDebug = V4(V3(0.0f),1.0f);
+                ColorDebug._V[Entity->ID.ID % 3] = 1.0f;
+                Constants.DebugColor = ColorDebug;
+                Constants.DebugColor = V4(Entity->Color,1.0f);
+
+                RenderPushVertexConstant(sizeof(mesh_push_constant),(void *)&Constants);
+                //RenderPushMesh(1,(Mesh->IndicesSize / sizeof(uint16)),Mesh->OffsetVertices,Mesh->OffsetIndices);
+                //RenderPushMesh(1, Mesh->VertexSize / sizeof(vertex_point), 0);
+                RenderPushMesh(1, Mesh->VertexSize / sizeof(vertex_point), Mesh->OffsetVertices);
+            }
+            //Logn("Rendered mesh (%i) with %i objects",Entity->ID.ID, Iterator.Index);
+#if 0
             if (MeshGroup->TotalMeshObjects == 1)
             {
                 mesh * Mesh = MeshGroup->Meshes;
@@ -156,6 +185,7 @@ RenderEntities(game_memory * Memory, game_state * GameState)
                     RenderPushMesh(1, Mesh->VertexSize / sizeof(vertex_point), Mesh->OffsetVertices);
                 }
             }
+#endif
         }
     }
 

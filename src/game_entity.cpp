@@ -170,20 +170,15 @@ THREAD_WORK_HANDLER(AsyncUpdateEntitiesModel)
             //Log("Entity: %i",EntityIndex);LOG_P(GetMatrixPos(T->WorldP));
             
             simulation * Sim = GameState->Simulation;
-            if (
-                    (Entity->MeshObjCount > 1) &&
-                    IS_NOT_NULL(Sim) && 
-                    IS_VALID_MESHOBJ_TRANSFORM_INDEX(Entity->MeshObjTransOcuppancyIndex)
-                )
+            if ( (Entity->MeshObjCount > 1) && IS_NOT_NULL(Sim) )
             {
-                for (u32 MeshObjIndex = 0;
-                            MeshObjIndex < Entity->MeshObjCount;
-                            ++MeshObjIndex)
+                simulation_mesh_obj_transform_iterator Iterator =
+                    BeginSimMeshObjTransformIterator(Sim, Entity);
+
+                for (entity_transform * MeshObjT = Iterator.T;
+                        IS_NOT_NULL(MeshObjT);
+                        MeshObjT = AdvanceSimMeshObjTransformIterator(&Iterator))
                 {
-                    // TODO: create an iterator for this to hide logic how to access ptr?
-                    u32 StartIndexTransform = Sim->MeshObjTransformID[Entity->MeshObjTransOcuppancyIndex];
-                    entity_transform * MeshObjT = 
-                            Sim->MeshObjTransform + StartIndexTransform + MeshObjIndex;
                     v3 LocalToWorldP;
                     Quaternion_rotate(&T->WorldR,&MeshObjT->LocalP,&LocalToWorldP);
                     Translate(MeshObjT->WorldP,(T->LocalP + LocalToWorldP));
@@ -199,9 +194,10 @@ THREAD_WORK_HANDLER(AsyncUpdateEntitiesModel)
                     R[2].x = -R[2].x;
                     //Log("Pitch: %f, Yaw: %f\n",MeshObjT->Pitch,MeshObjT->Yaw);
                     MeshObjT->WorldT = MeshObjT->WorldP * R * M4(MeshObjT->WorldS);
+                    //Log("Entity: %i Object: %i",Entity->ID.ID,Iterator.Index);
+                    //LOG_P(GetMatrixPos(MeshObjT->WorldP));
                 }
             }
-
         }
     }
 }
