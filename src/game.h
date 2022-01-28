@@ -112,6 +112,7 @@ struct game_state
     mesh_group * Meshes;
     u32 LimitMeshes;
     mesh_group GroundMeshGroup;
+    u32 MaxGroundByteSize;
 
     v3 WorldUp;
     m4 ViewMoveMatrix;

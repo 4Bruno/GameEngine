@@ -31,6 +31,9 @@ struct entity
 
     v3 Color; // 36
 
+    // TODO: find different way to handle
+    // with ground
+    b32 IsGround;
     entity_transform Transform; // 170 + 36 = 206
 };
 
@@ -62,6 +65,9 @@ EntityAddTranslation(entity * Entity, entity * Parent, v3 P, v3 Scale, r32 Speed
 
 GAME_API void
 EntityAddMesh(entity * Entity, mesh_id MeshID);
+
+GAME_API void
+EntityDelete(entity * Entity);
 
 inline entity
 NullEntity()

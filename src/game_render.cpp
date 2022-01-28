@@ -93,12 +93,22 @@ RenderEntities(game_memory * Memory, game_state * GameState)
             Entity;
             Entity = AdvanceSimIterator(&SimIter))
     {
-        Assert(Entity->MeshID.ID < MAX_MESH_COUNT);
+        // TODO: I don't want to render ground like this
+        //       but neither I know how can I query entities/ground collision
+        //       within same query otherwise
+        mesh_group * MeshGroup = 0;
 
-        mesh_group * MeshGroup = GetMesh(Memory,GameState,Entity->MeshID);
+        if (Entity->IsGround)
+        {
+            MeshGroup = &GameState->GroundMeshGroup;
+        }
+        else
+        {
+            MeshGroup = GetMesh(Memory,GameState,Entity->MeshID);
+        }
 
         if (
-                IS_VALID_MESHID(Entity->MeshID.ID) && 
+                IS_NOT_NULL(MeshGroup) && 
                 MeshGroup->Loaded
             )
         {
@@ -130,62 +140,6 @@ RenderEntities(game_memory * Memory, game_state * GameState)
                 RenderPushMesh(1, Mesh->VertexSize / sizeof(vertex_point), Mesh->OffsetVertices);
             }
             //Logn("Rendered mesh (%i) with %i objects",Entity->ID.ID, Iterator.Index);
-#if 0
-            if (MeshGroup->TotalMeshObjects == 1)
-            {
-                mesh * Mesh = MeshGroup->Meshes;
-                m4 ModelTransform = Entity->Transform.WorldT;
-
-                mesh_push_constant Constants;
-                m4 MVP = GameState->Projection * GameState->ViewTransform * ModelTransform;
-
-                Constants.RenderMatrix = MVP;
-                Constants.SourceLight = SourceLight;
-                Constants.Model = ModelTransform;
-                v4 ColorDebug = V4(V3(0.0f),1.0f);
-                ColorDebug._V[Entity->ID.ID % 3] = 1.0f;
-                Constants.DebugColor = ColorDebug;
-                Constants.DebugColor = V4(Entity->Color,1.0f);
-
-                RenderPushVertexConstant(sizeof(mesh_push_constant),(void *)&Constants);
-                //RenderPushMesh(1,(Mesh->IndicesSize / sizeof(uint16)),Mesh->OffsetVertices,Mesh->OffsetIndices);
-                //RenderPushMesh(1, Mesh->VertexSize / sizeof(vertex_point), 0);
-                RenderPushMesh(1, Mesh->VertexSize / sizeof(vertex_point), Mesh->OffsetVertices);
-            }
-            else
-            {
-                for (u32 MeshObjectIndex = 0;
-                        MeshObjectIndex < MeshGroup->TotalMeshObjects;
-                        ++MeshObjectIndex)
-                {
-                    mesh * Mesh = MeshGroup->Meshes + MeshObjectIndex;
-
-                    Assert(IS_VALID_MESHOBJ_TRANSFORM_INDEX(Entity->MeshObjTransOcuppancyIndex));
-
-                    u32 StartIndexTransform = Sim->MeshObjTransformID[Entity->MeshObjTransOcuppancyIndex];
-                    entity_transform * MeshObjT = 
-                        Sim->MeshObjTransform + StartIndexTransform + MeshObjectIndex;
-
-                    m4 ModelTransform = MeshObjT->WorldT;
-
-                    mesh_push_constant Constants;
-                    m4 MVP = GameState->Projection * GameState->ViewTransform * ModelTransform;
-
-                    Constants.RenderMatrix = MVP;
-                    Constants.SourceLight = SourceLight;
-                    Constants.Model = ModelTransform;
-                    v4 ColorDebug = V4(V3(0.0f),1.0f);
-                    ColorDebug._V[Entity->ID.ID % 3] = 1.0f;
-                    Constants.DebugColor = ColorDebug;
-                    Constants.DebugColor = V4(Entity->Color,1.0f);
-
-                    RenderPushVertexConstant(sizeof(mesh_push_constant),(void *)&Constants);
-                    //RenderPushMesh(1,(Mesh->IndicesSize / sizeof(uint16)),Mesh->OffsetVertices,Mesh->OffsetIndices);
-                    //RenderPushMesh(1, Mesh->VertexSize / sizeof(vertex_point), 0);
-                    RenderPushMesh(1, Mesh->VertexSize / sizeof(vertex_point), Mesh->OffsetVertices);
-                }
-            }
-#endif
         }
     }
 

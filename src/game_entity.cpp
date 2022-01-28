@@ -167,7 +167,7 @@ THREAD_WORK_HANDLER(AsyncUpdateEntitiesModel)
             R[2].x = -R[2].x;
             //Log("Pitch: %f, Yaw: %f\n",T->Pitch,T->Yaw);
             T->WorldT = T->WorldP * R * M4(T->WorldS);
-            //Log("Entity: %i",EntityIndex);LOG_P(GetMatrixPos(T->WorldP));
+            Log("Entity: %i",EntityIndex);LOG_P(GetMatrixPos(T->WorldP));
             
             simulation * Sim = GameState->Simulation;
             if ( (Entity->MeshObjCount > 1) && IS_NOT_NULL(Sim) )
@@ -211,7 +211,6 @@ EntityAddFlag(entity * Entity, component_flags Flag)
 void
 EntityAddTranslation(entity * Entity, entity * Parent, v3 P, v3 Scale, r32 Speed)
 {
-    //TODO: child-parent
     
     entity_transform * T = &Entity->Transform;
     T->LocalP = P;
@@ -223,6 +222,12 @@ EntityAddTranslation(entity * Entity, entity * Parent, v3 P, v3 Scale, r32 Speed
     T->WorldT = {};
 
     EntityAddFlag(Entity,component_transform);
+}
+
+void
+EntityDelete(entity * Entity)
+{
+    EntityAddFlag(Entity,component_delete);
 }
 
 void

@@ -183,7 +183,7 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
         (*World) = NewWorld(&GameState->WorldArena, 16, 16, 16);
         CreateWorld(World);
         world_pos WorldCenter = WorldPosition(0,0,0);
-        GenerateWorld(World, WorldCenter);
+        //GenerateWorld(World, WorldCenter);
         GameState->Simulation = PushStruct(&GameState->TemporaryArena,simulation);
         GameState->Simulation->Origin = WorldCenter;
         GameState->Simulation->Dim = V3(30.0f, 5.0f, 30.0f);
@@ -207,18 +207,28 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
         GameState->IndicesArena = RenderGetMemoryArena();
 
         // TODO: Procedural ground generation
-        GameState->GroundMeshGroup = CreateHexaGroundMesh(&GameState->MeshesArena,&GameState->TemporaryArena,&GameState->VertexArena);
+        u32 MaxGroundByteSize = Megabytes(1);
+        GameState->MaxGroundByteSize = MaxGroundByteSize;
+        u32 VertexBufferBeginOffset = PushMeshSize(&GameState->VertexArena, MaxGroundByteSize,1);
+        GameState->GroundMeshGroup = {};
+        GameState->GroundMeshGroup.Meshes = PushArray(&GameState->MeshesArena, 1,mesh);
+        //GameState->GroundMeshGroup = CreateHexaGroundMesh(&GameState->MeshesArena,&GameState->TemporaryArena,&GameState->VertexArena);
+        //GameState->GroundMeshGroup = CreateHexaGroundMesh(&GameState->MeshesArena,&GameState->TemporaryArena,&GameState->VertexArena);
+        //CreateGroundAtPosition(GameState, GameState->World.CurrentWorldP);
 
         CreatePipeline(Memory,GameState);
 
         v3 WorldCenterV3 = V3(0,0,0);
 
+        r32 FarView = 2000.0f;
         WorldInitializeView(GameState, (ToRadians(70.0f)), 
                            ScreenWidth,ScreenHeight, 
-                           0.1f, 200.0f, 
+                           0.1f, FarView, 
                            WorldCenterV3);
 
         GameState->CameraMode = true;
+
+        Translate(GameState->ViewMoveMatrix, V3(0,-1,0));
 
         GameState->IsInitialized = true;
     }
@@ -281,11 +291,12 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
     /* ----------------------- GAME SYSTEMS UPDATE ---------------------------- */
     BeginSimulation(World, GameState->Simulation);
 
+#if 0
     entity * Player = World->ActiveEntities + GameState->Simulation->EntityEntries[0].StorageIndex;
     entity * Target = World->ActiveEntities + GameState->Simulation->EntityEntries[1].StorageIndex;
 
-#if 0
-    ViewLookAt(GameState, Player->Transform.LocalP, Target->Transform.LocalP);
+    //ViewLookAt(GameState, Player->Transform.LocalP + V3(3.0f,3.0f,15.f), Target->Transform.LocalP);
+    ViewLookAt(GameState, V3(3.0f,9.0f,15.f), Target->Transform.LocalP);
 #else
     FreeCameraView(GameState, InputdP* Speed, Yaw, Pitch);
 #endif
@@ -296,24 +307,67 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
                 EntityIndex < GameState->World.ActiveEntitiesCount;
                 ++EntityIndex)
     {
-        entity * PalmTree = GameState->World.ActiveEntities + EntityIndex;
-        if (PalmTree->MeshObjCount > 1)
+        entity * Entity = GameState->World.ActiveEntities + EntityIndex;
+        if (Entity->MeshObjCount > 1)
         {
-            if (IS_VALID_MESHOBJ_TRANSFORM_INDEX(PalmTree->MeshObjTransOcuppancyIndex))
+            if (IS_VALID_MESHOBJ_TRANSFORM_INDEX(Entity->MeshObjTransOcuppancyIndex))
             {
-                entity_transform * T = GameState->Simulation->MeshObjTransform + 
-                    GameState->Simulation->MeshObjTransformID[PalmTree->MeshObjTransOcuppancyIndex];
                 Quaternion qua;
-                Quaternion_fromYRotation((25.f / 180.f) * PI, &qua);
-                Quaternion_multiply(&qua,&T->LocalR,&T->LocalR);
+
+                Quaternion * LocalR = &Entity->Transform.LocalR;
+
+                r32 Angle = -((25.f / 180.f) * PI) * Input->DtFrame;
+                //v3 Move = V3(0,-1.5f,0);
+                //Quaternion_multiply(LocalR,Move,Move);
+                Quaternion_fromZRotation(Angle, &qua);
+                //Quaternion_fromAxisAngle(V3(0,0,1.0f)._V,Angle,&qua);
+                Quaternion_multiply(&qua,LocalR,LocalR);
+
+                simulation_mesh_obj_transform_iterator Iterator =
+                    BeginSimMeshObjTransformIterator(GameState->Simulation, Entity);
+
+                AdvanceSimMeshObjTransformIterator(&Iterator);
+
+                for (entity_transform * T = Iterator.T;
+                        IS_NOT_NULL(T);
+                        T = AdvanceSimMeshObjTransformIterator(&Iterator))
+                {
+                    r32 Rotate = (25.f / 180.f) * PI * Input->DtFrame;
+                    Quaternion_fromYRotation(Rotate, &qua);
+                    Quaternion_multiply(&qua,&T->LocalR,&T->LocalR);
+                }
             }
             break;
         }
     }
+    /* -------------- GROUND ------------------------ */
+#if 1
+    v3 GroundP = GetViewPos(GameState) - V3(0,-5.0f,0);
+    world_pos GroundWorldP = MapIntoCell(World, World->CurrentWorldP, GroundP);
+    entity * GroundEntity = AddEntity(&GameState->World, GroundWorldP);
+#else
+    v3 GroundP = V3(0,0,0);
+    entity * GroundEntity = AddEntity(&GameState->World, WorldPosition(0,-1,0));
+#endif
+
+    EntityAddTranslation(GroundEntity,0,V3(0), V3(1.0f),0.0f);
+    GroundEntity->Color = V3(1.0f,0,0);
+    GroundEntity->IsGround = true;
+    GroundEntity->MeshObjCount = 0;
+    // re-do every frame
+    EntityDelete(GroundEntity);
+
+    CreateGroundMeshPerlin(&GameState->GroundMeshGroup,
+                           &GameState->TemporaryArena,
+                           &GameState->VertexArena,
+                           GameState->MaxGroundByteSize,
+                           V3((r32)World->CurrentWorldP.x,(r32)World->CurrentWorldP.y,(r32)World->CurrentWorldP.z));
+    
 
     /* -------------- COLLISION ------------------------ */
 
     /* ----------------------- Model Transform ------------------------------- */
+#if 1
     u32 TotalEntities = World->ActiveEntitiesCount;
     u32 MaxThreads;
 
@@ -355,6 +409,7 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
     }
 
     Memory->CompleteWorkQueue(Memory->HighPriorityWorkQueue);
+#endif
 
     /* ------------------------- GAME RENDER ------------------------- */
 
@@ -363,13 +418,13 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
     BeginRender(GameState, ClearColor);
 
     RenderEntities(Memory, GameState);
-    RenderGround(GameState,Player);
+    //RenderGround(GameState,Player);
     
     EndRender(GameState);
 
     v3 CameraP = GetViewPos(GameState);
     GameState->Simulation->Origin = MapIntoCell(World, World->CurrentWorldP, CameraP);
-    Translate(GameState->ViewMoveMatrix, V3(0,0,0));
+    Translate(GameState->ViewMoveMatrix,V3(0));
     //Logn("Camera P " STRP ", " STRWORLDP, FP(CameraP), FWORLDP(GameState->Simulation->Origin));
 }
 

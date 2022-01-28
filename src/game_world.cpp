@@ -588,6 +588,7 @@ UpdateWorldLocation(world * World, simulation * Sim)
                     DimX <= MaxCell.x;
                     ++DimX)
             {
+                /* -------------------- ENTITIES ------------------------- */
                 world_pos P = WorldPosition(DimX, DimY, DimZ);
                 //if (DimX == 13 && DimY == 0 && DimZ == 0) { Assert(0); }
                 world_cell * Cell = GetWorldCellAndRemove(World, P);
@@ -612,8 +613,8 @@ UpdateWorldLocation(world * World, simulation * Sim)
 
                             if (EntityHasFlag(Dest,component_transform))
                             {
-                                Dest->Transform.LocalP = 
-                                    Substract(World,Dest->WorldP,Sim->Origin);
+                                v3 EntityInSimulationP = Substract(World,Dest->WorldP,Sim->Origin);
+                                Dest->Transform.LocalP -= EntityInSimulationP;
                             }
                             ++EntitiesUnpacked;
                             SimulationRegisterEntity(Sim, Dest,EntityStorageIndex);
@@ -624,6 +625,9 @@ UpdateWorldLocation(world * World, simulation * Sim)
 
                     AppendCellToFreeList(World,Cell);
                 }
+
+                /* -------------------- GROUND ------------------------- */
+
                 ++CountLoops;
             }
         }
