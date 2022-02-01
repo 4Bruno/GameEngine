@@ -240,7 +240,7 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
         GameState->MaxGroundByteSize = MaxGroundByteSize;
         //u32 VertexBufferBeginOffset = PushMeshSize(&GameState->VertexArena, MaxGroundByteSize,1);
 
-        GameState->GroundMeshLimit = 100;
+        GameState->GroundMeshLimit = 200;
         GameState->GroundMeshGroup = 
             PushArray(&GameState->MeshesArena,GameState->GroundMeshLimit,mesh_group);
 
@@ -354,12 +354,18 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
     world_pos BeginWorldP = GameState->Simulation->Origin;
 //    Logn("World P " STRWORLDP, FWORLDP(BeginWorldP));
     
-    v3 GroundTileDim = World->GridCellDimInMeters * 4;
+    v3 GroundTileDim = World->GridCellDimInMeters * 8;
     v3 MinCorner = BeginWorldP._Offset - GroundTileDim; 
     v3 MaxCorner = BeginWorldP._Offset + GroundTileDim; 
 
+#if 1
     world_pos MinCell = MapIntoCell(World, BeginWorldP, MinCorner);
     world_pos MaxCell = MapIntoCell(World, BeginWorldP, MaxCorner);
+#else
+    world_pos MinCell = BeginWorldP;
+    //world_pos MinCell = MapIntoCell(World, BeginWorldP, V3(0,0,-1.5f));
+    world_pos MaxCell = MapIntoCell(World, BeginWorldP, V3(0,0,1.5f));
+#endif
 
     i32 DimY = BeginWorldP.y;
     for (i32 DimZ = MinCell.z;
@@ -417,11 +423,10 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
                     GroundMeshGroup = GameState->GroundMeshGroup + FarthestEntityGround->MeshID.ID;
                 }
 
-                u32 TotalXTiles = 11;
-                u32 TotalZTiles = 11;
-                // accounting for + 1 in size
-                u32 TotalTriangles = (TotalXTiles - 1) * (TotalZTiles - 1) * 2;
-                //u32 TotalTriangles = (TotalXTiles - 1) * (TotalZTiles - 1) * 2;
+                u32 TotalXTiles = 10;
+                u32 TotalZTiles = 10;
+
+                u32 TotalTriangles = TotalXTiles * TotalZTiles * 2;
                 u32 TotalVertices = TotalTriangles * 3;
 
                 u32 OriginalMeshSize = TotalVertices * sizeof(vertex_point);
@@ -468,13 +473,19 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
                         v3 Color;
                         v3 White = V3(1,1,1);
                         if ((WorldP.x % 2) == 0 &&
-                            (WorldP.y % 2) == 0)
+                            (WorldP.z % 2) == 1)
                         {
                             Color = White;
                         }
                         else
                         {
                             Color = V3(1,0,0);
+                        }
+                        if ((WorldP.x == 0) && 
+                            (WorldP.y == 0) && 
+                            (WorldP.z == 0))
+                        {
+                            Color = V3(0,0.3,0.8);
                         }
 #endif
                         GroundEntity->Color = Color;

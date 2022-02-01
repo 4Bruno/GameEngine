@@ -131,6 +131,7 @@ THREAD_WORK_HANDLER(LoadGround)
     mesh_group * MeshGroup           = WorkData->MeshGroup;
     memory_arena * TempArena         = &WorkData->ThreadArena->Arena;
     world_pos WorldP                 = WorkData->WorldP;
+    WorldP.z = -WorldP.z;
 
     // Define max vertices
     i32 TotalXTiles = WorkData->TotalXTiles;
@@ -140,7 +141,7 @@ THREAD_WORK_HANDLER(LoadGround)
     u32 VertexBufferBeginOffset = Mesh->OffsetVertices;
 
     //u32 TotalTriangles = (TotalXTiles - 1) * (TotalZTiles - 1) * 2;
-    u32 TotalTriangles = (TotalXTiles - 1) * (TotalZTiles - 1) * 2;
+    u32 TotalTriangles = TotalXTiles  * TotalZTiles * 2;
     u32 TotalVertices = TotalTriangles * 3;
 
     u32 OriginalMeshSize = TotalVertices * sizeof(vertex_point);
@@ -148,7 +149,7 @@ THREAD_WORK_HANDLER(LoadGround)
     u32 MeshSize = (OriginalMeshSize + Align) & ~Align;
     Assert(MeshSize >= OriginalMeshSize);
 
-    u32 TotalVertexPoints = TotalXTiles * TotalZTiles;
+    u32 TotalVertexPoints = (TotalXTiles + 1) * (TotalZTiles + 1);
     v3 * VertexPoints = PushArray(TempArena,TotalVertexPoints,v3);
 
     // Mapping cells coordinates to range [1,n]
@@ -168,8 +169,8 @@ THREAD_WORK_HANDLER(LoadGround)
     r32 MinY = 0;
     r32 MaxY = 0;
 
-    r32 OneOverTotalXTiles = (1.0f / (TotalXTiles - 1));
-    r32 OneOverTotalZTiles = (1.0f / (TotalZTiles - 1));
+    r32 OneOverTotalXTiles = (1.0f / (TotalXTiles));
+    r32 OneOverTotalZTiles = (1.0f / (TotalZTiles));
 
     r32 MaxPx = 1.0f;
     r32 MaxPz = 1.0f;
@@ -179,25 +180,29 @@ THREAD_WORK_HANDLER(LoadGround)
     //v3 OneOverMaxRangeValues = V3(1.0f / MaxPx, 1.0f / MaxPy, 1.0f / MaxPz);
     v3 OneOverMaxRangeValues = V3(1.0f / MaxPx, 1.0f / MaxPy, 1.0f / MaxPz);
 
+    Logn("Building at WorldP:" STRWORLDP,FWORLDP(WorldP));
     for (i32 TileX = 0;
-                TileX < TotalXTiles;
+                TileX <= TotalXTiles;
                 ++TileX)
     {
         r32 Px = (r32)(WorldP.x + TileX * OneOverTotalXTiles) * DensityMultiply;
-        for (i32 TileZ = 0;
-                TileZ < TotalZTiles;
-                ++TileZ)
+        for (i32 TileZ = TotalZTiles;
+                TileZ >= 0;
+                --TileZ)
         {
             r32 Pz = (r32)(WorldP.z + TileZ * OneOverTotalZTiles) * DensityMultiply;
             r32 Py = perlin(Px, Pz);
             //r32 Py = 0.5f;
             v3 Vertex = V3(Px,Py,Pz) - GroundP;
+            //Vertex.y = OneOverTotalZTiles * TileZ;
             //Vertex = VectorMultiply(Vertex,OneOverMaxRangeValues);
             *(VertexPoints + VertexIndex) = Vertex;
             Logn("Vertex:" STRP,FP(Vertex));
             ++VertexIndex;
         }
     }
+
+    Assert(VertexIndex == TotalVertexPoints);
     //Logn("Max x: %10f Max z: %10f Max y: %10f",MaxX, MaxZ, MaxY);
     //Logn("Min x: %10f Min z: %10f Min y: %10f",MinX, MinZ, MinY);
 
@@ -205,30 +210,47 @@ THREAD_WORK_HANDLER(LoadGround)
     v4 Yellow = V4(1.0f,1.0f,0,1.0f);
     vertex_point * Vertices = (vertex_point *)PushSize(TempArena, MeshSize);
     u32 CountVertices = 0;
-    u32 Stride = TotalZTiles;
+    u32 Stride = TotalZTiles + 1;
 
     for (i32 TileX = 0;
-                TileX < (TotalXTiles - 1);
+                TileX < TotalXTiles;
                 ++TileX)
     {
-        // last Z tile is done in the prior row
-        for (i32 TileZ = 0;
+        // last row of vertices do not need to be done
+        // Case 0
+        v3 * va = VertexPoints + (Stride * TileX);
+        v3 * vb = va + 1;
+        v3 * vc = va + Stride;
+
+        Vertices[CountVertices].P = *va;
+        Vertices[CountVertices].N = VUp;
+        Vertices[CountVertices].Color = Yellow;
+        ++CountVertices;
+
+        Vertices[CountVertices].P = *vb;
+        Vertices[CountVertices].N = VUp;
+        Vertices[CountVertices].Color = Yellow;
+        ++CountVertices;
+
+        Vertices[CountVertices].P = *vc;
+        Vertices[CountVertices].N = VUp;
+        Vertices[CountVertices].Color = Yellow;
+        ++CountVertices;
+
+        for (i32 TileZ = 1;
                 TileZ < TotalZTiles;
                 ++TileZ)
         {
-            // right and up
-            u32 OffsetX = 1;
-            u32 OffsetZ = Stride;
-
-            if (TileZ == (TotalZTiles - 1))
-            {
-                OffsetX = Stride;
-                OffsetZ = Stride - 1;
-            }
-
-            v3 * va = VertexPoints + (Stride * TileX) + TileZ;
-            v3 * vb = va + OffsetX;
-            v3 * vc = va + OffsetZ;
+            /* .
+             * | \
+             * |  \
+             * |   \
+             * |    \
+             * . ___ .
+             */
+            va = VertexPoints + (Stride * TileX) + TileZ;
+            vb = va + 1;
+            vc = va + Stride;
 
             Vertices[CountVertices].P = *va;
             Vertices[CountVertices].N = VUp;
@@ -245,32 +267,52 @@ THREAD_WORK_HANDLER(LoadGround)
             Vertices[CountVertices].Color = Yellow;
             ++CountVertices;
 
-            if (InBetweenExcl(TileZ,0,Stride - 1))
-            {
-                OffsetX = Stride;
-                OffsetZ = Stride - 1;
+            vb = va + Stride;
+            vc = va + Stride - 1;
 
-                vb = va + OffsetX;
-                vc = va + OffsetZ;
+            /* .-----.
+             *  \    |
+             *   \   |
+             *    \  |
+             *     \ |
+             *      .
+             */
+            Vertices[CountVertices].P = *va;
+            Vertices[CountVertices].N = VUp;
+            Vertices[CountVertices].Color = Yellow;
+            ++CountVertices;
 
-                Vertices[CountVertices].P = *va;
-                Vertices[CountVertices].N = VUp;
-                Vertices[CountVertices].Color = Yellow;
-                ++CountVertices;
+            Vertices[CountVertices].P = *vb;
+            Vertices[CountVertices].N = VUp;
+            Vertices[CountVertices].Color = Yellow;
+            ++CountVertices;
 
-                Vertices[CountVertices].P = *vb;
-                Vertices[CountVertices].N = VUp;
-                Vertices[CountVertices].Color = Yellow;
-                ++CountVertices;
-
-                Vertices[CountVertices].P = *vc;
-                Vertices[CountVertices].N = VUp;
-                Vertices[CountVertices].Color = Yellow;
-                ++CountVertices;
-            }
+            Vertices[CountVertices].P = *vc;
+            Vertices[CountVertices].N = VUp;
+            Vertices[CountVertices].Color = Yellow;
+            ++CountVertices;
         }
-    }
 
+        // last case corner only to left
+        va = VertexPoints + (Stride * TileX) + TotalZTiles;
+        vb = va + Stride;
+        vc = va + Stride - 1;
+
+        Vertices[CountVertices].P = *va;
+        Vertices[CountVertices].N = VUp;
+        Vertices[CountVertices].Color = Yellow;
+        ++CountVertices;
+
+        Vertices[CountVertices].P = *vb;
+        Vertices[CountVertices].N = VUp;
+        Vertices[CountVertices].Color = Yellow;
+        ++CountVertices;
+
+        Vertices[CountVertices].P = *vc;
+        Vertices[CountVertices].N = VUp;
+        Vertices[CountVertices].Color = Yellow;
+        ++CountVertices;
+    }
 
     RenderPushVertexData(Vertices,MeshSize, VertexBufferBeginOffset); 
 
