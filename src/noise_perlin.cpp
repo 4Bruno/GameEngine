@@ -23,10 +23,7 @@ int permutation[] = { 151, 160, 137, 91, 90, 15, 131, 13, 201, 95, 96, 53, 194, 
  * Weight w should be in the range [0.0, 1.0]
  */
 r32 interpolate(r32 a0, r32 a1, r32 w) {
-    /* // You may want clamping by inserting:
-     * if (0.0 > w) return a0;
-     * if (1.0 < w) return a1;
-     */
+    w = Clamp(w,0,1);
     return (a1 - a0) * w + a0;
     /* // Use this cubic interpolation [[Smoothstep]] instead, for a smooth appearance:
      * return (a1 - a0) * (3.0 - w * 2.0) * w * w + a0;

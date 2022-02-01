@@ -164,7 +164,6 @@ operator *(v3 A, r32 B)
     return Result;
 }
 
-
 inline v3
 operator *=(v3 &A, r32 B)
 {
@@ -412,6 +411,35 @@ Translate(m4 &M,v3 P)
     M.Columns[1] = {0, 1 , 0 , 0};
     M.Columns[2] = {0, 0 , 1 , 0};
     M.Columns[3] = {P.x, P.y , P.z , 1};
+}
+
+inline r32
+minval(r32 a, r32 b)
+{
+    r32 Result = a > b ? b : a;
+
+    return Result;
+}
+
+inline r32
+maxval(r32 a, r32 b)
+{
+    r32 Result = a > b ? a : b;
+
+    return Result;
+}
+
+
+inline r32
+Clamp(r32 a, r32 min, r32 max)
+{
+    r32 Result = a;
+    if (Result < min)
+        Result = min;
+    else if (Result > max)
+        Result = max;
+
+    return Result;
 }
 
 

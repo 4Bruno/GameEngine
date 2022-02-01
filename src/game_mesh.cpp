@@ -453,7 +453,7 @@ THREAD_WORK_HANDLER(LoadMesh)
         }
 
 
-        Logn("Actual mesh size %i", TotalMeshObjVerticesBytes);
+        //Logn("Actual mesh size %i", TotalMeshObjVerticesBytes);
         // TODO: GPU barrier sync
         RenderPushVertexData(BeginBufferVertices, TotalMeshObjVerticesBytes, WorkData->BaseOffset);
         //RenderPushVertexData(Mesh->Vertices,Mesh->VertexSize, 1);
@@ -553,7 +553,7 @@ GetMesh(game_memory * Memory, game_state * GameState,mesh_id MeshID)
             // worst case all boundaries falls in next alignment byte
             MeshSize = MeshSize + (MeshObjs * (RenderGetVertexMemAlign() - 2));
 
-            Logn("Worst case scenario mesh size %i", MeshSize);
+            //Logn("Worst case scenario mesh size %i", MeshSize);
             // calculate vertex arena new size in worst case scenario
             // to avoid new any mesh overlapping
             Data->BaseOffset = PushMeshSize(&GameState->VertexArena, MeshSize, 1);

@@ -155,7 +155,7 @@ SimulationUnregisterEntity(simulation * Sim, entity * Entity,  u32 StorageIndexI
             IndexBlock = 1; // here after always 1
         }
         Entity->MeshObjTransOcuppancyIndex = INVALID_MESHOBJ_TRANSFORM_INDEX;
-        Logn("Unregistered Entity %i",Entity->ID.ID);
+        //Logn("Unregistered Entity %i",Entity->ID.ID);
     }
 }
 
@@ -234,6 +234,7 @@ SimulationRegisterEntity(simulation * Sim, entity * Entity,  u32 StorageIndexID)
         {
             entity_transform * T = (Sim->MeshObjTransform + Sim->MeshObjTransformCount++);
             v3 Scale = V3(1,1,1);
+            T->LocalP = V3(0,0,0);
             T->LocalS = Scale;
             Quaternion_setIdentity(&T->LocalR);
             Translate(T->WorldP,T->LocalP);
@@ -242,7 +243,7 @@ SimulationRegisterEntity(simulation * Sim, entity * Entity,  u32 StorageIndexID)
             T->WorldT = {};
         }
 
-        Logn("Registered Entity with multiple mesh objects %i",Entity->ID.ID);
+        //Logn("Registered Entity with multiple mesh objects %i",Entity->ID.ID);
     }
 
 #if 0

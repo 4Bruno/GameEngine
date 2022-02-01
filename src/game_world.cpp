@@ -1,6 +1,7 @@
 #include <intrin.h>
 #include "game.h"
 #include "game_simulation.cpp"
+#include "game_math.h"
 
 #define MAX_LENGHTSQR_DISTANCE_ALLOWED (1000.0f * 1000.0f)
 //#define MAX_LENGHTSQR_DISTANCE_ALLOWED (950.0f)
@@ -273,7 +274,7 @@ R32Toi32(r32 r)
 {
     // TODO: floor operation expected? why not?
     //i32 Result = (i32)_mm_cvtss_si32(_mm_set_ss(r));
-    i32 Result = (i32)r;
+    i32 Result = (i32)roundf(r);
     return Result;
 }
 
@@ -283,6 +284,13 @@ MapIntoCell(world * World, world_pos P, v3 dP)
     /*
      * Cells are mapped as [-x, x] with center equals to (0,0)
      * GridCellDim is the radius to get from 0,0 to the edge
+     *  ---------
+     * |         |
+     * |         |
+     * |    *    | * is 0,0
+     * |         |
+     * |         |
+     *  ---------
      */
     P._Offset.x += dP.x;
     P._Offset.y += dP.y;
@@ -383,6 +391,10 @@ GetPtrToFreeCellData(world * World, world_pos WorldP)
     }
 
     entity * Entity = (entity *)(CellData->Data + CellData->DataSize);
+
+    // Clean memory
+    *Entity = {};
+
     Entity->WorldP = WorldP;
 
     CellData->DataSize += (u16)EntitySize;
@@ -397,9 +409,10 @@ AddEntity(world * World, world_pos WorldP)
     entity * Entity = GetPtrToFreeCellData(World, WorldP);
     Entity->ID = ID;
 
-    Entity->MeshID.ID = INVALID_MESHID;
+    // special flags
+    Entity->MeshID.ID                  = INVALID_MESHID;
     Entity->MeshObjTransOcuppancyIndex = INVALID_MESHOBJ_TRANSFORM_INDEX;
-
+    
     return Entity;
 }
 
@@ -527,7 +540,7 @@ UpdateWorldLocation(world * World, simulation * Sim)
 
             if (!RoomForEntity || EntityTooFar)
             {
-                Logn("Distance entity(%i) to center %f",Entity->ID.ID,LengthSqrToCenter);
+                //Logn("Distance entity(%i) to center %f",Entity->ID.ID,LengthSqrToCenter);
                 world_pos NewWorldP = MapIntoCell(World, OldWorldP, EntityInSimulationP);
                 EntityNoLongerActive = true;
 #if 0
@@ -613,8 +626,8 @@ UpdateWorldLocation(world * World, simulation * Sim)
 
                             if (EntityHasFlag(Dest,component_transform))
                             {
-                                v3 EntityInSimulationP = Substract(World,Dest->WorldP,Sim->Origin);
-                                Dest->Transform.LocalP -= EntityInSimulationP;
+                                v3 EntityInSimulationP = Substract(World,Sim->Origin, Dest->WorldP);
+                                Dest->Transform.LocalP = EntityInSimulationP;
                             }
                             ++EntitiesUnpacked;
                             SimulationRegisterEntity(Sim, Dest,EntityStorageIndex);

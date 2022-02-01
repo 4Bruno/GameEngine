@@ -36,10 +36,6 @@ GAME_API void
 RenderEntities(game_memory * Memory, game_state * GameState);
 
 GAME_API void
-RenderGround(game_state * GameState, entity * Entity);
-
-
-GAME_API void
 WorldInitializeView(game_state * GameState,
                r32 FOV,
                i32 ScreenWidth, i32 ScreenHeight, 

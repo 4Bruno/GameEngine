@@ -1,6 +1,7 @@
 #include "game.h"
-#include "game_memory.h"
 #include "noise_perlin.cpp"
+#include "game_math.h"
+#include "game_ground_generator.h"
 
 v3
 FlatHexCorner(v3 Center, r32 Size, u32 i)
@@ -121,9 +122,226 @@ InBetweenExcl(u32 Value,u32 Start,u32 End)
     return Result;
 }
 
-void
-CreateGroundMeshPerlin(mesh_group * MeshGroup, memory_arena * TempArena, memory_arena * VertexBufferArena, u32 MaxGroundByteSize, v3 GroundP)
+THREAD_WORK_HANDLER(LoadGround)
 {
+    async_load_ground * WorkData = (async_load_ground *)Data;
+    Assert(WorkData->ThreadArena);
+    
+    world * World                    = WorkData->World;
+    mesh_group * MeshGroup           = WorkData->MeshGroup;
+    memory_arena * TempArena         = &WorkData->ThreadArena->Arena;
+    world_pos WorldP                 = WorkData->WorldP;
+
+    // Define max vertices
+    i32 TotalXTiles = WorkData->TotalXTiles;
+    i32 TotalZTiles = WorkData->TotalZTiles;
+
+    mesh * Mesh = MeshGroup->Meshes;
+    u32 VertexBufferBeginOffset = Mesh->OffsetVertices;
+
+    //u32 TotalTriangles = (TotalXTiles - 1) * (TotalZTiles - 1) * 2;
+    u32 TotalTriangles = (TotalXTiles - 1) * (TotalZTiles - 1) * 2;
+    u32 TotalVertices = TotalTriangles * 3;
+
+    u32 OriginalMeshSize = TotalVertices * sizeof(vertex_point);
+    u32 Align = RenderGetVertexMemAlign() - 1;
+    u32 MeshSize = (OriginalMeshSize + Align) & ~Align;
+    Assert(MeshSize >= OriginalMeshSize);
+
+    u32 TotalVertexPoints = TotalXTiles * TotalZTiles;
+    v3 * VertexPoints = PushArray(TempArena,TotalVertexPoints,v3);
+
+    // Mapping cells coordinates to range [1,n]
+    // the gradient between buckets is based on current worldP offset
+    r32 Density = 1.0f;
+    r32 DensityMultiply = (1.0f / Density);
+
+    v3 GroundP = V3((r32)WorldP.x * DensityMultiply,(r32)WorldP.y * DensityMultiply,(r32)WorldP.z * DensityMultiply);
+    //v3 GroundP = V3((r32)WorldP.x ,(r32)WorldP.y ,(r32)WorldP.z );
+
+    u32 VertexIndex = 0;
+    r32 MaxX = 0;
+    r32 MaxZ = 0;
+    r32 MinX = 0;
+    r32 MinZ = 0;
+
+    r32 MinY = 0;
+    r32 MaxY = 0;
+
+    r32 OneOverTotalXTiles = (1.0f / (TotalXTiles - 1));
+    r32 OneOverTotalZTiles = (1.0f / (TotalZTiles - 1));
+
+    r32 MaxPx = 1.0f;
+    r32 MaxPz = 1.0f;
+
+    // TODO: how?
+    r32 MaxPy = maxval(MaxPx, MaxPz) + (r32)fabs((r32)WorldP.y - 1) * DensityMultiply;
+    //v3 OneOverMaxRangeValues = V3(1.0f / MaxPx, 1.0f / MaxPy, 1.0f / MaxPz);
+    v3 OneOverMaxRangeValues = V3(1.0f / MaxPx, 1.0f / MaxPy, 1.0f / MaxPz);
+
+    for (i32 TileX = 0;
+                TileX < TotalXTiles;
+                ++TileX)
+    {
+        r32 Px = (r32)(WorldP.x + TileX * OneOverTotalXTiles) * DensityMultiply;
+        for (i32 TileZ = 0;
+                TileZ < TotalZTiles;
+                ++TileZ)
+        {
+            r32 Pz = (r32)(WorldP.z + TileZ * OneOverTotalZTiles) * DensityMultiply;
+            r32 Py = perlin(Px, Pz);
+            //r32 Py = 0.5f;
+            v3 Vertex = V3(Px,Py,Pz) - GroundP;
+            //Vertex = VectorMultiply(Vertex,OneOverMaxRangeValues);
+            *(VertexPoints + VertexIndex) = Vertex;
+            Logn("Vertex:" STRP,FP(Vertex));
+            ++VertexIndex;
+        }
+    }
+    //Logn("Max x: %10f Max z: %10f Max y: %10f",MaxX, MaxZ, MaxY);
+    //Logn("Min x: %10f Min z: %10f Min y: %10f",MinX, MinZ, MinY);
+
+    v3 VUp = V3(0,1.0f,0);
+    v4 Yellow = V4(1.0f,1.0f,0,1.0f);
+    vertex_point * Vertices = (vertex_point *)PushSize(TempArena, MeshSize);
+    u32 CountVertices = 0;
+    u32 Stride = TotalZTiles;
+
+    for (i32 TileX = 0;
+                TileX < (TotalXTiles - 1);
+                ++TileX)
+    {
+        // last Z tile is done in the prior row
+        for (i32 TileZ = 0;
+                TileZ < TotalZTiles;
+                ++TileZ)
+        {
+            // right and up
+            u32 OffsetX = 1;
+            u32 OffsetZ = Stride;
+
+            if (TileZ == (TotalZTiles - 1))
+            {
+                OffsetX = Stride;
+                OffsetZ = Stride - 1;
+            }
+
+            v3 * va = VertexPoints + (Stride * TileX) + TileZ;
+            v3 * vb = va + OffsetX;
+            v3 * vc = va + OffsetZ;
+
+            Vertices[CountVertices].P = *va;
+            Vertices[CountVertices].N = VUp;
+            Vertices[CountVertices].Color = Yellow;
+            ++CountVertices;
+
+            Vertices[CountVertices].P = *vb;
+            Vertices[CountVertices].N = VUp;
+            Vertices[CountVertices].Color = Yellow;
+            ++CountVertices;
+
+            Vertices[CountVertices].P = *vc;
+            Vertices[CountVertices].N = VUp;
+            Vertices[CountVertices].Color = Yellow;
+            ++CountVertices;
+
+            if (InBetweenExcl(TileZ,0,Stride - 1))
+            {
+                OffsetX = Stride;
+                OffsetZ = Stride - 1;
+
+                vb = va + OffsetX;
+                vc = va + OffsetZ;
+
+                Vertices[CountVertices].P = *va;
+                Vertices[CountVertices].N = VUp;
+                Vertices[CountVertices].Color = Yellow;
+                ++CountVertices;
+
+                Vertices[CountVertices].P = *vb;
+                Vertices[CountVertices].N = VUp;
+                Vertices[CountVertices].Color = Yellow;
+                ++CountVertices;
+
+                Vertices[CountVertices].P = *vc;
+                Vertices[CountVertices].N = VUp;
+                Vertices[CountVertices].Color = Yellow;
+                ++CountVertices;
+            }
+        }
+    }
+
+
+    RenderPushVertexData(Vertices,MeshSize, VertexBufferBeginOffset); 
+
+    ThreadEndArena(WorkData->ThreadArena);
+
+    COMPILER_DONOT_REORDER_BARRIER;
+    MeshGroup->Loaded        = true;  // b32 Loaded;
+    MeshGroup->LoadInProcess = false; // b32 LoadInProcess;
+}
+
+/*
+ * Signals whether managed to get thread arena.
+ * if it didn't, no work was done
+ */
+bool
+TryLoadGround(game_memory * Memory,
+              game_state * GameState,
+              world_pos WorldP, mesh_group * MeshGroup, u32 TotalXTiles, u32 TotalZTiles)
+{
+    b32 LoadSuccess = false;
+
+    thread_memory_arena * ThreadArena = GetThreadArena(GameState);
+    if (IS_NOT_NULL(ThreadArena))
+    {
+        MeshGroup->LoadInProcess = true;
+
+        memory_arena * Arena = ThreadBeginArena(ThreadArena);
+
+        async_load_ground * Data = PushStruct(Arena,async_load_ground);
+
+        MeshGroup->TotalMeshObjects = 1;
+
+        Assert(IS_NOT_NULL(MeshGroup->Meshes)); // should be pre-allocated on world initialization
+
+        Data->World       = &GameState->World; // world * World;
+        Data->ThreadArena = ThreadArena;       // thread_memory_arena * ThreadArena;
+        Data->MeshGroup   = MeshGroup;         // mesh_group * MeshGroup;
+        Data->WorldP      = WorldP;            // RECORD WorldP;
+        Data->TotalXTiles = TotalXTiles;       // i32 TotalXTiles;
+        Data->TotalZTiles = TotalZTiles;       // i32 TotalZTiles;
+
+#if 0
+        u32 TotalTriangles = (TotalXTiles - 1) * (TotalZTiles - 1) * 2;
+        u32 TotalVertices = TotalTriangles * 3;
+
+        u32 OriginalMeshSize = TotalVertices * sizeof(vertex_point);
+        u32 Align = RenderGetVertexMemAlign() - 1;
+        u32 MeshSize = (OriginalMeshSize + Align) & ~Align;
+
+        Assert(MeshSize > 0);
+        Assert(MeshSize < MeshGroup->Meshes->VertexSize);
+#endif
+        Memory->AddWorkToWorkQueue(Memory->RenderWorkQueue , LoadGround,Data);
+
+        LoadSuccess = true;
+    }
+
+    return LoadSuccess;
+}
+
+void
+CreateGroundMeshPerlin(world * World, 
+                       mesh_group * MeshGroup, 
+                       memory_arena * TempArena, 
+                       memory_arena * VertexBufferArena, 
+                       u32 MaxGroundByteSize, 
+                       world_pos WorldP)
+{
+    //Logn("Seed World P " STRWORLDP, FWORLDP(WorldP));
+
+    // Define max vertices
     i32 TotalXTiles = 30;
     i32 TotalZTiles = 30;
 
@@ -156,22 +374,73 @@ CreateGroundMeshPerlin(mesh_group * MeshGroup, memory_arena * TempArena, memory_
     u32 TotalVertexPoints = TotalXTiles * TotalZTiles;
     v3 * VertexPoints = PushArray(TempArena,TotalVertexPoints,v3);
 
+    r32 CellDim = World->GridCellDimInMeters.x;
+    r32 CellHalfDim = CellDim * 0.5f;
+
+    // Mapping cells coordinates to range [1,n]
+    // the gradient between buckets is based on current worldP offset
+    r32 Density = 10.0f;
+    r32 DensityMultiply = (1.0f / Density);
+
+    // Normalize WOrldP offset to [0,1]
+    r32 UnilateralWorldPOffsetX = (WorldP._Offset.x + CellHalfDim) * World->OneOverGridCellDimInMeters.x;
+    r32 UnilateralWorldPOffsetZ = (WorldP._Offset.z + CellHalfDim) * World->OneOverGridCellDimInMeters.x;
+    //Logn("Offx: %f Offz: %f",WorldPOffsetX, WorldPOffsetZ);
+    
+    r32 CellDimOffsetX = DensityMultiply * UnilateralWorldPOffsetX;
+    r32 CellDimOffsetZ = DensityMultiply * UnilateralWorldPOffsetZ;
+    v3 GroundP = V3((r32)WorldP.x * DensityMultiply,(r32)WorldP.y * DensityMultiply,(r32)WorldP.z * DensityMultiply);
+    //v3 GroundP = V3((r32)WorldP.x ,(r32)WorldP.y ,(r32)WorldP.z );
+
     u32 VertexIndex = 0;
+    r32 MaxX = 0;
+    r32 MaxZ = 0;
+    r32 MinX = 0;
+    r32 MinZ = 0;
+
+    r32 MinY = 0;
+    r32 MaxY = 0;
+
+    r32 MaxPx = (r32)(fabs((r32)WorldP.x) + XTiles - 1) * DensityMultiply + (1.0f - UnilateralWorldPOffsetX) * DensityMultiply;
+    r32 MaxPz = (r32)(fabs((r32)WorldP.z) + ZTiles - 1) * DensityMultiply + (1.0f - UnilateralWorldPOffsetZ) * DensityMultiply;
+    // TODO: how?
+    r32 MaxPy = maxval(MaxPx, MaxPz) + (r32)fabs((r32)WorldP.y - 1.0f) * DensityMultiply;
+    //v3 OneOverMaxRangeValues = V3(1.0f / (MaxPx * 2.0f), 1.0f / (MaxPy * 2.0f), 1.0f / (MaxPz * 2.0f));
+    v3 OneOverMaxRangeValues = V3(1.0f / MaxPx, 1.0f / MaxPy, 1.0f / MaxPz);
+
     for (i32 TileX = -XTiles;
                 TileX < XTiles;
                 ++TileX)
     {
-        r32 X = (GroundP.x + TileX * 1.5f);
+        r32 Px = (r32)(WorldP.x + TileX) * DensityMultiply + CellDimOffsetX;
+        MaxX = maxval(Px - GroundP.x,MaxX);
+        MinX = minval(Px - GroundP.x,MinX);
         for (i32 TileZ = -ZTiles;
                 TileZ < ZTiles;
                 ++TileZ)
         {
-            r32 Z = (GroundP.z + TileZ * 1.5f);
-            r32 Y = perlin(X, Z);
-            *(VertexPoints + VertexIndex) = V3(X,Y,Z) - GroundP;
+            r32 Pz = (r32)(WorldP.z + TileZ) * DensityMultiply + CellDimOffsetZ;
+            MaxZ = maxval(Pz - GroundP.z,MaxZ);
+            MinZ = minval(Pz - GroundP.z,MinX);
+            r32 Py = perlin(Px, Pz);
+            MaxY = maxval(Py - GroundP.y,MaxY);
+            MinY = minval(Py - GroundP.y,MinY);
+            v3 Vertex = V3(Px,Py,Pz) - GroundP;
+            //Vertex.y = Clamp(Vertex.y,0,1);
+            // TODO: I dnt need to normalize else will move center mesh and scale incorrectly
+            // normalize [0,1]
+            //Vertex = VectorMultiply((Vertex + V3(MaxPx, MaxPy, MaxPz)),OneOverMaxRangeValues);
+            Vertex = VectorMultiply(Vertex,OneOverMaxRangeValues);
+            //Vertex.x = Clamp(Vertex.x,0,1.0f);
+            //Vertex.z = Clamp(Vertex.z,0,1.0f);
+            //Assert((Vertex.x >= 0) & (Vertex.y >= 0) & (Vertex.z >= 0));
+            *(VertexPoints + VertexIndex) = Vertex;
+            Logn("Vertex:" STRP,FP(Vertex));
             ++VertexIndex;
         }
     }
+    //Logn("Max x: %10f Max z: %10f Max y: %10f",MaxX, MaxZ, MaxY);
+    //Logn("Min x: %10f Min z: %10f Min y: %10f",MinX, MinZ, MinY);
 
     v3 VUp = V3(0,1.0f,0);
     v4 Yellow = V4(1.0f,1.0f,0,1.0f);

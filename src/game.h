@@ -111,7 +111,10 @@ struct game_state
 
     mesh_group * Meshes;
     u32 LimitMeshes;
-    mesh_group GroundMeshGroup;
+
+    mesh_group * GroundMeshGroup;
+    u32 GroundMeshLimit;
+    u32 GroundMeshCount;
     u32 MaxGroundByteSize;
 
     v3 WorldUp;
@@ -120,6 +123,7 @@ struct game_state
     m4 ViewTransform;
     m4 Projection;
 
+    world_pos CameraWorldP;
     b32 CameraMode;
     camera Camera;
 
