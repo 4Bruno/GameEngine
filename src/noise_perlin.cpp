@@ -1,5 +1,5 @@
 #include "game_platform.h"
-#include "math.h"
+#include "game_math.h"
 
 int permutation[] = { 151, 160, 137, 91, 90, 15, 131, 13, 201, 95, 96, 53, 194, 233, 7, 225, 140, 36, 
                       103, 30, 69, 142, 8, 99, 37, 240, 21, 10, 23, 190, 6, 148, 247, 120, 234, 75, 0, 
@@ -22,9 +22,13 @@ int permutation[] = { 151, 160, 137, 91, 90, 15, 131, 13, 201, 95, 96, 53, 194, 
 /* Function to linearly interpolate between a0 and a1
  * Weight w should be in the range [0.0, 1.0]
  */
-r32 interpolate(r32 a0, r32 a1, r32 w) {
-    w = Clamp(w,0,1);
+r32 
+interpolate(r32 a0, r32 a1, r32 w) {
+    //w = Clamp(w,0,1);
     return (a1 - a0) * w + a0;
+    //return (a1 - a0) * (3.0f - w * 2.0f) * w * w + a0;
+    //return (a1 - a0) * ((w * (w * 6.0f - 15.0f) + 10.0f) * w * w * w) + a0;
+    
     /* // Use this cubic interpolation [[Smoothstep]] instead, for a smooth appearance:
      * return (a1 - a0) * (3.0 - w * 2.0) * w * w + a0;
      *
@@ -33,13 +37,10 @@ r32 interpolate(r32 a0, r32 a1, r32 w) {
      */
 }
 
-typedef struct {
-    r32 x, y;
-} vector2;
-
 /* Create pseudorandom direction vector
  */
-vector2 randomGradient(int ix, int iy) {
+v2 
+randomGradient(int ix, int iy) {
     // No precomputed gradients mean this works for any number of grid coordinates
     const unsigned w = 8 * sizeof(unsigned);
     const unsigned s = w / 2; // rotation width
@@ -48,15 +49,16 @@ vector2 randomGradient(int ix, int iy) {
     b *= 1911520717; a ^= b << s | b >> (w-s);
     a *= 2048419325;
     r32 random = a * (PI / ~(~0u >> 1)); // in [0, 2*Pi]
-    vector2 v;
+    v2 v;
     v.x = sinf(random); v.y = cosf(random);
     return v;
 }
 
 // Computes the dot product of the distance and gradient vectors.
-r32 dotGridGradient(int ix, int iy, r32 x, r32 y) {
+r32 
+dotGridGradient(int ix, int iy, r32 x, r32 y) {
     // Get gradient from integer coordinates
-    vector2 gradient = randomGradient(ix, iy);
+    v2 gradient = randomGradient(ix, iy);
 
     // Compute the distance vector
     r32 dx = x - (r32)ix;
@@ -67,7 +69,9 @@ r32 dotGridGradient(int ix, int iy, r32 x, r32 y) {
 }
 
 // Compute Perlin noise at coordinates x, y
-r32 perlin(r32 x, r32 y) {
+r32 
+perlin(r32 x, r32 z, r32 y) 
+{
 
     // Determine grid cell coordinates
     int x0 = (int)x;

@@ -9,39 +9,6 @@
 #define VALID_ENTITY(E) (E.ID > NULL_ENTITY)
 
 
-struct entity_id
-{
-    u32 ID;
-};
-
-struct entity
-{
-    // Global identifier. Must be unique
-    entity_id ID;    // 4
-    // Position relative to the world center
-    world_pos WorldP; // 28
-
-    component_flags Flags; // 32
-
-    u32 Height;
-
-    mesh_id MeshID;
-    u32 MeshObjCount;
-    u32 MeshObjTransOcuppancyIndex;
-
-    v3 Color; // 36
-
-    // TODO: find different way to handle
-    // with ground
-    b32 IsGround;
-    entity_transform Transform; // 170 + 36 = 206
-};
-
-struct entity_input
-{
-    v3 dP;
-    v3 EulerXYZ;
-};
 
 
 struct async_update_entities_model

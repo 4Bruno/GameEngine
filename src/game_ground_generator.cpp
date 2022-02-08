@@ -1,7 +1,8 @@
 #include "game.h"
-#include "noise_perlin.cpp"
 #include "game_math.h"
 #include "game_ground_generator.h"
+#include "noise_perlin.cpp"
+//#include "noise_perlin_2.cpp"
 
 v3
 FlatHexCorner(v3 Center, r32 Size, u32 i)
@@ -113,14 +114,6 @@ CreateHexaGroundMesh(mesh_group * MeshGroup, memory_arena * TempArena, memory_ar
     MeshGroup->LoadInProcess = false; // b32 LoadInProcess;
 }
 
-b32
-InBetweenExcl(u32 Value,u32 Start,u32 End)
-{
-    b32 Result = (Value > Start) &&
-                 (Value < End);
-
-    return Result;
-}
 
 THREAD_WORK_HANDLER(LoadGround)
 {
@@ -157,8 +150,8 @@ THREAD_WORK_HANDLER(LoadGround)
     r32 Density = 1.0f;
     r32 DensityMultiply = (1.0f / Density);
 
-    v3 GroundP = V3((r32)WorldP.x * DensityMultiply,(r32)WorldP.y * DensityMultiply,(r32)WorldP.z * DensityMultiply);
-    //v3 GroundP = V3((r32)WorldP.x ,(r32)WorldP.y ,(r32)WorldP.z );
+    v3 GroundP = V3((r32)WorldP.x ,(r32)WorldP.y ,(r32)WorldP.z );
+    GroundP = V3(GroundP.x,0,GroundP.z);
 
     u32 VertexIndex = 0;
     r32 MaxX = 0;
@@ -172,32 +165,55 @@ THREAD_WORK_HANDLER(LoadGround)
     r32 OneOverTotalXTiles = (1.0f / (TotalXTiles));
     r32 OneOverTotalZTiles = (1.0f / (TotalZTiles));
 
-    r32 MaxPx = 1.0f;
-    r32 MaxPz = 1.0f;
 
-    // TODO: how?
-    r32 MaxPy = maxval(MaxPx, MaxPz) + (r32)fabs((r32)WorldP.y - 1) * DensityMultiply;
-    //v3 OneOverMaxRangeValues = V3(1.0f / MaxPx, 1.0f / MaxPy, 1.0f / MaxPz);
-    v3 OneOverMaxRangeValues = V3(1.0f / MaxPx, 1.0f / MaxPy, 1.0f / MaxPz);
+    //Logn("Building at WorldP:" STRWORLDP,FWORLDP(WorldP));
 
-    Logn("Building at WorldP:" STRWORLDP,FWORLDP(WorldP));
     for (i32 TileX = 0;
                 TileX <= TotalXTiles;
                 ++TileX)
     {
-        r32 Px = (r32)(WorldP.x + TileX * OneOverTotalXTiles) * DensityMultiply;
-        for (i32 TileZ = TotalZTiles;
-                TileZ >= 0;
-                --TileZ)
+        r32 Px = (r32)(WorldP.x + TileX * OneOverTotalXTiles);
+        for (i32 TileZ = 0;
+                TileZ <= TotalZTiles;
+                ++TileZ)
         {
-            r32 Pz = (r32)(WorldP.z + TileZ * OneOverTotalZTiles) * DensityMultiply;
-            r32 Py = perlin(Px, Pz);
+            r32 Pz = (r32)(WorldP.z + TileZ * OneOverTotalZTiles);
+#if 1
+            r32 Py = perlin(Px * DensityMultiply,0, Pz * DensityMultiply);
+#else
+            // https://www.redblobgames.com/maps/terrain-from-noise/
+            r32 Py = 
+                perlin(Px * DensityMultiply,0, Pz * DensityMultiply) + 
+                0.5f * perlin(Px * DensityMultiply*2.0f,0, Pz * DensityMultiply*2.0f) + 
+                0.25f * perlin(Px * DensityMultiply*4.0f,0, Pz * DensityMultiply*4.0f)
+                ;
+            Py = Py * (1.0f / (1.0f + 0.5f + 0.25f));
+            Py = R32Toi32(Py * 12.0f) * (1.0f / 12.0f);
+#endif
             //r32 Py = 0.5f;
             v3 Vertex = V3(Px,Py,Pz) - GroundP;
             //Vertex.y = OneOverTotalZTiles * TileZ;
             //Vertex = VectorMultiply(Vertex,OneOverMaxRangeValues);
             *(VertexPoints + VertexIndex) = Vertex;
-            Logn("Vertex:" STRP,FP(Vertex));
+#if 0
+            if (
+                    (TileX == 0 && TileZ == 0) ||
+                    (TileX ==TotalXTiles && TileZ == TotalZTiles) ||
+                    (TileX == 0 && TileZ == TotalZTiles) ||
+                    (TileX == TotalXTiles && TileZ == 0)
+               )
+            {
+                Logn("(x: %i z: %i) Vertex:" STRP,WorldP.x, WorldP.z,FP(Vertex));
+            }
+#else
+            if (
+                    (TileX == 0 && TileZ == 0) &&
+                    (Py == 0.0f)
+               )
+            {
+                Logn("(x: %i z: %i) Vertex:" STRP,WorldP.x, WorldP.z,FP(Vertex));
+            }
+#endif
             ++VertexIndex;
         }
     }
@@ -373,6 +389,7 @@ TryLoadGround(game_memory * Memory,
     return LoadSuccess;
 }
 
+
 void
 CreateGroundMeshPerlin(world * World, 
                        mesh_group * MeshGroup, 
@@ -464,7 +481,7 @@ CreateGroundMeshPerlin(world * World,
             r32 Pz = (r32)(WorldP.z + TileZ) * DensityMultiply + CellDimOffsetZ;
             MaxZ = maxval(Pz - GroundP.z,MaxZ);
             MinZ = minval(Pz - GroundP.z,MinX);
-            r32 Py = perlin(Px, Pz);
+            r32 Py = perlin(Px,0, Pz);
             MaxY = maxval(Py - GroundP.y,MaxY);
             MinY = minval(Py - GroundP.y,MinY);
             v3 Vertex = V3(Px,Py,Pz) - GroundP;

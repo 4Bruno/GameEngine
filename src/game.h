@@ -128,6 +128,7 @@ struct game_state
     camera Camera;
 
     animation DebugAnimate;
+    v3 DebugSourceLightP;
 };
 
 

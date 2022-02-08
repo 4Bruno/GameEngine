@@ -269,15 +269,6 @@ GetNextAvailableEntityID(world * World)
 }
 
 
-inline i32
-R32Toi32(r32 r)
-{
-    // TODO: floor operation expected? why not?
-    //i32 Result = (i32)_mm_cvtss_si32(_mm_set_ss(r));
-    i32 Result = (i32)roundf(r);
-    return Result;
-}
-
 world_pos
 MapIntoCell(world * World, world_pos P, v3 dP)
 {
@@ -638,8 +629,6 @@ UpdateWorldLocation(world * World, simulation * Sim)
 
                     AppendCellToFreeList(World,Cell);
                 }
-
-                /* -------------------- GROUND ------------------------- */
 
                 ++CountLoops;
             }

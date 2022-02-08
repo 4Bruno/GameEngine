@@ -8,6 +8,7 @@
 #include "game_memory.h"
 #include "Quaternion.h"
 #include "game_math.h"
+#include "game_mesh.h"
 
 #define MAX_WORLD_ENTITY_COUNT (1 << 14)
 #define MAX_WORLD_ENTITY_COUNT_MINUS_ONE (MAX_WORLD_ENTITY_COUNT - 1)
@@ -19,8 +20,6 @@
 #define FP(P) P.x, P.y, P.z
 
 // game_entity.h
-struct entity;
-struct entity_input;
 
 enum component_flags
 {
@@ -52,7 +51,55 @@ struct world_pos
     v3 _Offset;
 };
 
+struct entity_input
+{
+    v3 dP;
+    v3 EulerXYZ;
+};
 
+
+struct entity_transform
+{
+    v3 LocalP; // 12
+    v3 LocalS; // 24
+    Quaternion LocalR; // 40
+
+    r32 Yaw, Pitch; // 48
+
+    m4 WorldP; // 12 * 4 = 48 + 48 = 96
+    v3 WorldS; // 108
+    Quaternion WorldR; // 122
+
+    m4 WorldT; // 122 + 48 = 170
+};
+
+struct entity_id
+{
+    u32 ID;
+};
+
+struct entity
+{
+    // Global identifier. Must be unique
+    entity_id ID;    // 4
+    // Position relative to the world center
+    world_pos WorldP; // 28
+
+    component_flags Flags; // 32
+
+    u32 Height;
+
+    mesh_id MeshID;
+    u32 MeshObjCount;
+    u32 MeshObjTransOcuppancyIndex;
+
+    v3 Color; // 36
+
+    // TODO: find different way to handle
+    // with ground
+    b32 IsGround;
+    entity_transform Transform; // 170 + 36 = 206
+};
 
 
 /*
@@ -60,7 +107,7 @@ struct world_pos
  * if cell needs to add more data and is not sufficient
  * it uses linked list to add new chunk of data
  */
-#define WORLD_CELL_DATA_SIZE (1 << 16)
+#define WORLD_CELL_DATA_SIZE (sizeof(entity) * 10)
 struct world_cell_data
 {
     u16 DataSize;
@@ -93,20 +140,6 @@ struct world_cell
     world_cell * NextCell;
 };
 
-struct entity_transform
-{
-    v3 LocalP; // 12
-    v3 LocalS; // 24
-    Quaternion LocalR; // 40
-
-    r32 Yaw, Pitch; // 48
-
-    m4 WorldP; // 12 * 4 = 48 + 48 = 96
-    v3 WorldS; // 108
-    Quaternion WorldR; // 122
-
-    m4 WorldT; // 122 + 48 = 170
-};
 
 // In a simulation, how many entities can have multiple objects associated
 // to the mesh

@@ -26,7 +26,8 @@ UpdateView(game_state * GameState)
 void
 RenderEntities(game_memory * Memory, game_state * GameState)
 {
-    v3 SourceLight = V3(0,10.0f,0);
+    //v3 SourceLight = V3(0,10.0f,0);
+    v3 SourceLight = GameState->DebugSourceLightP;
     v4 Color = V4(1.0f,0.5f,0.2f,1.0f);
 
     UpdateView(GameState);
@@ -77,10 +78,14 @@ RenderEntities(game_memory * Memory, game_state * GameState)
                 Constants.RenderMatrix = MVP;
                 Constants.SourceLight = SourceLight;
                 Constants.Model = ModelTransform;
-                v4 ColorDebug = V4(V3(0.0f),1.0f);
-                ColorDebug._V[Entity->ID.ID % 3] = 1.0f;
-                Constants.DebugColor = ColorDebug;
+                //v4 ColorDebug = V4(V3(0.0f),1.0f);
+                //ColorDebug._V[Entity->ID.ID % 3] = 1.0f;
+                //Constants.DebugColor = ColorDebug;
                 Constants.DebugColor = V4(Entity->Color,1.0f);
+                if (Entity->MeshID.ID ==  0 && !Entity->IsGround)
+                {
+                    Constants.DebugColor = V4(Entity->Color,0.3f);
+                }
 
                 RenderPushVertexConstant(sizeof(mesh_push_constant),(void *)&Constants);
                 //RenderPushMesh(1,(Mesh->IndicesSize / sizeof(uint16)),Mesh->OffsetVertices,Mesh->OffsetIndices);
@@ -181,7 +186,7 @@ MoveViewForward(game_state * GameState,r32 N)
     v3 P = GetViewPos(GameState);
     v3 Out = GetMatrixDirection(GameState->ViewRotationMatrix);
     // do not alter Y
-    Out.y = 0.0f;
+    //Out.y = 0.0f;
     v3 R = P + (N * Out);
     Translate(GameState->ViewMoveMatrix, -R);
     UpdateView(GameState);

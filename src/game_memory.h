@@ -29,7 +29,7 @@ struct memory_aligned_result
 #define PushArray(Arena,Count,Struct) (Struct *)_PushSize(Arena,Count*sizeof(Struct))
 #define PushStruct(Arena,Struct) (Struct *)PushArray(Arena,1,Struct)
 
-#define BeginTempArena(Arena,ID) u32 Arena##SizeBegin##ID = Arena->CurrentSize;\
+#define BeginTempArena(Arena,ID) u32 Arena##SizeBegin##ID = (Arena)->CurrentSize;\
                                  ++Arena->StackTemporaryMemory;
 #define EndTempArena(Arena,ID) --Arena->StackTemporaryMemory;\
                                Arena->CurrentSize = Arena##SizeBegin##ID;

@@ -442,6 +442,24 @@ Clamp(r32 a, r32 min, r32 max)
     return Result;
 }
 
+inline i32
+R32Toi32(r32 r)
+{
+    // TODO: floor operation expected? why not?
+    //i32 Result = (i32)_mm_cvtss_si32(_mm_set_ss(r));
+    i32 Result = (i32)roundf(r);
+    return Result;
+}
+
+inline b32
+InBetweenExcl(u32 Value,u32 Start,u32 End)
+{
+    b32 Result = (Value > Start) &&
+                 (Value < End);
+
+    return Result;
+}
+
 
 #define GAME_MATH_H
 #endif

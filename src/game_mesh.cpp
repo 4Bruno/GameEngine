@@ -521,7 +521,11 @@ GetMeshInfo(mesh_id MeshID)
 mesh_group *
 GetMesh(game_memory * Memory, game_state * GameState,mesh_id MeshID)
 {
+
+    if (!IS_VALID_MESHID(MeshID.ID)) return 0;
+
     mesh_group * MeshGroup = (GameState->Meshes + MeshID.ID);
+    
     Assert(IS_NOT_NULL(MeshGroup));
 
     if (!MeshGroup->Loaded && !MeshGroup->LoadInProcess)

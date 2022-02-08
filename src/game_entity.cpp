@@ -149,8 +149,6 @@ THREAD_WORK_HANDLER(AsyncUpdateEntitiesModel)
     async_update_entities_model * Update = (async_update_entities_model *)Data;
     game_state * GameState = Update->GameState;
 
-    v3 DistSimToCamera = Substract(&GameState->World,GameState->Simulation->Origin,GameState->CameraWorldP);
-
     for (u32 EntityIndex = Update->StartIndex;
                 EntityIndex < (Update->StartIndex + Update->EntitiesCount);
                 ++EntityIndex)
@@ -160,8 +158,7 @@ THREAD_WORK_HANDLER(AsyncUpdateEntitiesModel)
         {
             entity_transform * T = &Entity->Transform;
 
-            v3 LocalPInSimToCamera = T->LocalP + DistSimToCamera;
-            Translate(T->WorldP,LocalPInSimToCamera);
+            Translate(T->WorldP,T->LocalP);
             T->WorldR = T->LocalR;
             T->WorldS = T->LocalS;
             m4 R = Quaternion_toMatrix(T->WorldR);
@@ -184,7 +181,7 @@ THREAD_WORK_HANDLER(AsyncUpdateEntitiesModel)
                 {
                     v3 LocalToWorldP;
                     Quaternion_rotate(&T->WorldR,&MeshObjT->LocalP,&LocalToWorldP);
-                    Translate(MeshObjT->WorldP,(LocalPInSimToCamera + LocalToWorldP));
+                    Translate(MeshObjT->WorldP,T->LocalP + LocalToWorldP);
                     Quaternion_multiply(&T->WorldR,&MeshObjT->LocalR,&MeshObjT->WorldR);
                     MeshObjT->WorldS = { 
                         T->WorldS.x * MeshObjT->LocalS.x,
