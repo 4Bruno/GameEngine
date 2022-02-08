@@ -488,14 +488,16 @@ VulkanCreatePipelineColorBlendAttachmentState()
 {
     VkPipelineColorBlendAttachmentState PipelineColorBlendAttachmentState = {};
 
+#if 1
     PipelineColorBlendAttachmentState.blendEnable         = VK_FALSE; // VkBool32   blendEnable;
-#if 0
-    PipelineColorBlendAttachmentState.srcColorBlendFactor = VK_BLEND_FACTOR_; // VkBlendFactor   srcColorBlendFactor;
-    PipelineColorBlendAttachmentState.dstColorBlendFactor = VK_BLEND_FACTOR_; // VkBlendFactor   dstColorBlendFactor;
-    PipelineColorBlendAttachmentState.colorBlendOp        = VK_BLEND_OP_; // VkBlendOp   colorBlendOp;
-    PipelineColorBlendAttachmentState.srcAlphaBlendFactor = VK_BLEND_FACTOR_; // VkBlendFactor   srcAlphaBlendFactor;
-    PipelineColorBlendAttachmentState.dstAlphaBlendFactor = VK_BLEND_FACTOR_; // VkBlendFactor   dstAlphaBlendFactor;
-    PipelineColorBlendAttachmentState.alphaBlendOp        = VK_BLEND_OP_; // VkBlendOp   alphaBlendOp;
+#else
+    PipelineColorBlendAttachmentState.blendEnable         = VK_TRUE; // VkBool32   blendEnable;
+    PipelineColorBlendAttachmentState.srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;           // VkBlendFactor srcColorBlendFactor;
+    PipelineColorBlendAttachmentState.dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA; // VkBlendFactor dstColorBlendFactor;
+    PipelineColorBlendAttachmentState.colorBlendOp        = VK_BLEND_OP_ADD;                     // VkBlendOp colorBlendOp;
+    PipelineColorBlendAttachmentState.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;                 // VkBlendFactor srcAlphaBlendFactor;
+    PipelineColorBlendAttachmentState.dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;                // VkBlendFactor dstAlphaBlendFactor;
+    PipelineColorBlendAttachmentState.alphaBlendOp        = VK_BLEND_OP_ADD;                      // VkBlendOp alphaBlendOp;
 #endif
     PipelineColorBlendAttachmentState.colorWriteMask      = 
         VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT; // VkColorComponentFlags   colorWriteMask;
@@ -678,7 +680,8 @@ RenderCreatePipeline(i32 VertexShaderIndex,
     DepthStencil.flags                 = 0;                           // VkPipelineDepthStencilStateCreateFlags flags;
     DepthStencil.depthTestEnable       = VK_TRUE;                     // VkBool32 depthTestEnable;
     DepthStencil.depthWriteEnable      = VK_TRUE;                     // VkBool32 depthWriteEnable;
-    DepthStencil.depthCompareOp        = VK_COMPARE_OP_LESS_OR_EQUAL; // VkCompareOp depthCompareOp;
+    //DepthStencil.depthCompareOp        = VK_COMPARE_OP_LESS_OR_EQUAL; // VkCompareOp depthCompareOp;
+    DepthStencil.depthCompareOp        = VK_COMPARE_OP_LESS; // VkCompareOp depthCompareOp;
     DepthStencil.depthBoundsTestEnable = VK_FALSE;                    // VkBool32 depthBoundsTestEnable;
     DepthStencil.stencilTestEnable     = VK_FALSE;                    // VkBool32 stencilTestEnable;
     //DepthStencil.front               = ; // VkStencilOpState front;
@@ -1088,6 +1091,17 @@ VulkanInitDefaultRenderPass()
         DepthAttachment
     };
 
+#if 0
+    VkSubpassDependency Dependency;
+    //Dependency.srcSubpass      = ; // uint32_t   srcSubpass;
+    //Dependency.dstSubpass      = ; // uint32_t   dstSubpass;
+    Dependency.srcStageMask    = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT; // VkPipelineStageFlags   srcStageMask;
+    Dependency.dstStageMask    = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;; // VkPipelineStageFlags   dstStageMask;
+    //Dependency.srcAccessMask   = ; // VkAccessFlags   srcAccessMask;
+    Dependency.dstAccessMask   = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;; // VkAccessFlags   dstAccessMask;
+    //Dependency.dependencyFlags = ; // VkDependencyFlags   dependencyFlags;
+#endif
+
     VkRenderPassCreateInfo RenderPassCreateInfo;
     RenderPassCreateInfo.sType           = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO; // VkStructureType sType;
     RenderPassCreateInfo.pNext           = 0;                                         // Void * pNext;
@@ -1096,8 +1110,13 @@ VulkanInitDefaultRenderPass()
     RenderPassCreateInfo.pAttachments    = &Attachments[0];                           // Typedef * pAttachments;
     RenderPassCreateInfo.subpassCount    = 1;                                         // u32_t subpassCount;
     RenderPassCreateInfo.pSubpasses      = &SubpassDescription;                       // Typedef * pSubpasses;
+#if 0
+    RenderPassCreateInfo.dependencyCount = 1;                                         // u32_t dependencyCount;
+    RenderPassCreateInfo.pDependencies   = &Dependency;                               // Typedef * pDependencies;
+#else
     RenderPassCreateInfo.dependencyCount = 0;                                         // u32_t dependencyCount;
-    RenderPassCreateInfo.pDependencies   = 0;                                         // Typedef * pDependencies;
+    RenderPassCreateInfo.pDependencies   = 0;                               // Typedef * pDependencies;
+#endif
 
     VK_CHECK(vkCreateRenderPass(GlobalVulkan.PrimaryDevice,&RenderPassCreateInfo, 0, &GlobalVulkan.RenderPass));
 
@@ -1459,7 +1478,7 @@ RenderBeginPass(v4 ClearColor)
     ColorClear.color.float32[3] = ClearColor.a; // VkClearColorValue color;
     //ClearValue.depthStencil  = {};            // VkClearDepthStencilValue depthStencil;
     VkClearValue DepthClear;
-    DepthClear.depthStencil.depth = 1.0f; // VkClearDepthStencilValue   depthStencil;
+    DepthClear.depthStencil = {1.0f,0};
 
     VkClearValue ClearAttachments[2] = {
         ColorClear,
