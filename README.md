@@ -16,6 +16,7 @@ This is just for learning purposes.
 * I can reload game dll during debug with memory intact
 * I can generate entities and simulate multiple world areas
 * I can render 1 simulation with spatial query
+* I can generated complex 3D ground (GPU implementation of Nvidia 3D pearls ground generation)
 ![Visual sample of current status](game_engine_current_status_sample.gif)
 
 # QA
