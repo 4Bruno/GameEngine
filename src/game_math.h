@@ -413,6 +413,14 @@ Translate(m4 &M,v3 P)
     M.Columns[3] = {P.x, P.y , P.z , 1};
 }
 
+inline i32
+minval(i32 a, i32 b)
+{
+    i32 Result = a > b ? b : a;
+
+    return Result;
+}
+
 inline r32
 minval(r32 a, r32 b)
 {
@@ -457,6 +465,18 @@ InBetweenExcl(u32 Value,u32 Start,u32 End)
     b32 Result = (Value > Start) &&
                  (Value < End);
 
+    return Result;
+}
+
+inline i32
+SignBit(i32 x)
+{
+    /*
+     * if x > 0 then 1 - 0 = 1
+     * if x < 0 then 0 - 1 = -1
+     * if x == 0 then 0 - 0 = 0
+     */
+    i32 Result = (x > 0) - (x < 0);
     return Result;
 }
 

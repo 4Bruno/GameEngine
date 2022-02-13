@@ -40,6 +40,56 @@ typedef double   r64;
 #define VULKAN_CREATE_SURFACE(name) i32 name(void * SurfaceData, void * pfnOSSurface, VkInstance Instance, VkSurfaceKHR * Surface)
 typedef VULKAN_CREATE_SURFACE(vulkan_create_surface);
 
+
+#if DEBUG
+
+// power of 2
+#define DEBUG_CYCLE_HISTORY (2 << 5)
+struct debug_cycle
+{
+    u32 RingIndex;
+    u32 NumberOfCalls[DEBUG_CYCLE_HISTORY];
+    u64 NumberOfCycles[DEBUG_CYCLE_HISTORY];
+};
+
+
+enum debug_cycle_function_name
+{
+    render_entities   = 0,
+    ground_generation = 1,
+    begin_simulation  = 2,
+
+    // ALWAYS ABOVE
+    debug_cycle_last
+};
+
+#define DEBUG_CYCLE_COUNT ((i32)debug_cycle_last)
+
+enum debug_cycle_function
+{
+    // must be power of 2
+    debug_cycle_function_render_entities   = (1 << 0),
+    debug_cycle_function_ground_generation = (1 << 1),
+    debug_cycle_function_begin_simulation  = (1 << 2)
+};
+
+// Toggle on/off function to debug
+//#define BITMASK_DEBUG_FUNC debug_cycle_function_render_entities | debug_cycle_function_ground_generation 
+#define BITMASK_DEBUG_FUNC debug_cycle_function_begin_simulation
+
+#define START_CYCLE_COUNT(name) u64 debug_cycle_function##_CycleBegin = __rdtsc();\
+                                u32 DebugCycleRingIndex = DebugCycles[name].RingIndex;\
+                                DebugCycles[name].NumberOfCalls[DebugCycleRingIndex] += 1;
+
+#define END_CYCLE_COUNT(name) DebugCycles[name].NumberOfCycles[DebugCycleRingIndex] = __rdtsc() - debug_cycle_function##_CycleBegin;
+
+#else
+
+#define START_CYCLE_COUNT(debug_cycle_function)
+#define END_CYCLE_COUNT(debug_cycle_function)
+
+#endif
+
 struct platform_open_file_result
 {
     b32 Success;    
@@ -150,6 +200,11 @@ struct game_memory
     thread_work_queue * HighPriorityWorkQueue;
     thread_work_queue * LowPriorityWorkQueue;
     thread_work_queue * RenderWorkQueue;
+
+#if DEBUG
+    debug_cycle * DebugCycle;
+#endif
+
 };
 
 // defined in game.h used across all headers

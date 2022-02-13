@@ -2248,7 +2248,7 @@ InitializeVulkan(i32 Width, i32 Height,
                 &GlobalVulkan.TransferBitBuffer, &GlobalVulkan.TransferBitDeviceMemory,&GlobalVulkan.TransferMemAlign,
                 2,&SharedBufferFamilyIndexArray[0])) return 1;
 
-    VkDeviceSize VertexBufferSize = Megabytes(15);
+    VkDeviceSize VertexBufferSize = Megabytes(50);
     if (VulkanCreateBuffer(
                 GlobalVulkan.PrimaryGPU,GlobalVulkan.PrimaryDevice, 
                 VertexBufferSize, VK_SHARING_MODE_EXCLUSIVE,VK_MEMORY_GPU,

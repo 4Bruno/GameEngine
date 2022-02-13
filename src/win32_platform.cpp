@@ -452,7 +452,6 @@ LoadGameDll(game_state * GameState)
 
 
 
-
 //int main( HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow )
 int main()
 {
@@ -554,9 +553,14 @@ int main()
 
         GameState.ShaderVertexLastModified = Win32GetLastWriteTime((char *)SHADER_VERTEX_DEBUG);
 
+#if DEBUG
         u64 GameCycles[100] = {};
         u32 CurrentCycle = 0;
-
+        LARGE_INTEGER LastTimeSinceDebugLog;
+        QueryPerformanceCounter(&LastTimeSinceDebugLog);
+        debug_cycle DebugCycles[DEBUG_CYCLE_COUNT] = {};
+        GameMemory.DebugCycle = &DebugCycles[0];
+#endif
         // Main loop
         while (GlobalAppRunning)
         {
@@ -668,6 +672,45 @@ int main()
             }
 
             //Log("Time frame work %f\n",(r32)(TimeFrameElapsed.QuadPart * (1.0f / 1000.0f)));
+
+#if DEBUG
+            LARGE_INTEGER DebugTimeEnd = Win32QueryPerformance();
+            LARGE_INTEGER DebugTimeElapsed = 
+                Win32QueryPerformanceDiff(DebugTimeEnd, LastTimeSinceDebugLog, PerfFreq);
+
+            const char * DebugCycleFunctionName[] = {
+                "render_entities",
+                "ground_generation",
+                "begin_simulation"
+            };
+
+            i32 BitMaskDebugFunc = debug_cycle_function_render_entities;
+
+            for (u32 DebugCycleIndex = 0;
+                    DebugCycleIndex < DEBUG_CYCLE_COUNT;
+                    ++DebugCycleIndex)
+            {
+                u32 Index = DebugCycles[DebugCycleIndex].RingIndex;
+                u32 FunctCalls = DebugCycles[DebugCycleIndex].NumberOfCalls[Index];
+                u64 Cycles = DebugCycles[DebugCycleIndex].NumberOfCycles[Index];
+                r32 DebugTimeElapsedMS = QUAD_TO_MS(DebugTimeElapsed);
+                u32 Mask = BITMASK_DEBUG_FUNC;
+                u32 Check = (1 << DebugCycleIndex);
+                if (
+                        DebugTimeElapsedMS > 1000.0f && 
+                        ((Mask & Check) == Check)
+                   )
+                {
+                    Logn("DEBUG Perf count (%s). Calls: %i Cycles: %I64i",DebugCycleFunctionName[DebugCycleIndex],FunctCalls,Cycles);
+                    LastTimeSinceDebugLog = DebugTimeEnd;
+                }
+                Index = (Index + 1) & (DEBUG_CYCLE_HISTORY - 1);
+                DebugCycles[DebugCycleIndex].RingIndex = Index;
+                DebugCycles[DebugCycleIndex].NumberOfCalls[Index] = 0;
+                DebugCycles[DebugCycleIndex].NumberOfCycles[Index] = 0;
+            }
+
+#endif
 
         } // AppRunning loop
 

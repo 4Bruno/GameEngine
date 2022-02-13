@@ -2,6 +2,10 @@
 
 #include "vulkan_initializer.h"
 #include "game_platform.h"
+#if DEBUG
+extern "C" debug_cycle * DebugCycles;
+#endif
+
 #include "game_memory.h"
 #include "game_entity.h"
 #include "game_world.h"

@@ -9,7 +9,8 @@ struct async_load_ground
     thread_memory_arena * ThreadArena;
     mesh_group  * MeshGroup;
 
+    void * FragmentedBuffer;
+
     world_pos WorldP;
-    i32 TotalXTiles;
-    i32 TotalZTiles;
+    u32 VoxelsPerAxis;
 };

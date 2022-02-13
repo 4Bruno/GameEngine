@@ -203,6 +203,29 @@ THREAD_WORK_HANDLER(AsyncUpdateEntitiesModel)
 }
 
 void
+UpdateGroundModel(world * World)
+{
+    for (u32 EntityIndex = 0;
+                EntityIndex < World->GroundEntityCount;
+                ++EntityIndex)
+    {
+        entity * Entity = World->GroundEntities + EntityIndex;
+        entity_transform * T = &Entity->Transform;
+
+        Translate(T->WorldP,T->LocalP);
+        T->WorldR = T->LocalR;
+        T->WorldS = T->LocalS;
+        m4 R = Quaternion_toMatrix(T->WorldR);
+        R[0].x = -R[0].x;
+        R[1].x = -R[1].x;
+        R[2].x = -R[2].x;
+        //Log("Pitch: %f, Yaw: %f\n",T->Pitch,T->Yaw);
+        T->WorldT = T->WorldP * R * M4(T->WorldS);
+    }
+}
+
+
+void
 EntityAddFlag(entity * Entity, component_flags Flag)
 {
     Entity->Flags = (component_flags)(Entity->Flags | Flag);
@@ -248,4 +271,24 @@ EntityAddMesh(entity * Entity, mesh_id MeshID)
     
     Mesh.TotalMeshObjects
 #endif
+}
+
+void
+UpdateGroundEntity(entity * Entity, world_pos WorldP, world_pos ChunkP, v3 GroundScale)
+{
+    Entity->WorldP = WorldP;
+    Entity->GroundChunkP = ChunkP;
+
+    entity_transform * T = &Entity->Transform;
+
+    T->LocalP = V3(0);
+    T->LocalS = GroundScale;
+    Quaternion_setIdentity(&T->LocalR);
+    Translate(T->WorldP,T->LocalP);
+    T->WorldS = GroundScale;
+    T->WorldR = T->LocalR;
+    T->WorldT = {};
+
+    EntityAddFlag(Entity,component_transform);
+    EntityAddFlag(Entity,component_ground);
 }

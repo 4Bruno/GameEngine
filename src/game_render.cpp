@@ -26,6 +26,9 @@ UpdateView(game_state * GameState)
 void
 RenderEntities(game_memory * Memory, game_state * GameState)
 {
+
+    START_CYCLE_COUNT(render_entities);
+
     //v3 SourceLight = V3(0,10.0f,0);
     v3 SourceLight = GameState->DebugSourceLightP;
     v4 Color = V4(1.0f,0.5f,0.2f,1.0f);
@@ -47,14 +50,7 @@ RenderEntities(game_memory * Memory, game_state * GameState)
         //       within same query otherwise
         mesh_group * MeshGroup = 0;
 
-        if (Entity->IsGround)
-        {
-            MeshGroup = GameState->GroundMeshGroup + Entity->MeshID.ID;
-        }
-        else
-        {
-            MeshGroup = GetMesh(Memory,GameState,Entity->MeshID);
-        }
+        MeshGroup = GetMesh(Memory,GameState,Entity->MeshID);
 
         if (
                 IS_NOT_NULL(MeshGroup) && 
@@ -82,10 +78,6 @@ RenderEntities(game_memory * Memory, game_state * GameState)
                 //ColorDebug._V[Entity->ID.ID % 3] = 1.0f;
                 //Constants.DebugColor = ColorDebug;
                 Constants.DebugColor = V4(Entity->Color,1.0f);
-                if (Entity->MeshID.ID ==  0 && !Entity->IsGround)
-                {
-                    Constants.DebugColor = V4(Entity->Color,0.3f);
-                }
 
                 RenderPushVertexConstant(sizeof(mesh_push_constant),(void *)&Constants);
                 //RenderPushMesh(1,(Mesh->IndicesSize / sizeof(uint16)),Mesh->OffsetVertices,Mesh->OffsetIndices);
@@ -96,6 +88,31 @@ RenderEntities(game_memory * Memory, game_state * GameState)
         }
     }
 
+    SimIter = BeginSimGroundIterator(&GameState->World, Sim);
+
+    for (entity * Entity = SimIter.Entity;
+            Entity;
+            Entity = AdvanceSimGroundIterator(&SimIter))
+    {
+        mesh_group * MeshGroup = GameState->GroundMeshGroup + Entity->MeshID.ID;
+        mesh * Mesh = MeshGroup->Meshes;
+
+        m4 ModelTransform = Entity->Transform.WorldT;
+
+        mesh_push_constant Constants;
+        m4 MVP = GameState->Projection * GameState->ViewTransform * ModelTransform;
+
+        Constants.RenderMatrix = MVP;
+        Constants.SourceLight = SourceLight;
+        Constants.Model = ModelTransform;
+
+        Constants.DebugColor = V4(Entity->Color,1.0f);
+
+        RenderPushVertexConstant(sizeof(mesh_push_constant),(void *)&Constants);
+        RenderPushMesh(1, Mesh->VertexSize / sizeof(vertex_point), Mesh->OffsetVertices);
+    }
+
+    END_CYCLE_COUNT(render_entities);
 }
 
 #if 0

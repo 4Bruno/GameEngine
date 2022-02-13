@@ -21,11 +21,17 @@ struct async_update_entities_model
 GAME_API
 THREAD_WORK_HANDLER(AsyncUpdateEntitiesModel);
 
+GAME_API void
+UpdateGroundModel(world * World);
+
 inline b32 
 EntityHasFlag(entity * Entity, component_flags Flag)
 {
     return (Entity->Flags & Flag);
 }
+
+GAME_API void
+UpdateGroundEntity(entity * Entity, world_pos WorldP, world_pos ChunkP, v3 GroundScale);
 
 GAME_API void
 EntityAddTranslation(entity * Entity, entity * Parent, v3 P, v3 Scale, r32 Speed);

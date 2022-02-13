@@ -3,6 +3,8 @@
 #include "game_simulation.cpp"
 #include "game_math.h"
 
+#include "limits.h"
+
 #define MAX_LENGHTSQR_DISTANCE_ALLOWED (1000.0f * 1000.0f)
 //#define MAX_LENGHTSQR_DISTANCE_ALLOWED (950.0f)
 //#define MAX_LENGHTSQR_DISTANCE_ALLOWED (450.0f)
@@ -256,6 +258,21 @@ NewWorld(memory_arena * Arena, u32 DimX, u32 DimY, u32 DimZ)
 
     BuildHierarchicalGridInnerNeighbors(&World.InnerNeighbors, DimX, DimY, DimZ);
 
+    World.GroundEntityLimit = MAX_WORLD_GROUND_COUNT;
+    World.GroundEntities    = PushArray(Arena, World.GroundEntityLimit, entity);
+    World.GroundEntityCount = 0;
+    u32 HashGridSize = (World.GroundEntityLimit * 4);
+    World.HashGroundEntities= PushArray(Arena, HashGridSize, entity *);
+    World.HashGroundOccupancy = PushArray(Arena, HashGridSize, b32); 
+    World.HashGridGroundEntitiesSize = HashGridSize;
+
+    for (u32 SlotIndex = 0;
+            SlotIndex < HashGridSize;
+            ++SlotIndex)
+    {
+        World.HashGroundOccupancy[SlotIndex] = -1;
+    }
+
     return World;
 }
 
@@ -306,8 +323,7 @@ MapIntoCell(world * World, world_pos P, v3 dP)
 inline b32
 CellHasEnoughRoomForEntity(world_cell_data * CellData)
 {
-    u32 EntitySize = sizeof(entity);
-    b32 HasRoom = (CellData->DataSize + EntitySize) < ArrayCount(CellData->Data);
+    b32 HasRoom = (CellData->DataSize + WORLD_CELL_ENTITY_SIZE) < ArrayCount(CellData->Data);
     return HasRoom;
 }
 
@@ -352,8 +368,6 @@ GetPtrToFreeCellData(world * World, world_pos WorldP)
         (*CellPtr) = Cell;
     }
 
-    u32 EntitySize = sizeof(entity);
-
     world_cell_data ** CellDataPtr = &Cell->FirstCellData;
 
     while ( IS_NOT_NULL(*CellDataPtr) && 
@@ -388,7 +402,7 @@ GetPtrToFreeCellData(world * World, world_pos WorldP)
 
     Entity->WorldP = WorldP;
 
-    CellData->DataSize += (u16)EntitySize;
+    CellData->DataSize += (u16)WORLD_CELL_ENTITY_SIZE;
 
     return Entity;
 }
@@ -407,10 +421,13 @@ AddEntity(world * World, world_pos WorldP)
     return Entity;
 }
 
-
 world_pos
 WorldPosition(i32 X, i32 Y, i32 Z, v3 Offset)
 {
+    Assert(X < INT_MAX && X > -INT_MAX);
+    Assert(Y < INT_MAX && Y > -INT_MAX);
+    Assert(Z < INT_MAX && Z > -INT_MAX);
+
     world_pos P;
     P.x       = X; // u32   x;
     P.y       = Y; // u32   y;
@@ -495,7 +512,7 @@ UpdateWorldLocation(world * World, simulation * Sim)
     World->CurrentWorldP = Sim->Origin;
     v3 OldWorldPToNewP   = Substract(World,Sim->Origin, OldWorldP);
 
-    u32 EntitySize = sizeof(entity);
+    u32 EntitySize = WORLD_CELL_ENTITY_SIZE;
 
     u32 EntitiesPacked   = 0;
     u32 EntitiesUnpacked = 0;
@@ -527,7 +544,6 @@ UpdateWorldLocation(world * World, simulation * Sim)
             b32 RoomForEntity      = (World->ActiveEntitiesCount < MAX_WORLD_ENTITY_COUNT);
             r32 LengthSqrToCenter  = LengthSqr(EntityInSimulationP);
             b32 EntityTooFar = LengthSqrToCenter > MAX_LENGHTSQR_DISTANCE_ALLOWED;
-            //b32 EntityTooFar = LengthSqrToCenter > LengthSqr(Substract(World,MaxCell,MinCell));
 
             if (!RoomForEntity || EntityTooFar)
             {
@@ -632,6 +648,20 @@ UpdateWorldLocation(world * World, simulation * Sim)
 
                 ++CountLoops;
             }
+        }
+    }
+
+    for (u32 GroundIndex = 0;
+             GroundIndex < World->GroundEntityCount;
+             ++GroundIndex)
+    {
+        entity * Ground = World->GroundEntities + GroundIndex;
+        v3 EntityInSimulationP = Substract(World,Sim->Origin, Ground->WorldP);
+        //Logn(STRP, FP(EntityInSimulationP));
+        if (InVolume(MinCorner, MaxCorner, EntityInSimulationP))
+        {
+            Ground->Transform.LocalP = EntityInSimulationP;
+            SimulationRegisterGround(Sim,Ground,GroundIndex);
         }
     }
 }

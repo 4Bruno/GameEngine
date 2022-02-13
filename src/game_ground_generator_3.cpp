@@ -1,7 +1,8 @@
-#include "game_platform.h"
+#include "game.h"
 #include "noise_perlin_2.cpp"
 #include "game_math.h"
-#include "game.h"
+#include <limits.h>
+#include "game_ground_generator.h"
 #include "game_memory.h"
 
 /*
@@ -407,9 +408,6 @@ u32 LookupEgdePoints[12][2] =
 r32
 DensityAtP(v3 P)
 {
-
-    //r32 Density = perlin(P.x, P.y, P.z);
-#if 1
     r32 Density = -P.y;
 
     r32 Freq = 1.1f;
@@ -423,7 +421,11 @@ DensityAtP(v3 P)
     Freq = 4.03f;
     Scale = 0.25f;
     Density += perlin(P.x * Freq, P.y * Freq, P.z * Freq) * Scale;
-#endif
+
+    Density *= -P.y;
+
+    if (P.y < 0.0)
+        Density = -1.0f;
 
     return Density;
 }
@@ -436,7 +438,7 @@ DensityAtP(r32 x, r32 y , r32 z)
 }
 
 u32
-GetDensityIndex(r32 x, r32 y , r32 z, r32 Incr, r32 * VertexDensity = 0)
+GetDensityIndex(r32 x, r32 y , r32 z, r32 Incr)
 {
     u32 CubeBitSet = 0;
 
@@ -460,18 +462,6 @@ GetDensityIndex(r32 x, r32 y , r32 z, r32 Incr, r32 * VertexDensity = 0)
     r32 DensityP6 = DensityAtP(p6.x, p6.y, p6.z);
     r32 DensityP7 = DensityAtP(p7.x, p7.y, p7.z);
 
-    if (VertexDensity)
-    {
-        VertexDensity[0] = DensityP0;
-        VertexDensity[1] = DensityP1;
-        VertexDensity[2] = DensityP2;
-        VertexDensity[3] = DensityP3;
-        VertexDensity[4] = DensityP4;
-        VertexDensity[5] = DensityP5;
-        VertexDensity[6] = DensityP6;
-        VertexDensity[7] = DensityP7;
-    }
-
     if (DensityP0 > 0.0f) CubeBitSet |= 0x01;
     if (DensityP1 > 0.0f) CubeBitSet |= 0x02;
     if (DensityP2 > 0.0f) CubeBitSet |= 0x04;
@@ -485,9 +475,9 @@ GetDensityIndex(r32 x, r32 y , r32 z, r32 Incr, r32 * VertexDensity = 0)
 }
 
 u32
-GetDensityIndex(v3 P, r32 Incr, r32 * VertexDensity = 0)
+GetDensityIndex(v3 P, r32 Incr)
 {
-    u32 CubeBitSet = GetDensityIndex(P.x, P.y, P.z, Incr, VertexDensity);
+    u32 CubeBitSet = GetDensityIndex(P.x, P.y, P.z, Incr);
 
     return CubeBitSet;
 }
@@ -496,24 +486,6 @@ v3
 GetIncrementForVertex(i32 VertexIndex,r32 Incr)
 {
     v3 Result;
-#if 0
-    switch (VertexIndex)
-    {
-        case 0: {Result = V3(0,0,0);};break;
-        case 1: Result = V3(0,Increment,0);break;
-        case 2: Result = V3(Increment,Increment,0);break;
-        case 3: Result = V3(Increment,0,0);break;
-
-        case 4: {Result = V3(0,0,Increment);};break;
-        case 5: Result = V3(0,Increment,Increment);break;
-        case 6: Result = V3(Increment,Increment,Increment);break;
-        case 7: Result = V3(Increment,0,Increment);break;
-        default:
-        {
-            Assert(0);
-        };
-    }
-#else
 
     switch (VertexIndex)
     {
@@ -526,7 +498,7 @@ GetIncrementForVertex(i32 VertexIndex,r32 Incr)
         case 6:{ Result = V3( Incr,  Incr,  Incr);};break; 
         case 7:{ Result = V3( Incr, -Incr,  Incr);};break; 
     };
-#endif
+
     return Result;
 }
 
@@ -647,9 +619,8 @@ InterpolateEdgePosition(v3 StartP, v3 EndP, r32 Delta, u32 MaxAttempts)
 
 
 u32
-FillBufferTestGround(memory_arena * TempArena, world_pos WorldP, u32 VertexBufferBeginOffset)
+FillBufferTestGround(memory_arena * TempArena, world_pos WorldP, world_pos Origen, u32 VoxelsPerAxis = 3)
 {
-    u32 VoxelsPerAxis = 3;
     u32 MaxTrianglesPerVoxel = 5;
 
     r32 OneOverVoxelPerAxis =  (1.0f / VoxelsPerAxis);
@@ -665,497 +636,65 @@ FillBufferTestGround(memory_arena * TempArena, world_pos WorldP, u32 VertexBuffe
     // each 3 vertex == triangle
     vertex_point * Vertices = PushArray(TempArena, MaxVerticesPerBlock,vertex_point);
 
-    // Center block as origin
-    v3 P = V3((r32)WorldP.x,(r32)WorldP.y,(r32)WorldP.z) + V3(0.5f);
-
-    //u32 Index = GetDensityIndex(P, 0.4999f);
-    u32 Index = GetDensityIndex(P, 0.5f);
-
-    //Logn("At (%i,%i,%i) Index %i", WorldP.x,WorldP.y,WorldP.z,Index);
-
-    b32 EarlyExit = false;
-
-    u32 VerticeCount = 0;
-    if (InBetweenExcl(Index,0,255))
-    {
-#if 1
-        for (u32 VoxelYIndex = 0;
-                VoxelYIndex < VoxelsPerAxis;
-                ++VoxelYIndex)
-        {
-            for (u32 VoxelXIndex = 0;
-                    VoxelXIndex < VoxelsPerAxis;
-                    ++VoxelXIndex)
-            {
-                for (u32 VoxelZIndex = 0;
-                        VoxelZIndex < VoxelsPerAxis;
-                        ++VoxelZIndex)
-                {
-                    // center of voxel
-                    r32 vx = WorldP.x + VoxelXIndex * VoxelDim + HalfVoxelDim;
-                    r32 vy = WorldP.y + VoxelYIndex * VoxelDim + HalfVoxelDim;
-                    r32 vz = WorldP.z + VoxelZIndex * VoxelDim + HalfVoxelDim;
-
-                    v3 VoxelP = V3(vx,vy,vz);
-
-                    //Logn("Voxel at " STRP, FP(P));
-
-                    r32 VoxelDimReduced = 1.0f;//0.9923f;
-                    r32 VertexDensity[8];
-                    u32 IndexVoxel = GetDensityIndex(vx,vy,vz,HalfVoxelDim * VoxelDimReduced, &VertexDensity[0]);
-                    if (InBetweenExcl(IndexVoxel,0,255))
-                    {
-                        u32 TotalTriangles = LookupNumPolygon[IndexVoxel];
-                        //Logn("Drawing voxel %i %i %i with total triangles %i",VoxelXIndex,VoxelYIndex,VoxelZIndex,TotalTriangles);
-
-                        for (u32 TriangleIndex = 0;
-                                TriangleIndex < TotalTriangles;
-                                ++TriangleIndex)
-                        {
-                            i32 * Triangle = LookupPolygonEdges[IndexVoxel][TriangleIndex];
-                            i32 Edge0 = Triangle[0];
-                            i32 Edge1 = Triangle[1];
-                            i32 Edge2 = Triangle[2];
-
-                            for (u32 EdgeIndex = 0;
-                                     EdgeIndex < 3;
-                                     ++EdgeIndex)
-                            {
-                                i32 Edge = Triangle[EdgeIndex];
-                                u32 p00 = LookupEgdePoints[Edge][0];
-                                u32 p01 = LookupEgdePoints[Edge][1];
-
-                                v3 StartP0 = (VoxelP + GetIncrementForVertex(p00,HalfVoxelDim * VoxelDimReduced));
-                                v3 FromStartToEnd = (GetIncrementForVertex(p01,HalfVoxelDim * VoxelDimReduced) - GetIncrementForVertex(p00,HalfVoxelDim * VoxelDimReduced));
-                                v3 EndP0 = StartP0 + FromStartToEnd;
-                                v3 TestP0 = InterpolateEdgePosition(StartP0, EndP0, 1.0f,5);
-                                Vertices[VerticeCount].P =  TestP0 - P;
-                                ++VerticeCount;
-                            }
-                            v3 A = Vertices[VerticeCount - 3].P;
-                            v3 B = Vertices[VerticeCount - 2].P;
-                            v3 C = Vertices[VerticeCount - 1].P;
-
-                            v3 N = -Cross((B - A),(C - A));
-
-                            Vertices[VerticeCount - 3].N =  N;
-                            Vertices[VerticeCount - 2].N =  N;
-                            Vertices[VerticeCount - 1].N =  N;
-
 #if 0
+    // Avoid lossing precision
+    // Must be power of 2 we doing & op
+    i32 RinseAndRepeat = ((2 << 7) - 1);
 
-                            v3 p0 =  StartP0 + w0 *  FromStartToEnd;
-                            r32 d0 = DensityAtP(p0);
+    r32 WorldX = (r32)(WorldP.x & RinseAndRepeat);
+    r32 WorldY = (r32)(WorldP.y & RinseAndRepeat);
+    r32 WorldZ = (r32)(WorldP.z & RinseAndRepeat);
 
+    r32 OrigenX = (r32)(Origen.x & RinseAndRepeat);
+    r32 OrigenY = (r32)(Origen.y & RinseAndRepeat);
+    r32 OrigenZ = (r32)(Origen.z & RinseAndRepeat);
 
-
-                            u32 p10 = LookupEgdePoints[Edge1][0];
-                            u32 p11 = LookupEgdePoints[Edge1][1];
-                            r32 StartEdge1 = VertexDensity[p10];
-                            r32 EndEdge1 = VertexDensity[p11];
-                            r32 w1 = (0.0f - StartEdge1) / (EndEdge1 - StartEdge1);
-                            v3 p1 = (VoxelP + GetIncrementForVertex(p10,HalfVoxelDim * VoxelDimReduced))  + 
-                                w1 * (GetIncrementForVertex(p11,HalfVoxelDim * VoxelDimReduced) - GetIncrementForVertex(p10,HalfVoxelDim * VoxelDimReduced));
-                            r32 d1 = DensityAtP(p1);
-
-
-                            u32 p20 = LookupEgdePoints[Edge2][0];
-                            u32 p21 = LookupEgdePoints[Edge2][1];
-                            r32 StartEdge2 = VertexDensity[p20];
-                            r32 EndEdge2 = VertexDensity[p21];
-                            r32 w2 = (0.0f - StartEdge2) / (EndEdge2 - StartEdge2);
-
-                            v3 p2 = (VoxelP + GetIncrementForVertex(p20,HalfVoxelDim * VoxelDimReduced))  + 
-                                w2 * (GetIncrementForVertex(p21,HalfVoxelDim * VoxelDimReduced) - GetIncrementForVertex(p20,HalfVoxelDim * VoxelDimReduced));
-                            r32 d2 = DensityAtP(p2);
-
-                            Vertices[VerticeCount].P =  p0;
-                            ++VerticeCount;
-
-                            Vertices[VerticeCount].P = p1;
-                            ++VerticeCount;
-
-                            Vertices[VerticeCount].P = p2;
-                            ++VerticeCount;
-                            Logn("Density...0? %f %f %f",d0,d1,d2);
-                            //Logn("Weights 0,1,2: %f %f %f",w0,w1,w2);
-#endif
-
-
-                        }
-
-                        //VerticeCount += CopyCubeToBuffer(Vertices + VerticeCount,VoxelDim);
-                        
-                        //EarlyExit = true;
-                        EarlyExit = false;
-                    }
-                    if (EarlyExit) break;
-                }
-                if (EarlyExit) break;
-            }
-            if (EarlyExit) break;
-        }
+    r32 OffsetX = -OrigenX;
+    r32 OffsetY = -OrigenY;
+    r32 OffsetZ = -OrigenZ;
 #else
-        for (u32 VoxelYIndex = 0;
-                VoxelYIndex < VoxelsPerAxis;
-                ++VoxelYIndex)
-        {
-            for (u32 VoxelXIndex = 0;
-                    VoxelXIndex < VoxelsPerAxis;
-                    ++VoxelXIndex)
-            {
-                for (u32 VoxelZIndex = 0;
-                        VoxelZIndex < VoxelsPerAxis;
-                        ++VoxelZIndex)
-                {
-                    r32 vx = WorldP.x + VoxelZIndex * OneOverVoxelPerAxis;
-                    r32 vy = WorldP.y + VoxelZIndex * OneOverVoxelPerAxis;
-                    r32 vz = WorldP.z + VoxelZIndex * OneOverVoxelPerAxis;
+    r32 WorldX = (r32)WorldP.x;
+    r32 WorldY = (r32)WorldP.y;
+    r32 WorldZ = (r32)WorldP.z;
+    r32 OffsetX = -(r32)Origen.x;
+    r32 OffsetY = -(r32)Origen.y;
+    r32 OffsetZ = -(r32)Origen.z;
 
-                    v3 voxelP = V3(vx,vy,vz);
-
-                    u32 IndexVoxel = GetDensityIndex(vx,vy,vz);
-                    if (InBetweenExcl(IndexVoxel,0,255))
-                    {
-                        r32 VertexDensity[8];
-                        for (u32 VertexIndex = 0;
-                                VertexIndex < 8;
-                                ++VertexIndex)
-                        {
-                            v3 VertexP = voxelP + GetIncrementForVertex(VertexIndex,OneOverVoxelPerAxis);
-                            VertexDensity[VertexIndex] = DensityAtP(VertexP);
-                        }
-                        u32 TotalTriangles = LookupNumPolygon[IndexVoxel];
-
-
-                        for (u32 TriangleIndex = 0;
-                                TriangleIndex < TotalTriangles;
-                                ++TriangleIndex)
-                        {
-                            i32 * Triangle = LookupPolygonEdges[IndexVoxel][TriangleIndex];
-                            i32 Edge0 = Triangle[0];
-                            i32 Edge1 = Triangle[1];
-                            i32 Edge2 = Triangle[2];
-
-                            u32 p0 = LookupEgdePoints[Edge0][0];
-                            r32 StartEdge0 = VertexDensity[p0];
-                            r32 EndEdge0 = VertexDensity[LookupEgdePoints[Edge0][1]];
-                            r32 w0 = (r32)fabs((0.0f - StartEdge0) / (EndEdge0 - StartEdge0));
-
-                            Vertices[VerticeCount].P = voxelP + w0 * GetIncrementForVertex(p0,OneOverVoxelPerAxis) - P;
-                            ++VerticeCount;
-
-                            u32 p1 = LookupEgdePoints[Edge1][0];
-                            r32 StartEdge1 = VertexDensity[p1];
-                            r32 EndEdge1 = VertexDensity[LookupEgdePoints[Edge1][1]];
-                            r32 w1 = (r32)fabs((0.0f - StartEdge1) / (EndEdge1 - StartEdge1));
-
-                            Vertices[VerticeCount].P = voxelP + w1 * GetIncrementForVertex(p1,OneOverVoxelPerAxis) - P;
-                            ++VerticeCount;
-
-                            u32 p2 = LookupEgdePoints[Edge2][0];
-                            r32 StartEdge2 = VertexDensity[p2];
-                            r32 EndEdge2 = VertexDensity[LookupEgdePoints[Edge2][1]];
-                            r32 w2 = (r32)fabs((0.0f - StartEdge2) / (EndEdge2 - StartEdge2));
-
-                            Vertices[VerticeCount].P = voxelP + w2 * GetIncrementForVertex(p2,OneOverVoxelPerAxis) - P;
-                            ++VerticeCount;
-                        }
-                    }
-                }
-            }
-        }
 #endif
+
 #if 0
-        Logn("Total vertices: %i", VerticeCount);
-        for (u32 VertexIndex = 0;
-                VertexIndex < VerticeCount;
-                ++VertexIndex)
-        {
-            Logn(STRP,FP(Vertices[VertexIndex].P));
-        }
-#endif
+    if ((WorldP.x > Origen.x) && (WorldX < OrigenX))
+    {
+        OffsetX = (RinseAndRepeat - OrigenX);
+    }
+    else if ((WorldP.x < Origen.x) && (WorldX > OrigenX))
+    {
+        OffsetX = -(r32)RinseAndRepeat;
     }
 
-    u32 MeshSize = VerticeCount * sizeof(vertex_point);
-
-    if (MeshSize > 0)
+    if ((WorldP.y > Origen.y) && (WorldY < OrigenY))
     {
-        RenderPushVertexData(Vertices,MeshSize, VertexBufferBeginOffset); 
-        //Logn("Mesh size %i",MeshSize);
+        OffsetY = (RinseAndRepeat - OrigenY);
+    }
+    else if ((WorldP.y < Origen.y) && (WorldY > OrigenY))
+    {
+        OffsetY = -(r32)RinseAndRepeat;
     }
 
-    return MeshSize;
-}
-
-void
-TestGround_rangevoxels(game_state * GameState)
-{
-    i32 Tiles = 1;
-    i32 YTiles = 1;
-
-    memory_arena * TempArena = &GameState->TemporaryArena;
-    world * World = &GameState->World;
-
-    for (i32 x = -Tiles;
-            x < Tiles;
-            ++x)
+    if ((WorldP.z > Origen.z) && (WorldZ < OrigenZ))
     {
-        for (i32 y = -YTiles;
-                y < YTiles;
-                ++y)
-        {
-            for (i32 z = -Tiles;
-                    z < Tiles;
-                    ++z)
-            {
-                BeginTempArena(TempArena,1);
-
-                world_pos P = WorldPosition(x,y,z);
-                u32 VertexBufferBeginOffset = GameState->VertexArena.CurrentSize;
-                u32 SizeVertexBuffer = 
-                    FillBufferTestGround(&GameState->TemporaryArena, 
-                            P,
-                            VertexBufferBeginOffset);
-                if (SizeVertexBuffer > 0)
-                {
-                    PushMeshSize(&GameState->VertexArena,SizeVertexBuffer,1);
-
-                    u32 MeshID = GameState->GroundMeshCount++;
-                    mesh_group * MeshGroup = GameState->GroundMeshGroup + MeshID;
-
-                    entity * GroundEntity = AddEntity(&GameState->World, P);
-                    v3 GroundScale = World->GridCellDimInMeters;
-                    EntityAddTranslation(GroundEntity,0,V3(0), GroundScale,0.0f);
-
-                    v3 Color;
-                    if ((P.z % 2) == 0)
-                    {
-                        if ((P.x % 2) == 0)
-                        {
-                            Color = V3(1.0f,0,0);
-                        }
-                        else
-                        {
-                            Color = V3(0.0f,0,1.0f);
-                        }
-                    }
-                    else
-                    {
-                        if ((P.x % 2) == 0)
-                        {
-                            Color = V3(0.0f,0,1.0f);
-                        }
-                        else
-                        {
-                            Color = V3(1.0f,0,0);
-                        }
-                    }
-
-                    Color = V3(0.3f,1.0f,0.0f);
-
-
-                    GroundEntity->Color = Color;
-                    GroundEntity->IsGround = true;
-                    GroundEntity->MeshObjCount = 1;
-                    GroundEntity->MeshID.ID = MeshID;
-
-                    MeshGroup->Loaded = true;
-                    MeshGroup->Meshes->VertexSize = SizeVertexBuffer;
-                    MeshGroup->Meshes->OffsetVertices = VertexBufferBeginOffset;
-#if 1
-                    r32 VoxelDim = 1.0f/3.0f;
-                    //world_pos CubeP = MapIntoCell(World,P, (World->GridCellDimInMeters*0.5f));// + V3(VoxelDim*0.5f*World->GridCellDimInMeters);
-                    world_pos CubeP = P;
-                    entity * CubeEntity = AddEntity(&GameState->World, CubeP);
-                    EntityAddTranslation(CubeEntity,0,V3(0), V3(VoxelDim),0.0f);
-                    CubeEntity->Color = V3(1.0f,0,0);
-                    CubeEntity->IsGround = false;
-                    EntityAddMesh(CubeEntity,Mesh(0));
+        OffsetZ = (RinseAndRepeat - OrigenZ);
+    }
+    else if ((WorldP.z < Origen.z) && (WorldZ > OrigenZ))
+    {
+        OffsetZ = -(r32)RinseAndRepeat;
+    }
 #endif
 
-                }
-
-                EndTempArena(TempArena,1);
-            }
-        }
-    }
-}
-
-void
-TestGround_Only1Voxel(game_state * GameState)
-{
-    memory_arena * TempArena = &GameState->TemporaryArena;
-    world * World = &GameState->World;
-
-    BeginTempArena(TempArena,1);
-
-    world_pos P = WorldPosition(0,0,0);
-
-    u32 VertexBufferBeginOffset = GameState->VertexArena.CurrentSize;
-    u32 SizeVertexBuffer = 
-        FillBufferTestGround(&GameState->TemporaryArena, 
-                P,
-                VertexBufferBeginOffset);
-    if (SizeVertexBuffer > 0)
-    {
-        PushMeshSize(&GameState->VertexArena,SizeVertexBuffer,1);
-
-        u32 MeshID = GameState->GroundMeshCount++;
-        mesh_group * MeshGroup = GameState->GroundMeshGroup + MeshID;
-
-        entity * GroundEntity = AddEntity(&GameState->World, P);
-        v3 GroundScale = World->GridCellDimInMeters;
-        EntityAddTranslation(GroundEntity,0,V3(0), GroundScale,0.0f);
-
-        v3 Color;
-        if ((P.z % 2) == 0)
-        {
-            if ((P.x % 2) == 0)
-            {
-                Color = V3(1.0f,0,0);
-            }
-            else
-            {
-                Color = V3(0.0f,0,1.0f);
-            }
-        }
-        else
-        {
-            if ((P.x % 2) == 0)
-            {
-                Color = V3(0.0f,0,1.0f);
-            }
-            else
-            {
-                Color = V3(1.0f,0,0);
-            }
-        }
-
-        Color = V3(0.3f,1.0f,0.0f);
-
-
-        GroundEntity->Color = Color;
-        GroundEntity->IsGround = true;
-        GroundEntity->MeshObjCount = 1;
-        GroundEntity->MeshID.ID = MeshID;
-
-        MeshGroup->Loaded = true;
-        MeshGroup->Meshes->VertexSize = SizeVertexBuffer;
-        MeshGroup->Meshes->OffsetVertices = VertexBufferBeginOffset;
-#if 1
-        r32 VoxelDim = 1.0f/3.0f;
-        //world_pos CubeP = MapIntoCell(World,P, (World->GridCellDimInMeters*0.5f));// + V3(VoxelDim*0.5f*World->GridCellDimInMeters);
-        world_pos CubeP = P;
-        entity * CubeEntity = AddEntity(&GameState->World, CubeP);
-        EntityAddTranslation(CubeEntity,0,V3(0), V3(VoxelDim),0.0f);
-        CubeEntity->Color = V3(1.0f,0,0);
-        CubeEntity->IsGround = false;
-        EntityAddMesh(CubeEntity,Mesh(0));
-#endif
-
-    }
-
-    EndTempArena(TempArena,1);
-}
-
-void
-TestGround02(game_state * GameState)
-{
-    memory_arena * TempArena = &GameState->TemporaryArena;
-    world * World = &GameState->World;
-
-    BeginTempArena(TempArena,1);
-
-    world_pos P = WorldPosition(0,0,0);
-
-    u32 VertexBufferBeginOffset = GameState->VertexArena.CurrentSize;
-    u32 SizeVertexBuffer = 
-        FillBufferTestGround(&GameState->TemporaryArena, 
-                P,
-                VertexBufferBeginOffset);
-    if (SizeVertexBuffer > 0)
-    {
-        PushMeshSize(&GameState->VertexArena,SizeVertexBuffer,1);
-
-        u32 MeshID = GameState->GroundMeshCount++;
-        mesh_group * MeshGroup = GameState->GroundMeshGroup + MeshID;
-
-        entity * GroundEntity = AddEntity(&GameState->World, P);
-        v3 GroundScale = World->GridCellDimInMeters;
-        EntityAddTranslation(GroundEntity,0,V3(0), GroundScale,0.0f);
-
-        v3 Color;
-        if ((P.z % 2) == 0)
-        {
-            if ((P.x % 2) == 0)
-            {
-                Color = V3(1.0f,0,0);
-            }
-            else
-            {
-                Color = V3(0.0f,0,1.0f);
-            }
-        }
-        else
-        {
-            if ((P.x % 2) == 0)
-            {
-                Color = V3(0.0f,0,1.0f);
-            }
-            else
-            {
-                Color = V3(1.0f,0,0);
-            }
-        }
-
-        Color = V3(0.3f,1.0f,0.0f);
-
-
-        GroundEntity->Color = Color;
-        GroundEntity->IsGround = true;
-        GroundEntity->MeshObjCount = 1;
-        GroundEntity->MeshID.ID = MeshID;
-
-        MeshGroup->Loaded = true;
-        MeshGroup->Meshes->VertexSize = SizeVertexBuffer;
-        MeshGroup->Meshes->OffsetVertices = VertexBufferBeginOffset;
-#if 1
-        r32 VoxelDim = 1.0f/3.0f;
-        //world_pos CubeP = MapIntoCell(World,P, (World->GridCellDimInMeters*0.5f));// + V3(VoxelDim*0.5f*World->GridCellDimInMeters);
-        world_pos CubeP = P;
-        entity * CubeEntity = AddEntity(&GameState->World, CubeP);
-        EntityAddTranslation(CubeEntity,0,V3(0), V3(VoxelDim),0.0f);
-        CubeEntity->Color = V3(1.0f,0,0);
-        CubeEntity->IsGround = false;
-        EntityAddMesh(CubeEntity,Mesh(0));
-#endif
-
-    }
-
-    EndTempArena(TempArena,1);
-}
-
-u32
-FillBufferTestGround2(memory_arena * TempArena, world_pos WorldP, v3 Origen, u32 VoxelsPerAxis = 3)
-{
-    u32 MaxTrianglesPerVoxel = 5;
-
-    r32 OneOverVoxelPerAxis =  (1.0f / VoxelsPerAxis);
-    r32 VoxelDim = OneOverVoxelPerAxis;
-    r32 HalfVoxelDim = VoxelDim * 0.5f;
-
-    u32 TotalVoxelsPerBlock = (VoxelsPerAxis * VoxelsPerAxis * VoxelsPerAxis);
-    u32 MaxTrianglesPerBlock = TotalVoxelsPerBlock * MaxTrianglesPerVoxel;
-    u32 MaxVerticesPerBlock = MaxTrianglesPerBlock * 3;
-
-    u32 BufferSizePerBlock = sizeof(vertex_point) * MaxVerticesPerBlock;
-
-    // each 3 vertex == triangle
-    vertex_point * Vertices = PushArray(TempArena, MaxVerticesPerBlock,vertex_point);
+    v3 OffsetFromOrigin = V3(OffsetX,OffsetY,OffsetZ);
 
     // Center block as origin
-    v3 P = V3((r32)WorldP.x,(r32)WorldP.y,(r32)WorldP.z) + V3(0.5f);
+    v3 P = V3(WorldX,WorldY,WorldZ) + V3(0.5f);
 
     // Do not center block
     //v3 P = V3((r32)WorldP.x,(r32)WorldP.y,(r32)WorldP.z);
@@ -1182,16 +721,13 @@ FillBufferTestGround2(memory_arena * TempArena, world_pos WorldP, v3 Origen, u32
                         ++VoxelZIndex)
                 {
                     // center of voxel
-                    r32 vx = WorldP.x + VoxelXIndex * VoxelDim + HalfVoxelDim;
-                    r32 vy = WorldP.y + VoxelYIndex * VoxelDim + HalfVoxelDim;
-                    r32 vz = WorldP.z + VoxelZIndex * VoxelDim + HalfVoxelDim;
+                    r32 vx = WorldX + VoxelXIndex * VoxelDim + HalfVoxelDim;
+                    r32 vy = WorldY + VoxelYIndex * VoxelDim + HalfVoxelDim;
+                    r32 vz = WorldZ + VoxelZIndex * VoxelDim + HalfVoxelDim;
 
                     v3 VoxelP = V3(vx,vy,vz);
 
-
-                    r32 VoxelDimReduced = 1.0f;//0.9923f;
-                    r32 VertexDensity[8];
-                    u32 IndexVoxel = GetDensityIndex(vx,vy,vz,HalfVoxelDim * VoxelDimReduced, &VertexDensity[0]);
+                    u32 IndexVoxel = GetDensityIndex(vx,vy,vz,HalfVoxelDim);
                     if (InBetweenExcl(IndexVoxel,0,255))
                     {
                         u32 TotalTriangles = LookupNumPolygon[IndexVoxel];
@@ -1214,39 +750,46 @@ FillBufferTestGround2(memory_arena * TempArena, world_pos WorldP, v3 Origen, u32
                                 u32 p00 = LookupEgdePoints[Edge][0];
                                 u32 p01 = LookupEgdePoints[Edge][1];
 
-                                v3 StartP0 = (VoxelP + GetIncrementForVertex(p00,HalfVoxelDim * VoxelDimReduced));
-                                v3 FromStartToEnd = (GetIncrementForVertex(p01,HalfVoxelDim * VoxelDimReduced) - GetIncrementForVertex(p00,HalfVoxelDim * VoxelDimReduced));
+                                v3 StartP0 = (VoxelP + GetIncrementForVertex(p00,HalfVoxelDim));
+                                v3 FromStartToEnd = (GetIncrementForVertex(p01,HalfVoxelDim) - GetIncrementForVertex(p00,HalfVoxelDim));
                                 v3 EndP0 = StartP0 + FromStartToEnd;
                                 v3 TestP0 = InterpolateEdgePosition(StartP0, EndP0, 1.0f,5);
-                                Vertices[VerticeCount].P =  TestP0 - Origen;
+                                // around the mesh center
+                                //Vertices[VerticeCount].P =  ((TestP0 + OffsetFromOrigin) - V3(0.5f)) * 2.0f;
+                                Vertices[VerticeCount].P =  TestP0 + OffsetFromOrigin;
+                                //Logn("Vertice %i at " STRP,VerticeCount,FP(Vertices[VerticeCount].P));
                                 ++VerticeCount;
 
-                                r32 DistToOrigen = LengthSqr(TestP0 - P);
+#if 0
+                                r32 DistToOrigen = LengthSqr(TestP0 + P);
                                 if (DistToOrigen > MaxDist)
                                 {
                                     MaxDist = DistToOrigen;
                                     VerticeMaxDist = VerticeCount - 1;
                                 }
+#endif
                             }
                             v3 A = Vertices[VerticeCount - 3].P;
                             v3 B = Vertices[VerticeCount - 2].P;
                             v3 C = Vertices[VerticeCount - 1].P;
 
-                            v3 N = Cross((B - A),(C - A));
+                            // Query 6 densities points. +/- to each direction
+                            v3 Grad;
+                            Grad.x = DensityAtP(VoxelP + V3(VoxelDim,0,0)) - DensityAtP(VoxelP + V3(-VoxelDim,0,0));
+                            Grad.y = DensityAtP(VoxelP + V3(0,VoxelDim,0)) - DensityAtP(VoxelP + V3(0,-VoxelDim,0));
+                            Grad.z = DensityAtP(VoxelP + V3(0,0,VoxelDim)) - DensityAtP(VoxelP + V3(0,0,-VoxelDim));
+
+                            //v3 N = Cross((B - A),(C - A));
+                            v3 N = Normalize(Grad);
 
                             Vertices[VerticeCount - 3].N =  N;
                             Vertices[VerticeCount - 2].N =  N;
                             Vertices[VerticeCount - 1].N =  N;
                         }
-
-                        //VerticeCount += CopyCubeToBuffer(Vertices + VerticeCount,VoxelDim);
-
                     }
                 }
             }
         }
-
-        //Logn("Max distance " STRP,FP((Vertices + VerticeMaxDist)->P));
     }
 
     TempArena->CurrentSize -= sizeof(vertex_point)*(MaxVerticesPerBlock - VerticeCount);
@@ -1254,82 +797,6 @@ FillBufferTestGround2(memory_arena * TempArena, world_pos WorldP, v3 Origen, u32
     return VerticeCount;
 }
 
-void
-TestGroundSingleMeshMultipleVoxel(game_state * GameState)
-{
-    memory_arena * TempArena = &GameState->TemporaryArena;
-    world * World = &GameState->World;
-
-    i32 StartRow = 0;
-    i32 MaxCases = StartRow + 11;
-    
-    world_pos BeginP = WorldPosition(0,0,0);
-    v3 Origen = Substract(World, BeginP, WorldPosition((StartRow+MaxCases)/2,0,0));
-
-    for (i32 rows = StartRow; rows < MaxCases; ++ rows)
-    {
-        BeginTempArena(TempArena,1);
-
-        v3 GroundScale = V3(5.0f);//World->GridCellDimInMeters;
-        world_pos DrawP = MapIntoCell(World, BeginP,V3(0,0,(r32)(rows - StartRow)  * GroundScale.z * 2.0f));
-
-        u32 VertexBufferBeginOffset = GameState->VertexArena.CurrentSize;
-
-        vertex_point * Vertices = (vertex_point *)((u8 *)TempArena->Base + TempArena->CurrentSize);
-
-        u32 TotalVertices = 0;
-        for (i32 x = rows; x < MaxCases; ++x)
-        {
-            world_pos WorldP = WorldPosition(x,0,0);
-            u32 VerticesCount = FillBufferTestGround2(&GameState->TemporaryArena, WorldP, Origen);
-            TotalVertices += VerticesCount;
-
-#if 0
-            if (VerticesCount > 0)
-            {
-                //world_pos CubeP = MapIntoCell(World,DrawP,V3(5.0f*(r32)x,0,0));
-                world_pos CubeP = WorldP;
-                entity * CubeEntity = AddEntity(&GameState->World, CubeP);
-                EntityAddTranslation(CubeEntity,0,V3(0), V3(0.5f),0.0f);
-                CubeEntity->Color = V3(1.0f,0,0);
-                CubeEntity->IsGround = false;
-                EntityAddMesh(CubeEntity,Mesh(0));
-            }
-#endif
-        }
-
-        if (TotalVertices > 0)
-        {
-
-            u32 SizeVertexBuffer = sizeof(vertex_point) * TotalVertices;
-
-            PushMeshSize(&GameState->VertexArena,SizeVertexBuffer,1);
-
-            u32 MeshID = GameState->GroundMeshCount++;
-            mesh_group * MeshGroup = GameState->GroundMeshGroup + MeshID;
-
-            world_pos GroundEntityP = DrawP;
-            entity * GroundEntity = AddEntity(&GameState->World, DrawP);
-            EntityAddTranslation(GroundEntity,0,V3(0), GroundScale,0.0f);
-
-            v3 Color;
-            Color = V3(0.3f,1.0f,0.0f);
-
-            GroundEntity->Color = Color;
-            GroundEntity->IsGround = true;
-            GroundEntity->MeshObjCount = 1;
-            GroundEntity->MeshID.ID = MeshID;
-
-            MeshGroup->Loaded = true;
-            MeshGroup->Meshes->VertexSize = SizeVertexBuffer;
-            MeshGroup->Meshes->OffsetVertices = VertexBufferBeginOffset;
-
-            RenderPushVertexData(Vertices,SizeVertexBuffer, VertexBufferBeginOffset); 
-        }
-
-        EndTempArena(TempArena,1);
-    }
-}
 
 void
 TestGroundSingleMeshMultipleVoxel2(game_state * GameState)
@@ -1337,7 +804,7 @@ TestGroundSingleMeshMultipleVoxel2(game_state * GameState)
     memory_arena * TempArena = &GameState->TemporaryArena;
     world * World = &GameState->World;
 
-    i32 StartRow = 0;
+    i32 StartRow = INT_MAX - 12;
     i32 MaxCases = StartRow + 11; // should be odd to better align mesh with center
     
     world_pos BeginP = WorldPosition(0,0,0);
@@ -1359,16 +826,97 @@ TestGroundSingleMeshMultipleVoxel2(game_state * GameState)
             for (i32 z = StartRow; z < MaxCases; ++z)
             {
                 world_pos WorldP = WorldPosition(x,y,z);
-                u32 VerticesCount = FillBufferTestGround2(&GameState->TemporaryArena, WorldP, Origen,8);
+                u32 VerticesCount = FillBufferTestGround(&GameState->TemporaryArena, WorldP, BeginP,8);
                 TotalVertices += VerticesCount;
+#if 1
+                if (VerticesCount > 0)
+                {
+                    //world_pos CubeP = MapIntoCell(World,DrawP,V3(5.0f*(r32)x,0,0));
+                    world_pos CubeP = MapIntoCell(World,WorldP, - (World->GridCellDimInMeters*0.5f + Origen));
+                    CubeP.z = -CubeP.z;
+                    entity * CubeEntity = AddEntity(&GameState->World, CubeP);
+                    EntityAddTranslation(CubeEntity,0,V3(0), World->GridCellDimInMeters,0.0f);
+                    CubeEntity->Color = V3(1.0f,0,0);
+                    EntityAddMesh(CubeEntity,Mesh(0));
+                }
+#endif
+            }
+        }
+    }
 
+    if (TotalVertices > 0)
+    {
+
+        u32 SizeVertexBuffer = sizeof(vertex_point) * TotalVertices;
+
+        PushMeshSize(&GameState->VertexArena,SizeVertexBuffer,1);
+
+        u32 MeshID = GameState->GroundMeshCount++;
+        mesh_group * MeshGroup = GameState->GroundMeshGroup + MeshID;
+
+        entity * GroundEntity = AddEntity(&GameState->World, BeginP);
+        //v3 GroundScale = V3(5.0f);//World->GridCellDimInMeters;
+        v3 GroundScale = World->GridCellDimInMeters;
+        EntityAddTranslation(GroundEntity,0,V3(0), GroundScale,0.0f);
+
+        v3 Color;
+        Color = V3(0.3f,1.0f,0.0f);
+
+        GroundEntity->Color = Color;
+        GroundEntity->MeshObjCount = 1;
+        GroundEntity->MeshID.ID = MeshID;
+
+        MeshGroup->Loaded = true;
+        MeshGroup->Meshes->VertexSize = SizeVertexBuffer;
+        MeshGroup->Meshes->OffsetVertices = VertexBufferBeginOffset;
+
+        RenderPushVertexData(Vertices,SizeVertexBuffer, VertexBufferBeginOffset); 
+    }
+
+    EndTempArena(TempArena,1);
+}
+
+void
+TestGroundSingleMeshMultipleVoxel3(game_state * GameState, world_pos WorldOrigenCenter)
+{
+    memory_arena * TempArena = &GameState->TemporaryArena;
+    world * World = &GameState->World;
+
+    u32 VertexBufferBeginOffset = GameState->VertexArena.CurrentSize;
+
+    u32 TotalVertices = 0;
+    i32 TileX = 5;
+    i32 TileZ = 5;
+    i32 TileYBegin = -1;
+    i32 TileYEnd = 3;
+
+    vertex_point * Vertices = (vertex_point *)((u8 *)TempArena->Base + TempArena->CurrentSize);
+    BeginTempArena(TempArena,1);
+
+    for (i32 x = -TileX; x <= TileX; ++x)
+    {
+        for (i32 y = TileYBegin; y <= TileYEnd; ++y)
+        {
+            for (i32 z = -TileZ; z <= TileZ; ++z)
+            {
+                // Ground generator coord z goes from - to + as you get farther along
+                // which is the opposite we do in our world space
+                world_pos WorldP;
+                WorldP.x = WorldOrigenCenter.x + x;
+                WorldP.y = WorldOrigenCenter.y + y;
+                WorldP.z = WorldOrigenCenter.z + z;
+
+                u32 VerticesCount = FillBufferTestGround(&GameState->TemporaryArena, WorldP,WorldOrigenCenter ,8);
+
+                TotalVertices += VerticesCount;
 #if 0
                 if (VerticesCount > 0)
                 {
                     //world_pos CubeP = MapIntoCell(World,DrawP,V3(5.0f*(r32)x,0,0));
-                    world_pos CubeP = WorldP;
+                    world_pos CubeP = MapIntoCell(World,WorldP, - (World->GridCellDimInMeters*0.5f + MeshOrigenSubstract));
+                    CubeP.z = -CubeP.z;
                     entity * CubeEntity = AddEntity(&GameState->World, CubeP);
-                    EntityAddTranslation(CubeEntity,0,V3(0), V3(0.5f),0.0f);
+                    EntityAddTranslation(CubeEntity,0,V3(0), World->GridCellDimInMeters,0.0f);
                     CubeEntity->Color = V3(1.0f,0,0);
                     CubeEntity->IsGround = false;
                     EntityAddMesh(CubeEntity,Mesh(0));
@@ -1388,15 +936,15 @@ TestGroundSingleMeshMultipleVoxel2(game_state * GameState)
         u32 MeshID = GameState->GroundMeshCount++;
         mesh_group * MeshGroup = GameState->GroundMeshGroup + MeshID;
 
-        entity * GroundEntity = AddEntity(&GameState->World, BeginP);
-        v3 GroundScale = V3(5.0f);//World->GridCellDimInMeters;
+        entity * GroundEntity = AddEntity(&GameState->World, WorldOrigenCenter);
+        //v3 GroundScale = V3(5.0f);//World->GridCellDimInMeters;
+        v3 GroundScale = World->GridCellDimInMeters;
         EntityAddTranslation(GroundEntity,0,V3(0), GroundScale,0.0f);
 
         v3 Color;
         Color = V3(0.3f,1.0f,0.0f);
 
         GroundEntity->Color = Color;
-        GroundEntity->IsGround = true;
         GroundEntity->MeshObjCount = 1;
         GroundEntity->MeshID.ID = MeshID;
 
@@ -1408,4 +956,807 @@ TestGroundSingleMeshMultipleVoxel2(game_state * GameState)
     }
 
     EndTempArena(TempArena,1);
+}
+
+u32
+GroundInBatches(game_state * GameState, world_pos WorldBegin, mesh_group * MeshGroup,
+        i32 MaxTileX, i32 MaxTileY, i32 MaxTileZ,
+        u32 VoxelsPerAxis)
+{
+    memory_arena * TempArena = &GameState->TemporaryArena;
+    world * World = &GameState->World;
+
+    u32 VertexBufferBeginOffset = GameState->VertexArena.CurrentSize;
+
+    u32 TotalVertices = 0;
+
+    vertex_point * Vertices = (vertex_point *)((u8 *)TempArena->Base + TempArena->CurrentSize);
+    BeginTempArena(TempArena,1);
+
+    for (i32 x = WorldBegin.x; x < MaxTileX; ++x)
+    {
+        for (i32 y = WorldBegin.y; y < MaxTileY; ++y)
+        {
+            for (i32 z = WorldBegin.z; z < MaxTileZ; ++z)
+            {
+                // Ground generator coord z goes from - to + as you get farther along
+                // which is the opposite we do in our world space
+                world_pos WorldP;
+                WorldP.x = WorldBegin.x + x;
+                WorldP.y = WorldBegin.y + y;
+                WorldP.z = -(WorldBegin.z + z);
+
+                u32 VerticesCount = FillBufferTestGround(&GameState->TemporaryArena, WorldP,WorldBegin,VoxelsPerAxis);
+
+                TotalVertices += VerticesCount;
+            }
+        }
+    }
+
+    if (TotalVertices > 0)
+    {
+        i32 SizeVertexBuffer = sizeof(vertex_point) * TotalVertices;
+
+        if (MeshGroup->Meshes->VertexSize > 0)
+        {
+            //Assert(MeshGroup->Meshes->VertexSize >= SizeVertexBuffer);
+            SizeVertexBuffer = minval(MeshGroup->Meshes->VertexSize, SizeVertexBuffer);
+        }
+        else
+        {
+            PushMeshSize(&GameState->VertexArena,SizeVertexBuffer,1);
+        }
+
+
+        RenderPushVertexData(Vertices,SizeVertexBuffer, VertexBufferBeginOffset); 
+
+        MeshGroup->Loaded = true;
+        MeshGroup->Meshes->VertexSize = SizeVertexBuffer;
+        MeshGroup->Meshes->OffsetVertices = VertexBufferBeginOffset;
+    }
+
+    EndTempArena(TempArena,1);
+
+    return TotalVertices;
+}
+
+u32
+CalculateMeshSize(u32 VoxelsPerAxis)
+{
+    u32 MaxTrianglesPerVoxel = 5;
+    u32 TotalVoxelsPerBlock = (VoxelsPerAxis * VoxelsPerAxis * VoxelsPerAxis);
+    u32 MaxTrianglesPerBlock = TotalVoxelsPerBlock * MaxTrianglesPerVoxel;
+    u32 MaxVerticesPerBlock = MaxTrianglesPerBlock * 3;
+
+    u32 Result = MaxVerticesPerBlock * sizeof(vertex_point);
+
+    return Result;
+}
+
+THREAD_WORK_HANDLER(LoadGround)
+{
+    async_load_ground * WorkData = (async_load_ground *)Data;
+    Assert(WorkData->ThreadArena);
+    
+    world * World                    = WorkData->World;
+    mesh_group * MeshGroup           = WorkData->MeshGroup;
+    memory_arena * TempArena         = &WorkData->ThreadArena->Arena;
+    world_pos WorldP                 = WorkData->WorldP;
+    
+    WorldP.z = -WorldP.z;
+
+    u32 VoxelsPerAxis = WorkData->VoxelsPerAxis;
+
+    mesh * Mesh = MeshGroup->Meshes;
+    u32 VertexBufferBeginOffset = Mesh->OffsetVertices;
+
+    vertex_point * VerticesBuffer = PushArray(TempArena,0,vertex_point);
+
+    //Logn("Attemp to create ground at " STRWORLDP,FWORLDP(WorldP));
+    u32 CountVertices = FillBufferTestGround(TempArena, WorldP, WorldP,VoxelsPerAxis);
+
+    if (CountVertices > 0)
+    {
+        //Logn("Success at (" STRWORLDP ") total %i",FWORLDP(WorldP),CountVertices);
+        u32 SizeVertexBuffer = sizeof(vertex_point) * CountVertices;
+
+        Assert(CalculateMeshSize(VoxelsPerAxis) >= SizeVertexBuffer);
+
+        Mesh->VertexSize = SizeVertexBuffer;
+
+        RenderPushVertexData(VerticesBuffer,SizeVertexBuffer, VertexBufferBeginOffset); 
+    }
+
+    ThreadEndArena(WorkData->ThreadArena);
+
+    COMPILER_DONOT_REORDER_BARRIER;
+    MeshGroup->Loaded        = true;  // b32 Loaded;
+    MeshGroup->LoadInProcess = false; // b32 LoadInProcess;
+}
+
+/*
+ * Signals whether managed to get thread arena.
+ * if it didn't, no work was done
+ */
+bool
+TryLoadGround(game_memory * Memory,
+              game_state * GameState,
+              world_pos WorldP, 
+              mesh_group * MeshGroup,
+              u32 VoxelsPerAxis)
+{
+    b32 LoadSuccess = false;
+
+    thread_memory_arena * ThreadArena = GetThreadArena(GameState);
+    if (IS_NOT_NULL(ThreadArena))
+    {
+        MeshGroup->LoadInProcess = true;
+
+        memory_arena * Arena = ThreadBeginArena(ThreadArena);
+
+        async_load_ground * Data = PushStruct(Arena,async_load_ground);
+
+        MeshGroup->TotalMeshObjects = 1;
+
+        Assert(IS_NOT_NULL(MeshGroup->Meshes)); // should be pre-allocated on world initialization
+
+        Data->World       = &GameState->World; // world * World;
+        Data->ThreadArena = ThreadArena;       // thread_memory_arena * ThreadArena;
+        Data->MeshGroup   = MeshGroup;         // mesh_group * MeshGroup;
+        Data->WorldP      = WorldP;            // RECORD WorldP;
+        Data->VoxelsPerAxis = VoxelsPerAxis;
+
+        Memory->AddWorkToWorkQueue(Memory->RenderWorkQueue , LoadGround,Data);
+
+        LoadSuccess = true;
+    }
+
+    return LoadSuccess;
+}
+
+
+world_pos
+WorldToChunkP(world_pos WorldP)
+{
+    i32 DimX = 11;
+    i32 DimY = 5;
+    i32 DimZ = 11;
+
+    i32 OrigenChunkX = WorldP.x / DimX;
+    if (SignBit(WorldP.x) == -1) OrigenChunkX -= 1;
+
+    i32 OrigenChunkY = WorldP.y / DimY;
+    if (SignBit(WorldP.y) == -1) OrigenChunkY -= 1;
+
+    i32 OrigenChunkZ = WorldP.z / DimZ;
+    if (SignBit(WorldP.z) == -1) OrigenChunkZ -= 1;
+
+    world_pos Result = WorldPosition(OrigenChunkX, OrigenChunkY,OrigenChunkZ);
+
+    return Result;
+}
+
+u32
+GroundChunkHashIndex(world * World, i32 X, i32 Y, i32 Z)
+{
+    u32 NumBuckets = World->HashGridGroundEntitiesSize;
+
+    const i32 h1 = 0x8da6b343; // Large multiplicative constants;
+    const i32 h2 = 0xd8163841; // here arbitrarily chosen primes
+    const i32 h3 = 0xcb1ab31f;
+    i32 n = h1 * X + h2 * Y + h3 * Z;
+    n = n % NumBuckets;
+
+    if (n < 0) n += NumBuckets;
+
+    return (u32)n;
+}
+
+void 
+GenerateGround(game_memory * Memory,game_state * GameState,world * World,world_pos OrigenP)
+{
+    START_CYCLE_COUNT(ground_generation);
+
+    v3 GroundTileDim = World->GridCellDimInMeters * 24.0f;
+
+    v3 MinCorner = OrigenP._Offset - GroundTileDim; 
+    v3 MaxCorner = OrigenP._Offset + GroundTileDim; 
+
+    world_pos MinCell = MapIntoCell(World, OrigenP, MinCorner);
+    MinCell.y = 0;
+    world_pos MaxCell = MapIntoCell(World, OrigenP, MaxCorner);
+    MaxCell.y = 4;
+
+    i32 DimX = 11;
+    i32 DimY = 5;
+    i32 DimZ = 11;
+
+    v3 GroundScale = V3(World->GridCellDimInMeters.x * DimX,
+            World->GridCellDimInMeters.y * DimY,
+            World->GridCellDimInMeters.z * DimZ) * 0.95f;
+
+    memory_arena * TempArena = &GameState->TemporaryArena;
+
+    OrigenP.y = 0;
+    world_pos OrigenInChunkP = WorldToChunkP(OrigenP);
+    world_pos MinChunkP = WorldToChunkP(MinCell);
+    world_pos MaxChunkP = WorldToChunkP(MaxCell);
+
+    BeginTempArena(TempArena,1);
+
+    entity ** GroundCanBeDiscarded = PushArray(TempArena,World->GroundEntityLimit,entity *);
+    r32 * GroundCanBeDiscardedLengthSqr = PushArray(TempArena,World->GroundEntityLimit,r32);
+    u32 GroundCanBeDiscardedCount = 0;
+
+    // create list of ground too far
+    for (u32 GroundEntityIndex = 0;
+            GroundEntityIndex < World->GroundEntityCount;
+            ++GroundEntityIndex)
+    {
+        entity * TestEntity = World->GroundEntities + GroundEntityIndex;
+        world_pos TestChunkP = TestEntity->GroundChunkP;
+        if (
+                (TestChunkP.x < MinChunkP.x || TestChunkP.x > MaxChunkP.x) ||
+                (TestChunkP.y < MinChunkP.y || TestChunkP.y > MaxChunkP.y) ||
+                (TestChunkP.z < MinChunkP.z || TestChunkP.z > MaxChunkP.z)
+           )
+        {
+            // measure absolute distance not chunk
+            v3 GroundToOrigin = Substract(World,OrigenInChunkP,TestChunkP);
+            r32 LengthSqrToCenter  = (r32)fabs(LengthSqr(GroundToOrigin));
+            GroundCanBeDiscardedLengthSqr[GroundCanBeDiscardedCount] = LengthSqrToCenter;
+            GroundCanBeDiscarded[GroundCanBeDiscardedCount] = TestEntity;
+            GroundCanBeDiscardedCount += 1;
+        }
+    }
+
+    b32 AnyGroundCanBeDiscarded = (GroundCanBeDiscardedCount > 0);
+    b32 AnyEmptyGroundBucket = (World->GroundEntityCount < World->GroundEntityLimit);
+
+    for (i32 Z = MinChunkP.z;
+            (Z <= MaxChunkP.z) && (AnyGroundCanBeDiscarded || AnyEmptyGroundBucket);
+            ++Z)
+    {
+        for (i32 Y = MinChunkP.y;
+                (Y <= MaxChunkP.y) && (AnyGroundCanBeDiscarded || AnyEmptyGroundBucket);
+                ++Y)
+        {
+            for (i32 X = MinChunkP.x;
+                    (X <= MaxChunkP.x) && (AnyGroundCanBeDiscarded || AnyEmptyGroundBucket);
+                    ++X)
+            {
+                world_pos EntityWorldP = WorldPosition(X*DimX + DimX/2, Y*DimY + DimY/2, Z*DimZ + DimZ/2);
+                world_pos ChunkP = WorldPosition(X, Y, Z);
+
+                b32 GroundExists              = false;
+                r32 FarthestGroundDistance    = 0;
+
+                u32 HashIndex = GroundChunkHashIndex(World, X, Y , Z);
+#if 1
+                i32 FreeHashIndex = -1;
+                for (entity * TestEntity = World->HashGroundEntities[HashIndex];
+                        IS_NOT_NULL(TestEntity);
+                        )
+                {
+                    if (World->HashGroundOccupancy[HashIndex] > 0)
+                    {
+                        world_pos TestChunkP = TestEntity->GroundChunkP;
+                        if (TestChunkP.x == ChunkP.x &&
+                                TestChunkP.y == ChunkP.y &&
+                                TestChunkP.z == ChunkP.z)
+                        {
+                            // clean up table hash
+                            if (FreeHashIndex >= 0)
+                            {
+                                World->HashGroundOccupancy[HashIndex] = 0;
+                                World->HashGroundEntities[FreeHashIndex] = World->HashGroundEntities[HashIndex];
+                                World->HashGroundOccupancy[FreeHashIndex] = 1;
+                                HashIndex = FreeHashIndex;
+                            }
+                            GroundExists = true;
+                            break;
+                        }
+                    }
+                    else if (FreeHashIndex < 0)
+                    {
+                        // This is a free bucket unused we can fill
+                        FreeHashIndex = (i32)HashIndex;
+                    }
+                    HashIndex = (HashIndex + 1) % World->HashGridGroundEntitiesSize;
+                    TestEntity = World->HashGroundEntities[HashIndex];
+                }
+#else
+                for (u32 GroundEntityIndex = 0;
+                        GroundEntityIndex < World->GroundEntityCount;
+                        ++GroundEntityIndex)
+                {
+                    entity * TestEntity = World->GroundEntities + GroundEntityIndex;
+                    world_pos TestChunkP = TestEntity->GroundChunkP;
+                    if (TestChunkP.x == ChunkP.x &&
+                            TestChunkP.y == ChunkP.y &&
+                            TestChunkP.z == ChunkP.z)
+                    {
+                        GroundExists = true;
+                        break;
+                    }
+                }
+#endif
+
+                if (!GroundExists)
+                {
+                    u32 GroundIndex = World->GroundEntityCount;
+                    mesh_group * GroundMeshGroup = 0;
+                    entity * EntityGround = 0;
+
+                    if (AnyEmptyGroundBucket)
+                    {
+                        GroundMeshGroup = GameState->GroundMeshGroup + GroundIndex;
+                        EntityGround = World->GroundEntities + GroundIndex;
+                    }
+                    else if (GroundCanBeDiscardedCount > 0)
+                    {
+                        EntityGround = GroundCanBeDiscarded[--GroundCanBeDiscardedCount];
+                        GroundMeshGroup = GameState->GroundMeshGroup + EntityGround->MeshID.ID;
+                    }
+#if 0
+                    // TODO: this might change depending on the LOD
+                    u32 VoxelsPerAxis = 3;
+                    u32 MaxMeshSize = CalculateMeshSize(VoxelsPerAxis);
+                    u32 Align = RenderGetVertexMemAlign() - 1;
+                    u32 MeshSize = (MaxMeshSize + Align) & ~Align;
+
+                    // pre-allocate ground mesh size
+                    if (GroundMeshGroup->Meshes->VertexSize == 0)
+                    {
+                        GroundMeshGroup->Meshes->VertexSize = MeshSize;
+                        GroundMeshGroup->Meshes->OffsetVertices = PushMeshSize(&GameState->VertexArena,MeshSize,1);
+                    }
+                    else
+                    {
+                        //Assert(GroundMeshGroup->Meshes->VertexSize >= MeshSize);
+                    }
+
+                    b32 WasLoaded = GroundMeshGroup->Loaded;
+
+                    GroundMeshGroup->Loaded        = false;
+                    GroundMeshGroup->LoadInProcess = false;
+
+                    // Ground is not necessary to be in screen
+                    // Allow thread load based on capacity
+                    b32 GroundLoaded = 
+                        TryLoadGround(Memory,GameState,WorldP, GroundMeshGroup,VoxelsPerAxis);
+#else
+                    b32 WasLoaded = GroundMeshGroup->Loaded;
+
+                    GroundMeshGroup->Loaded        = false;
+                    GroundMeshGroup->LoadInProcess = false;
+                    //u32 TotalVertices = GroundInBatches(GameState, ChunkP, GroundMeshGroup, DimX, DimY,DimZ, 3);
+                    vertex_point * Vertices = PushArray(TempArena,1,vertex_point);
+                    u32 TotalVertices = CopyCubeToBuffer(Vertices, 0.5f);
+                    u32 MeshSize = TotalVertices * sizeof(vertex_point);
+                    u32 VertexOffset = PushMeshSize(&GameState->VertexArena,MeshSize,1);
+                    RenderPushVertexData(Vertices,MeshSize, VertexOffset); 
+                    GroundMeshGroup->Meshes->VertexSize = MeshSize;
+                    GroundMeshGroup->Meshes->OffsetVertices = VertexOffset;
+                    GroundMeshGroup->Loaded = true;
+                    b32 GroundLoaded = true;
+#endif
+
+                    if (GroundLoaded)
+                    {
+                        // Once thread is confirm to do the work commit
+                        //Logn("WorldP    X:%i Y:%i Z:%i",X,Y,Z);
+                        //Logn("In Range  X:%i Y:%i Z:%i",ChunkDimX,ChunkDimY,ChunkDimZ);
+                        //Logn("Ground load at " STRWORLDP, FWORLDP(EntityWorldP));
+
+                        if (GroundIndex < World->GroundEntityLimit)
+                        {
+                            GameState->GroundMeshCount += 1;
+                            World->GroundEntityCount += 1;
+                        }
+                        else
+                        {
+                            // Using ground too far instead
+                            GroundIndex = EntityGround->MeshID.ID;
+                            world_pos EntityDiscardedWP = EntityGround->GroundChunkP;
+                            u32 HashIndexGroundDiscarded = 
+                                GroundChunkHashIndex(World,
+                                        EntityDiscardedWP.x,EntityDiscardedWP.y,EntityDiscardedWP.z);
+                            entity * TestEntity = World->HashGroundEntities[HashIndexGroundDiscarded];
+                            for (;IS_NOT_NULL(TestEntity);)
+                            {
+                                if (World->HashGroundOccupancy[HashIndexGroundDiscarded] > 0)
+                                {
+                                    world_pos TestChunkP = TestEntity->GroundChunkP;
+                                    if (TestChunkP.x == EntityDiscardedWP.x &&
+                                            TestChunkP.y == EntityDiscardedWP.y &&
+                                            TestChunkP.z == EntityDiscardedWP.z)
+                                    {
+                                        break;
+                                    }
+                                }
+                                HashIndexGroundDiscarded = (HashIndexGroundDiscarded + 1) % World->HashGridGroundEntitiesSize;
+                                TestEntity = World->HashGroundEntities[HashIndexGroundDiscarded];
+                            }
+                            // we should have found it
+                            Assert(TestEntity);
+                            World->HashGroundOccupancy[HashIndexGroundDiscarded] = 0;
+                        }
+
+                        UpdateGroundEntity(EntityGround, EntityWorldP, ChunkP, GroundScale);
+
+                        u32 FreeSlot = HashIndex;
+                        for (;World->HashGroundOccupancy[FreeSlot] > 0;++FreeSlot) { }
+                        World->HashGroundEntities[FreeSlot] = EntityGround;
+
+                        if (World->HashGroundOccupancy[FreeSlot] == -1)
+                        {
+                            World->HashGridUsageCount += 1;
+                        }
+
+                        World->HashGroundOccupancy[FreeSlot] = 1;
+
+                        EntityGround->MeshID.ID = GroundIndex;
+                        EntityGround->ID.ID = GroundIndex;
+
+                        v3 Color = V3(0.3f,0.8f,0.0f);
+                        if ((ChunkP.x % 2) == 0)
+                        {
+                            if ((ChunkP.z % 2) == 0)
+                            {
+                                Color = V3(1.0f,0,0);
+                            }
+                            else
+                            {
+                                Color = V3(0.0f,0,1.0f);
+                            }
+                        }
+                        else
+                        {
+                            if ((ChunkP.z % 2) == 1)
+                            {
+                                Color = V3(1.0f,0,0);
+                            }
+                            else
+                            {
+                                Color = V3(0.0f,0,1.0f);
+                            }
+                        }
+
+                        EntityGround->Color = Color;
+                        EntityGround->MeshObjCount = 1;
+                    }
+                    else
+                    {
+                        GroundMeshGroup->Loaded = WasLoaded;
+                    }
+
+                }
+
+                AnyGroundCanBeDiscarded = (GroundCanBeDiscardedCount > 0);
+                AnyEmptyGroundBucket = (World->GroundEntityCount < World->GroundEntityLimit);
+            }
+        }
+    }
+
+#if 1
+    r32 MaxGroundDistance = 0;
+
+    for (u32 GroundEntityIndex = 0;
+            GroundEntityIndex < World->GroundEntityCount;
+            ++GroundEntityIndex)
+    {
+        entity * TestEntity = World->GroundEntities + GroundEntityIndex;
+        world_pos TestP = TestEntity->WorldP;
+
+        // measure absolute distance not chunk
+        v3 GroundToOrigin = Substract(World,OrigenP,TestP);
+        r32 LengthSqrToCenter  = (r32)fabs(LengthSqr(GroundToOrigin));
+        if (LengthSqrToCenter > MaxGroundDistance)
+        {
+            MaxGroundDistance = LengthSqrToCenter;
+        }
+    }
+
+    for (u32 GroundEntityIndex = 0;
+            GroundEntityIndex < World->GroundEntityCount;
+            ++GroundEntityIndex)
+    {
+        entity * TestEntity = World->GroundEntities + GroundEntityIndex;
+        world_pos TestP = TestEntity->WorldP;
+        v3 GroundToOrigin = Substract(World,OrigenP,TestP);
+        r32 LengthSqrToCenter  = (r32)fabs(LengthSqr(GroundToOrigin));
+        r32 ColorIntensity = LengthSqrToCenter * (1.0f / MaxGroundDistance);
+        TestEntity->Color = V3(1.0f - ColorIntensity,0, ColorIntensity);
+    }
+
+    // re build hash table
+    if (World->HashGridUsageCount > (0.5 * World->HashGridGroundEntitiesSize))
+    {
+        for (u32 Index = 0; Index < World->HashGridGroundEntitiesSize;++Index) 
+        { 
+            World->HashGroundOccupancy[Index] = -1;
+            World->HashGroundEntities[Index] = 0;
+        }
+
+        World->HashGridUsageCount = 0;
+
+        for (u32 GroundEntityIndex = 0;
+                GroundEntityIndex < World->GroundEntityCount;
+                ++GroundEntityIndex)
+        {
+            entity * TestEntity = World->GroundEntities + GroundEntityIndex;
+            world_pos TestP = TestEntity->GroundChunkP;
+
+            i32 HashIndex = GroundChunkHashIndex(World, TestP.x, TestP.y, TestP.z);
+
+            for (;World->HashGroundOccupancy[HashIndex] > 0;++HashIndex) { }
+
+            World->HashGroundEntities[HashIndex] = TestEntity;
+            World->HashGroundOccupancy[HashIndex] = 1;
+            World->HashGridUsageCount += 1;
+        }
+        Logn("Hash table for ground rebuilt (Usage %i)",World->HashGridUsageCount);
+    }
+
+#endif
+
+    EndTempArena(TempArena,1);
+
+    END_CYCLE_COUNT(ground_generation);
+}
+
+void 
+GenerateGround2(game_memory * Memory,game_state * GameState,world * World,world_pos OrigenP)
+{
+    START_CYCLE_COUNT(ground_generation);
+
+    v3 GroundTileDim = World->GridCellDimInMeters * 24.0f;
+
+    v3 MinCorner = OrigenP._Offset - GroundTileDim; 
+    v3 MaxCorner = OrigenP._Offset + GroundTileDim; 
+
+    world_pos MinCell = MapIntoCell(World, OrigenP, MinCorner);
+    MinCell.y = 0;
+    world_pos MaxCell = MapIntoCell(World, OrigenP, MaxCorner);
+    MaxCell.y = 4;
+
+    i32 DimX = 11;
+    i32 DimY = 5;
+    i32 DimZ = 11;
+
+    v3 GroundScale = V3(World->GridCellDimInMeters.x * DimX,
+            World->GridCellDimInMeters.y * DimY,
+            World->GridCellDimInMeters.z * DimZ) * 0.95f;
+
+    memory_arena * TempArena = &GameState->TemporaryArena;
+
+    OrigenP.y = 0;
+    world_pos OrigenInChunkP = WorldToChunkP(OrigenP);
+    world_pos MinChunkP = WorldToChunkP(MinCell);
+    world_pos MaxChunkP = WorldToChunkP(MaxCell);
+
+    BeginTempArena(TempArena,1);
+
+    entity ** GroundCanBeDiscarded = PushArray(TempArena,World->GroundEntityLimit,entity *);
+    r32 * GroundCanBeDiscardedLengthSqr = PushArray(TempArena,World->GroundEntityLimit,r32);
+    u32 GroundCanBeDiscardedCount = 0;
+
+    // create list of ground too far
+    for (u32 GroundEntityIndex = 0;
+            GroundEntityIndex < World->GroundEntityCount;
+            ++GroundEntityIndex)
+    {
+        entity * TestEntity = World->GroundEntities + GroundEntityIndex;
+        world_pos TestChunkP = TestEntity->GroundChunkP;
+        if (
+                (TestChunkP.x < MinChunkP.x || TestChunkP.x > MaxChunkP.x) ||
+                (TestChunkP.y < MinChunkP.y || TestChunkP.y > MaxChunkP.y) ||
+                (TestChunkP.z < MinChunkP.z || TestChunkP.z > MaxChunkP.z)
+           )
+        {
+            // measure absolute distance not chunk
+            v3 GroundToOrigin = Substract(World,OrigenInChunkP,TestChunkP);
+            r32 LengthSqrToCenter  = (r32)fabs(LengthSqr(GroundToOrigin));
+            GroundCanBeDiscardedLengthSqr[GroundCanBeDiscardedCount] = LengthSqrToCenter;
+            GroundCanBeDiscarded[GroundCanBeDiscardedCount] = TestEntity;
+            GroundCanBeDiscardedCount += 1;
+        }
+    }
+
+    b32 AnyGroundCanBeDiscarded = (GroundCanBeDiscardedCount > 0);
+    b32 AnyEmptyGroundBucket = (World->GroundEntityCount < World->GroundEntityLimit);
+
+    for (i32 Z = MinChunkP.z;
+            (Z <= MaxChunkP.z) && (AnyGroundCanBeDiscarded || AnyEmptyGroundBucket);
+            ++Z)
+    {
+        for (i32 Y = MinChunkP.y;
+                (Y <= MaxChunkP.y) && (AnyGroundCanBeDiscarded || AnyEmptyGroundBucket);
+                ++Y)
+        {
+            for (i32 X = MinChunkP.x;
+                    (X <= MaxChunkP.x) && (AnyGroundCanBeDiscarded || AnyEmptyGroundBucket);
+                    ++X)
+            {
+                world_pos EntityWorldP = WorldPosition(X*DimX + DimX/2, Y*DimY + DimY/2, Z*DimZ + DimZ/2);
+                world_pos ChunkP = WorldPosition(X, Y, Z);
+
+                b32 GroundExists              = false;
+                r32 FarthestGroundDistance    = 0;
+
+                for (u32 GroundEntityIndex = 0;
+                        GroundEntityIndex < World->GroundEntityCount;
+                        ++GroundEntityIndex)
+                {
+                    entity * TestEntity = World->GroundEntities + GroundEntityIndex;
+                    world_pos TestChunkP = TestEntity->GroundChunkP;
+                    if (TestChunkP.x == ChunkP.x &&
+                            TestChunkP.y == ChunkP.y &&
+                            TestChunkP.z == ChunkP.z)
+                    {
+                        GroundExists = true;
+                        break;
+                    }
+                }
+
+                if (!GroundExists)
+                {
+                    u32 GroundIndex = World->GroundEntityCount;
+                    mesh_group * GroundMeshGroup = 0;
+                    entity * EntityGround = 0;
+
+                    if (AnyEmptyGroundBucket)
+                    {
+                        GroundMeshGroup = GameState->GroundMeshGroup + GroundIndex;
+                        EntityGround = World->GroundEntities + GroundIndex;
+                    }
+                    else if (GroundCanBeDiscardedCount > 0)
+                    {
+                        EntityGround = GroundCanBeDiscarded[--GroundCanBeDiscardedCount];
+                        GroundMeshGroup = GameState->GroundMeshGroup + EntityGround->MeshID.ID;
+                    }
+#if 0
+                    // TODO: this might change depending on the LOD
+                    u32 VoxelsPerAxis = 3;
+                    u32 MaxMeshSize = CalculateMeshSize(VoxelsPerAxis);
+                    u32 Align = RenderGetVertexMemAlign() - 1;
+                    u32 MeshSize = (MaxMeshSize + Align) & ~Align;
+
+                    // pre-allocate ground mesh size
+                    if (GroundMeshGroup->Meshes->VertexSize == 0)
+                    {
+                        GroundMeshGroup->Meshes->VertexSize = MeshSize;
+                        GroundMeshGroup->Meshes->OffsetVertices = PushMeshSize(&GameState->VertexArena,MeshSize,1);
+                    }
+                    else
+                    {
+                        //Assert(GroundMeshGroup->Meshes->VertexSize >= MeshSize);
+                    }
+
+                    b32 WasLoaded = GroundMeshGroup->Loaded;
+
+                    GroundMeshGroup->Loaded        = false;
+                    GroundMeshGroup->LoadInProcess = false;
+
+                    // Ground is not necessary to be in screen
+                    // Allow thread load based on capacity
+                    b32 GroundLoaded = 
+                        TryLoadGround(Memory,GameState,WorldP, GroundMeshGroup,VoxelsPerAxis);
+#else
+                    b32 WasLoaded = GroundMeshGroup->Loaded;
+
+                    GroundMeshGroup->Loaded        = false;
+                    GroundMeshGroup->LoadInProcess = false;
+                    //u32 TotalVertices = GroundInBatches(GameState, ChunkP, GroundMeshGroup, DimX, DimY,DimZ, 3);
+                    vertex_point * Vertices = PushArray(TempArena,1,vertex_point);
+                    u32 TotalVertices = CopyCubeToBuffer(Vertices, 0.5f);
+                    u32 MeshSize = TotalVertices * sizeof(vertex_point);
+                    u32 VertexOffset = PushMeshSize(&GameState->VertexArena,MeshSize,1);
+                    RenderPushVertexData(Vertices,MeshSize, VertexOffset); 
+                    GroundMeshGroup->Meshes->VertexSize = MeshSize;
+                    GroundMeshGroup->Meshes->OffsetVertices = VertexOffset;
+                    GroundMeshGroup->Loaded = true;
+                    b32 GroundLoaded = true;
+#endif
+
+                    if (GroundLoaded)
+                    {
+                        // Once thread is confirm to do the work commit
+                        //Logn("WorldP    X:%i Y:%i Z:%i",X,Y,Z);
+                        //Logn("In Range  X:%i Y:%i Z:%i",ChunkDimX,ChunkDimY,ChunkDimZ);
+                        //Logn("Ground load at " STRWORLDP, FWORLDP(EntityWorldP));
+
+                        if (GroundIndex < World->GroundEntityLimit)
+                        {
+                            GameState->GroundMeshCount += 1;
+                            World->GroundEntityCount += 1;
+                        }
+                        else
+                        {
+                            // Using ground too far instead
+                            GroundIndex = EntityGround->MeshID.ID;
+                        }
+
+                        UpdateGroundEntity(EntityGround, EntityWorldP, ChunkP, GroundScale);
+
+                        EntityGround->MeshID.ID = GroundIndex;
+                        EntityGround->ID.ID = GroundIndex;
+
+                        v3 Color = V3(0.3f,0.8f,0.0f);
+                        if ((ChunkP.x % 2) == 0)
+                        {
+                            if ((ChunkP.z % 2) == 0)
+                            {
+                                Color = V3(1.0f,0,0);
+                            }
+                            else
+                            {
+                                Color = V3(0.0f,0,1.0f);
+                            }
+                        }
+                        else
+                        {
+                            if ((ChunkP.z % 2) == 1)
+                            {
+                                Color = V3(1.0f,0,0);
+                            }
+                            else
+                            {
+                                Color = V3(0.0f,0,1.0f);
+                            }
+                        }
+
+                        EntityGround->Color = Color;
+                        EntityGround->MeshObjCount = 1;
+                    }
+                    else
+                    {
+                        GroundMeshGroup->Loaded = WasLoaded;
+                    }
+
+                }
+
+                AnyGroundCanBeDiscarded = (GroundCanBeDiscardedCount > 0);
+                AnyEmptyGroundBucket = (World->GroundEntityCount < World->GroundEntityLimit);
+            }
+        }
+    }
+
+#if 1
+    r32 MaxGroundDistance = 0;
+
+    for (u32 GroundEntityIndex = 0;
+            GroundEntityIndex < World->GroundEntityCount;
+            ++GroundEntityIndex)
+    {
+        entity * TestEntity = World->GroundEntities + GroundEntityIndex;
+        world_pos TestP = TestEntity->WorldP;
+
+        // measure absolute distance not chunk
+        v3 GroundToOrigin = Substract(World,OrigenP,TestP);
+        r32 LengthSqrToCenter  = (r32)fabs(LengthSqr(GroundToOrigin));
+        if (LengthSqrToCenter > MaxGroundDistance)
+        {
+            MaxGroundDistance = LengthSqrToCenter;
+        }
+    }
+
+    for (u32 GroundEntityIndex = 0;
+            GroundEntityIndex < World->GroundEntityCount;
+            ++GroundEntityIndex)
+    {
+        entity * TestEntity = World->GroundEntities + GroundEntityIndex;
+        world_pos TestP = TestEntity->WorldP;
+        v3 GroundToOrigin = Substract(World,OrigenP,TestP);
+        r32 LengthSqrToCenter  = (r32)fabs(LengthSqr(GroundToOrigin));
+        r32 ColorIntensity = LengthSqrToCenter * (1.0f / MaxGroundDistance);
+        TestEntity->Color = V3(1.0f - ColorIntensity,0, ColorIntensity);
+    }
+
+#endif
+
+    EndTempArena(TempArena,1);
+
+    END_CYCLE_COUNT(ground_generation);
 }

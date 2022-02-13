@@ -9,9 +9,11 @@
 #include "Quaternion.h"
 #include "game_math.h"
 #include "game_mesh.h"
+#include <stddef.h>
 
 #define MAX_WORLD_ENTITY_COUNT (1 << 14)
 #define MAX_WORLD_ENTITY_COUNT_MINUS_ONE (MAX_WORLD_ENTITY_COUNT - 1)
+#define MAX_WORLD_GROUND_COUNT (128)
 
 // Helpers to printf world positions
 #define STRP "fx:%f fy:%f fz:%f"
@@ -95,10 +97,15 @@ struct entity
 
     v3 Color; // 36
 
-    // TODO: find different way to handle
-    // with ground
-    b32 IsGround;
     entity_transform Transform; // 170 + 36 = 206
+
+    /* 
+     * DATA TO NOT TO STORAGE IN HASH GRID 
+     * This is only useful for active entities
+     * 
+     */
+    u8 DO_NOT_COPY_PAST_THIS_POINT;
+    world_pos GroundChunkP;
 };
 
 
@@ -107,7 +114,9 @@ struct entity
  * if cell needs to add more data and is not sufficient
  * it uses linked list to add new chunk of data
  */
-#define WORLD_CELL_DATA_SIZE (sizeof(entity) * 10)
+#define WORLD_CELL_ENTITY_COUNT 5 
+#define WORLD_CELL_ENTITY_SIZE (sizeof(entity) - (sizeof(entity) - offsetof(entity,DO_NOT_COPY_PAST_THIS_POINT)))
+#define WORLD_CELL_DATA_SIZE (WORLD_CELL_ENTITY_SIZE * WORLD_CELL_ENTITY_COUNT)
 struct world_cell_data
 {
     u16 DataSize;
@@ -154,6 +163,9 @@ struct simulation
     // sparse array to world entities access
     sparse_entry EntityEntries[MAX_WORLD_ENTITY_COUNT];
     u32 EntryCount;
+
+    sparse_entry GroundEntries[MAX_WORLD_GROUND_COUNT];
+    u32 GroundEntryCount;
 
     sparse_entry TransformEntries[MAX_WORLD_ENTITY_COUNT];
     u32 TransformCount;
@@ -220,6 +232,15 @@ struct world
 
     entity_input * EntitiesInput;
 
+
+    entity * GroundEntities;
+    entity ** HashGroundEntities;
+    u32 HashGridGroundEntitiesSize;
+    b32 * HashGroundOccupancy;
+    u32 HashGridUsageCount;
+    u32 GroundEntityLimit;
+    u32 GroundEntityCount;
+
 };
 
 struct neighbor_iterator
@@ -284,6 +305,13 @@ BeginSimIterator(world * World, simulation * Sim);
 
 GAME_API entity *
 AdvanceSimIterator(simulation_iterator * Iterator);
+
+GAME_API simulation_iterator
+BeginSimGroundIterator(world * World, simulation * Sim);
+
+GAME_API entity *
+AdvanceSimGroundIterator(simulation_iterator * Iterator);
+
 
 GAME_API simulation_mesh_obj_transform_iterator
 BeginSimMeshObjTransformIterator(simulation * Sim, entity * Entity);

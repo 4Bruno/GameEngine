@@ -34,6 +34,9 @@ FreeCameraView(game_state * GameState, v3 dP, r32 Yaw, r32 Pitch)
         GameState->Camera.Pitch = -89.9f;
     }
     GameState->ViewRotationMatrix = M4();
+    GameState->ViewRotationMatrix[0].y = GameState->WorldUp.x;
+    GameState->ViewRotationMatrix[1].y = GameState->WorldUp.y;
+    GameState->ViewRotationMatrix[2].y = GameState->WorldUp.z;
     RotateFill(&GameState->ViewRotationMatrix, ToRadians(GameState->Camera.Pitch), ToRadians(GameState->Camera.Yaw), 0);
 }
 
@@ -90,16 +93,28 @@ CreateWorld(world * World)
     Entity->Color = V3(1.0f,1.0f,1.0f);
     EntityAddMesh(Entity,Mesh(0));
 
-    WC = WorldPosition(0,0,-10);
+    WC = WorldPosition(0,0,0);
     Entity = AddEntity(World, WC);
     EntityAddTranslation(Entity,0,V3(0), V3(1.0f),3.0f);
-    Entity->Color = V3(1.0f,0,0);
-    EntityAddMesh(Entity,Mesh(2));
+    Entity->Color = V3(0.5f,0.5f,0.5f);
+    EntityAddMesh(Entity,Mesh(0));
 
+    WC = WorldPosition(2,0,0);
     Entity = AddEntity(World, WC);
     EntityAddTranslation(Entity,0,V3(0), V3(1.0f),3.0f);
-    Entity->Color = V3(0.0f,1.0f,0);
-    Entity->WorldP._Offset.z += 1.5f;
+    Entity->Color = V3(1.0f,0.0f,0.0f);
+    EntityAddMesh(Entity,Mesh(0));
+
+    WC = WorldPosition(0,0,-2);
+    Entity = AddEntity(World, WC);
+    EntityAddTranslation(Entity,0,V3(0), V3(1.0f),3.0f);
+    Entity->Color = V3(0.0f,0.0f,1.0f);
+    EntityAddMesh(Entity,Mesh(0));
+
+    WC = WorldPosition(0,2,0);
+    Entity = AddEntity(World, WC);
+    EntityAddTranslation(Entity,0,V3(0), V3(1.0f),3.0f);
+    Entity->Color = V3(0.0f,1.0f,0.0f);
     EntityAddMesh(Entity,Mesh(0));
 
 #if 0
@@ -175,14 +190,11 @@ RemoveGroundEntity(world * World)
                 ++EntityIndex)
     {
         entity * Entity = World->ActiveEntities + EntityIndex;
-        if (Entity->IsGround)
-        {
-            ++GroundEntitiesCount;
-            // re-do every frame
-            EntityDelete(Entity);
-        }
     }
 }
+
+
+debug_cycle * DebugCycles = 0;
 
 extern "C"
 GAME_API
@@ -197,6 +209,10 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
 
     if (!GameState->IsInitialized)
     {
+#if DEBUG
+        Assert(Memory->DebugCycle);
+        DebugCycles = Memory->DebugCycle;
+#endif
         u8 * Base = ((u8 *)Memory->PermanentMemory + sizeof(game_state));
         i32 AvailablePermanentMemory = Memory->PermanentMemorySize - sizeof(game_state);
         InitializeArena(&GameState->PermanentArena,Base, AvailablePermanentMemory);
@@ -268,7 +284,8 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
         GameState->MaxGroundByteSize = MaxGroundByteSize;
         //u32 VertexBufferBeginOffset = PushMeshSize(&GameState->VertexArena, MaxGroundByteSize,1);
 
-        GameState->GroundMeshLimit = 2000;
+        Assert(World->GroundEntityLimit > 0);
+        GameState->GroundMeshLimit = World->GroundEntityLimit;
         GameState->GroundMeshGroup = 
             PushArray(&GameState->MeshesArena,GameState->GroundMeshLimit,mesh_group);
 
@@ -294,7 +311,7 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
         GameState->CameraMode = true;
         GameState->CameraWorldP = WorldCenter;
 
-        Translate(GameState->ViewMoveMatrix, V3(0,-1,0));
+        Translate(GameState->ViewMoveMatrix, V3(0,1,0));
 
         GameState->IsInitialized = true;
     }
@@ -364,7 +381,7 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
     r32 Pitch= (MouseY != 0.0f) ? (MouseY / 20.0f)   : 0.0f;
 
     // TODO: where should speed go?
-    r32 Speed = 15.0f * Input->DtFrame;
+    r32 Speed = 30.0f * Input->DtFrame;
     r32 Gravity = 0.0f;//9.8f;
 
     /* ----------------------- GAME SYSTEMS UPDATE ---------------------------- */
@@ -373,6 +390,7 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
     v3 CameraP = GetViewPos(GameState) + V3(0,1,0);
     CameraP.x = -CameraP.x;
     CameraP.z = -CameraP.z;
+    CameraP.y = -CameraP.y;
     //Translate(GameState->ViewMoveMatrix,V3(0));
     GameState->CameraWorldP = MapIntoCell(World,GameState->Simulation->Origin, CameraP);
 
@@ -382,237 +400,31 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
     
 
     /* -------------- GROUND ------------------------ */
-    //world_pos BeginWorldP = GameState->Simulation->Origin;
     world_pos BeginWorldP = GameState->CameraWorldP;
-//    Logn("World P " STRWORLDP, FWORLDP(BeginWorldP));
-    
-    v3 GroundTileDim = World->GridCellDimInMeters * 12.0f;
-    v3 MinCorner = BeginWorldP._Offset - GroundTileDim; 
-    v3 MaxCorner = BeginWorldP._Offset + GroundTileDim; 
 
 #if 1
-    world_pos MinCell = MapIntoCell(World, BeginWorldP, MinCorner);
-    world_pos MaxCell = MapIntoCell(World, BeginWorldP, MaxCorner);
+    GenerateGround(Memory,GameState,World,BeginWorldP);
+    //GenerateGround2(Memory,GameState,World,BeginWorldP);
 #else
-    world_pos MinCell = BeginWorldP;
-    //world_pos MinCell = MapIntoCell(World, BeginWorldP, V3(0,0,-1.5f));
-    world_pos MaxCell = MapIntoCell(World, BeginWorldP, V3(-3.0f,0,3.0f));
+    if (GameState->GroundMeshGroup->Loaded == false)
+    {
+        memory_arena * Arena = &GameState->TemporaryArena;
+        world_pos P = WorldPosition(0,0,0);
+
+        BeginTempArena(Arena,1);
+
+        vertex_point * VertexBuffer = (vertex_point *)Arena->Base + Arena->CurrentSize;
+        FillBufferTestGround(Arena, P, P, 3);
+        
+        RenderPushVertexData(Vertices,SizeVertexBuffer, VertexBufferBeginOffset); 
+
+        EndTempArena(Arena,1);
+
+        //TestGroundSingleMeshMultipleVoxel3(GameState,WorldPosition(0,0,0));
+        GameState->GroundMeshGroup->Loaded = true;
+    }
 #endif
 
-#if 0
-    i32 DimY = BeginWorldP.y;
-    for (i32 DimZ = MinCell.z;
-                DimZ <= MaxCell.z;
-                ++DimZ)
-    {
-        b32 NoSpaceAvailable = false;
-        for (i32 DimX = MinCell.x;
-                DimX <= MaxCell.x;
-                ++DimX)
-        {
-            world_pos WorldP = WorldPosition(DimX, DimY, DimZ);
-
-            r32 FarthestGroundDistance    = 0;
-            entity * FarthestEntityGround = 0;
-            b32 GroundExists              = false;
-
-            for (u32 EntityIndex = 0;
-                    EntityIndex < GameState->World.ActiveEntitiesCount;
-                    ++EntityIndex)
-            {
-                entity * Entity = GameState->World.ActiveEntities + EntityIndex;
-                world_pos * EntityWP = &Entity->WorldP;
-                if (Entity->IsGround && !EntityHasFlag(Entity,component_delete))
-                {
-                    if (EntityWP->x == WorldP.x &&
-                        EntityWP->y == WorldP.y &&
-                        EntityWP->z == WorldP.z)
-                    {
-                        GroundExists = true;
-                        break;
-                    }
-                    // current ground not in boundaries, then is eligeble for replacement
-                    else if (
-                                (EntityWP->x < MinCell.x || EntityWP->x > MaxCell.x) ||
-                                (EntityWP->y < MinCell.y || EntityWP->y > MaxCell.y) ||
-                                (EntityWP->z < MinCell.z || EntityWP->z > MaxCell.z)
-                            )
-                    {
-                        v3 GroundToOrigin = Substract(World,BeginWorldP,Entity->WorldP);
-                        r32 LengthSqrToCenter  = LengthSqr(GroundToOrigin);
-                        if (LengthSqrToCenter > FarthestGroundDistance)
-                        {
-                            FarthestEntityGround = Entity;
-                        }
-                    }
-                }
-            }
-
-            if (!GroundExists)
-            {
-                u32 MeshID = GameState->GroundMeshCount;
-                mesh_group * GroundMeshGroup = 0;
-
-                if (MeshID < GameState->GroundMeshLimit)
-                {
-                    GroundMeshGroup = GameState->GroundMeshGroup + MeshID;
-                }
-                else if (IS_NOT_NULL(FarthestEntityGround))
-                {
-                    GroundMeshGroup = GameState->GroundMeshGroup + FarthestEntityGround->MeshID.ID;
-                }
-                else
-                {
-                    // Tile system can't hold so many tiles
-                    // We reached a point where all tiles are within boundaries
-                    // and can't be replaced.
-                    // Otherwise it will constantly replace tiles
-                    NoSpaceAvailable = true;
-                    break;
-                }
-
-                u32 TotalXTiles = 10;
-                u32 TotalZTiles = 10;
-
-                u32 TotalTriangles = TotalXTiles * TotalZTiles * 2;
-                u32 TotalVertices = TotalTriangles * 3;
-
-                u32 OriginalMeshSize = TotalVertices * sizeof(vertex_point);
-                u32 Align = RenderGetVertexMemAlign() - 1;
-                u32 MeshSize = (OriginalMeshSize + Align) & ~Align;
-
-                // pre-allocate ground mesh size
-                if (GroundMeshGroup->Meshes->VertexSize == 0)
-                {
-                    GroundMeshGroup->Meshes->VertexSize = MeshSize;
-                    GroundMeshGroup->Meshes->OffsetVertices = PushMeshSize(&GameState->VertexArena,MeshSize,1);
-                }
-                else
-                {
-                    Assert(GroundMeshGroup->Meshes->VertexSize >= MeshSize);
-                }
-
-                b32 WasLoaded = GroundMeshGroup->Loaded;
-
-                GroundMeshGroup->Loaded        = false;
-                GroundMeshGroup->LoadInProcess = false;
-
-                // Ground is not necessary to be in screen
-                // Allow thread load based on capacity
-                b32 GroundLoaded = 
-                    TryLoadGround(Memory,GameState,WorldP, GroundMeshGroup,TotalXTiles, TotalZTiles);
-
-                if (GroundLoaded)
-                {
-                    // Once thread is confirm to do the work commit
-                    if (MeshID < GameState->GroundMeshLimit)
-                    {
-                        GameState->GroundMeshCount += 1;
-                    }
-                    else
-                    {
-                        MeshID = FarthestEntityGround->MeshID.ID;
-                    }
-
-                    if (FarthestEntityGround)
-                    {
-                        //Logn("Deleting Entity ground %i", FarthestEntityGround->ID.ID);
-                        EntityDelete(FarthestEntityGround);
-                        //FarthestEntityGround->Transform.LocalP = Substract(World,GameState->Simulation->Origin,WorldP);
-                    }
-
-                    entity * GroundEntity = AddEntity(&GameState->World, WorldP);
-                    v3 GroundScale = World->GridCellDimInMeters;
-                    EntityAddTranslation(GroundEntity,0,V3(0), GroundScale,0.0f);
-#if 0
-                    r32 Red   = (r32)(WorldP.x % 20) / 20.0f;
-                    r32 Green = (r32)(WorldP.y % 20) / 20.0f;
-                    r32 Blue  = (r32)(WorldP.z % 20) / 20.0f;
-                    v3 Color = V3(Red,Green,Blue);
-#else
-                    v3 Color;
-                    v3 White = V3(1,1,1);
-                    if ((WorldP.x % 2) == 0 &&
-                            (WorldP.z % 2) == 1)
-                    {
-                        Color = White;
-                    }
-                    else
-                    {
-                        Color = V3(1,0,0);
-                    }
-                    if ((WorldP.x == 0) && 
-                            (WorldP.y == 0) && 
-                            (WorldP.z == 0))
-                    {
-                        Color = V3(0,0.3f,0.8f);
-                    }
-#endif
-                    GroundEntity->Color = Color;
-                    GroundEntity->IsGround = true;
-                    GroundEntity->MeshObjCount = 0;
-                    // Sort of a hack
-                    // for ground the offset in array is the meshid
-                    GroundEntity->MeshID.ID = MeshID;
-                }
-                else
-                {
-                    GroundMeshGroup->Loaded = WasLoaded;
-                }
-
-            }
-        }
-        if (NoSpaceAvailable)
-            break;
-    }
-
-#else
-    /*
-    for (u32 GroundMeshIndex = 0;
-            GroundMeshIndex < GameState->GroundMeshLimit;
-            ++GroundMeshIndex)
-    {
-        mesh_group * MeshGroup = GameState->GroundMeshGroup + GroundMeshIndex;
-        MeshGroup->Loaded = false;
-    }
-
-    if (!GameState->GroundMeshGroup.Loaded)
-    //if (1==1)
-    {
-        RemoveGroundEntity(&GameState->World);
-        //v3 GroundP = GetViewPos(GameState) + V3(0,2.0f,0);
-        v3 GroundP = V3(0,2.0f,0);
-        world_pos GroundWorldP = MapIntoCell(World, BeginWorldP, GroundP);
-        entity * GroundEntity = AddEntity(&GameState->World, GroundWorldP);
-
-        v3 GroundScale = V3(20.0f);
-        EntityAddTranslation(GroundEntity,0,V3(0), GroundScale,0.0f);
-        GroundEntity->Color = V3(1.0f,0,0);
-        GroundEntity->IsGround = true;
-        GroundEntity->MeshObjCount = 0;
-
-        CreateGroundMeshPerlin(
-                &GameState->World,
-                &GameState->GroundMeshGroup,
-                &GameState->TemporaryArena,
-                &GameState->VertexArena,
-                GameState->MaxGroundByteSize,
-                GroundWorldP);
-        //V3((r32)World->CurrentWorldP.x,(r32)World->CurrentWorldP.y,(r32)World->CurrentWorldP.z));
-
-    }
-    */
-    if (!GameState->GroundMeshGroup[0].Loaded)
-    {
-
-        //TestGround_rangevoxels(GameState);
-        //TestGround_Only1Voxel(GameState);
-        //TestGroundSingleMeshMultipleVoxel(GameState);
-        TestGroundSingleMeshMultipleVoxel2(GameState);
-
-        GameState->GroundMeshGroup[0].Loaded = true;
-    }
-#endif
 
     /* -------------- SIMULATION ------------------------ */
     BeginSimulation(World, GameState->Simulation);
@@ -718,6 +530,8 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
     }
 
     Memory->CompleteWorkQueue(Memory->HighPriorityWorkQueue);
+
+    UpdateGroundModel(World);
 #endif
 
     SetSourceLight(GameState,World);
@@ -729,7 +543,6 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
     BeginRender(GameState, ClearColor);
 
     RenderEntities(Memory, GameState);
-    //RenderGround(GameState,Player);
     
     EndRender(GameState);
 

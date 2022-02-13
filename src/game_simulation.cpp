@@ -27,9 +27,18 @@ IsSlotFree(simulation * Sim, u32 Slot)
 #endif
 
 sparse_entry *
+GetNextAvailableGroundEntry(simulation * Sim)
+{
+    Assert(Sim->GroundEntryCount <= ArrayCount(Sim->GroundEntries));
+    u32 SlotIndex = Sim->GroundEntryCount++;
+    sparse_entry * Entry = Sim->GroundEntries + SlotIndex;
+
+    return Entry;
+}
+sparse_entry *
 GetNextAvailableEntry(simulation * Sim)
 {
-    Assert(Sim->EntryCount < ArrayCount(Sim->EntityEntries) - 1);
+    Assert(Sim->EntryCount < ArrayCount(Sim->EntityEntries));
     u32 SlotIndex = Sim->EntryCount++;
     sparse_entry * Entry = Sim->EntityEntries + SlotIndex;
 
@@ -77,6 +86,39 @@ AdvanceSimMeshObjTransformIterator(simulation_mesh_obj_transform_iterator * Iter
 }
 
 simulation_iterator
+BeginSimGroundIterator(world * World, simulation * Sim)
+{
+    simulation_iterator Iterator;
+    Iterator.Index  = 0; // u32   Index;
+    Iterator.Entity = 0;
+    Iterator.Sim = Sim;
+    Iterator.World = World;
+    if (Sim->GroundEntryCount > 0)
+    {
+        u32 StorageIndex = Sim->GroundEntries[0].StorageIndex;
+        Iterator.Entity = World->GroundEntities + StorageIndex;
+    }
+
+    return Iterator;
+}
+
+entity *
+AdvanceSimGroundIterator(simulation_iterator * Iterator)
+{
+    if (Iterator->Index < (Iterator->Sim->GroundEntryCount -1))
+    {
+        u32 StorageIndex = Iterator->Sim->GroundEntries[++Iterator->Index].StorageIndex;
+        Iterator->Entity = Iterator->World->GroundEntities + StorageIndex;
+    }
+    else
+    {
+        Iterator->Entity = 0;
+    }
+
+    return Iterator->Entity;
+}
+
+simulation_iterator
 BeginSimIterator(world * World, simulation * Sim)
 {
     simulation_iterator Iterator;
@@ -84,6 +126,7 @@ BeginSimIterator(world * World, simulation * Sim)
     Iterator.Entity = 0;
     Iterator.Sim = Sim;
     Iterator.World = World;
+
     if (Sim->EntryCount > 0)
     {
         u32 StorageIndex = Sim->EntityEntries[0].StorageIndex;
@@ -182,6 +225,14 @@ FindAndSetFirstAvailableBucket(simulation * Sim,u32 BucketsCount)
     }
 
     return BucketBitIndex;
+}
+
+void
+SimulationRegisterGround(simulation * Sim,entity * Ground,u32 GroundIndex)
+{
+    Assert(Sim->GroundEntryCount < ArrayCount(Sim->GroundEntries));
+    sparse_entry * Entry = GetNextAvailableGroundEntry(Sim);
+    Entry->StorageIndex = GroundIndex;
 }
 
 void
@@ -289,8 +340,11 @@ SortEntities(simulation * Sim,sparse_entry * Entries, u32 EntryCount)
 void
 BeginSimulation(world * World, simulation * Sim)
 {
+    START_CYCLE_COUNT(begin_simulation);
+
     Sim->EntryCount = 0;
     Sim->TransformCount = 0;
+    Sim->GroundEntryCount = 0;
 
     UpdateWorldLocation(World, Sim);
 
@@ -308,6 +362,8 @@ BeginSimulation(world * World, simulation * Sim)
         }
         Last = Current;
     }
+
+    END_CYCLE_COUNT(begin_simulation);
 }
 
 
