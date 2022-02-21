@@ -91,6 +91,7 @@ PFN_vkBeginCommandBuffer                      vkBeginCommandBuffer              
 PFN_vkEndCommandBuffer                        vkEndCommandBuffer                        = 0;
 PFN_vkCmdPushConstants                        vkCmdPushConstants                        = 0;
 PFN_vkCmdCopyBuffer                           vkCmdCopyBuffer                           = 0;
+PFN_vkCmdCopyBufferToImage                    vkCmdCopyBufferToImage                    = 0;
 PFN_vkCmdBeginRenderPass                      vkCmdBeginRenderPass                      = 0;
 PFN_vkCmdEndRenderPass                        vkCmdEndRenderPass                        = 0;
 PFN_vkCmdPipelineBarrier                      vkCmdPipelineBarrier                      = 0;
@@ -285,6 +286,64 @@ VulkanCreateDepthBuffer(VkPhysicalDevice PhysicalDevice,VkDevice Device, VkExten
     return 0;
 }
 
+i32
+VulkanCreateImage(VkPhysicalDevice PhysicalDevice,VkDevice Device, 
+                  VkImage * Image,
+                  VkDeviceMemory * DeviceMemory, 
+                  VkDeviceSize * MemAlign,
+                  u32 Width, u32 Height)
+{
+    VkImageCreateInfo ImageCreateInfo;
+
+    ImageCreateInfo.sType                 = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO; // VkStructureType   sType;
+    ImageCreateInfo.pNext                 = 0; // Void * pNext;
+    ImageCreateInfo.flags                 = 0; // VkImageCreateFlags   flags;
+    ImageCreateInfo.imageType             = VK_IMAGE_TYPE_2D; // VkImageType   imageType;
+    ImageCreateInfo.format                = VK_FORMAT_R8G8B8A8_SRGB; // VkFormat   format;
+    ImageCreateInfo.extent.width  = Width;
+    ImageCreateInfo.extent.height = Height;
+    ImageCreateInfo.extent.depth  = 1;
+
+    ImageCreateInfo.mipLevels             = 1; // uint32_t   mipLevels;
+    ImageCreateInfo.arrayLayers           = 1; // uint32_t   arrayLayers;
+
+    ImageCreateInfo.samples               = VK_SAMPLE_COUNT_1_BIT; // VkSampleCountFlagBits   samples;
+    ImageCreateInfo.tiling                = VK_IMAGE_TILING_OPTIMAL; // VkImageTiling   tiling;
+    ImageCreateInfo.usage                 = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT; // VkImageUsageFlags   usage;
+    ImageCreateInfo.sharingMode           = VK_SHARING_MODE_EXCLUSIVE; // VkSharingMode   sharingMode;
+    //ImageCreateInfo.queueFamilyIndexCount = ; // uint32_t   queueFamilyIndexCount;
+    //ImageCreateInfo.pQueueFamilyIndices   = ; // Typedef * pQueueFamilyIndices;
+    ImageCreateInfo.initialLayout         = VK_IMAGE_LAYOUT_UNDEFINED; // VkImageLayout   initialLayout;
+
+    VK_CHECK(vkCreateImage(Device,&ImageCreateInfo, 0, Image));
+
+    VkMemoryRequirements MemReq;
+    vkGetImageMemoryRequirements(Device, *Image, &MemReq);
+    VkMemoryPropertyFlags PropertyFlags = VK_MEMORY_GPU;
+
+    u32 MemoryTypeIndex = VulkanFindSuitableMemoryIndex(PhysicalDevice,MemReq,PropertyFlags);
+    if (MemoryTypeIndex < 0)
+    {
+        Log("Couldn't find suitable CPU-GPU memory index\n");
+        return 1;
+    }
+
+    *MemAlign = MemReq.alignment;
+
+    VkMemoryAllocateInfo AllocateInfo;
+
+    AllocateInfo.sType           = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO; // VkStructureType   sType;
+    AllocateInfo.pNext           = 0;                       // Void * pNext;
+    AllocateInfo.allocationSize  = MemReq.size;             // VkDeviceSize allocationSize;
+    AllocateInfo.memoryTypeIndex = (u32)MemoryTypeIndex; // u32_t memoryTypeIndex;
+
+    VK_CHECK(vkAllocateMemory(Device, &AllocateInfo, 0, DeviceMemory));
+
+    vkBindImageMemory(Device,*Image,*DeviceMemory,0);
+
+    return 0;
+}
+
 struct vulkan
 {
     b32 Initialized;
@@ -313,9 +372,15 @@ struct vulkan
     VkDeviceMemory TransferBitDeviceMemory;
     VkBuffer       TransferBitBuffer;
     VkDeviceSize   TransferMemAlign;
+
+    VkDeviceMemory TextureDeviceMemory;
+    VkImage        TextureImage;
+    VkDeviceSize   TextureMemAlign;
+
     VkDeviceMemory VertexDeviceMemory;
     VkBuffer       VertexBuffer;
     VkDeviceSize   VertexMemAlign;
+
     VkDeviceMemory IndexDeviceMemory;
     VkBuffer       IndexBuffer;
     VkDeviceSize   IndexMemAlign;
@@ -345,11 +410,11 @@ struct vulkan
     VkPipelineLayout PipelineLayout;
 
 
-    VkPipeline      Pipelines[1];
-    vulkan_pipeline PipelinesDefinition[1];
+    VkPipeline      Pipelines[2];
+    vulkan_pipeline PipelinesDefinition[2];
     u32          PipelinesCount;
 
-    VkShaderModule ShaderModules[2];
+    VkShaderModule ShaderModules[4];
     u32         ShaderModulesCount;
 };
 
@@ -375,7 +440,7 @@ VulkanCreateShaderStageInfo(VkShaderStageFlagBits Stage, VkShaderModule Module)
 struct vertex_inputs_description
 {
     VkVertexInputBindingDescription   Bindings[1];
-    VkVertexInputAttributeDescription Attributes[3];
+    VkVertexInputAttributeDescription Attributes[4];
 };
 
 vertex_inputs_description
@@ -409,6 +474,13 @@ RenderGetVertexInputsDescription()
     Attribute->binding  = 0;                             // u32_t binding;
     Attribute->format   = VK_FORMAT_R32G32B32A32_SFLOAT; // VkFormat format;
     Attribute->offset   = offsetof(vertex_point,Color);  // u32_t offset;
+
+    Attribute = (InputsDescription.Attributes + 3);
+
+    Attribute->location = 3;                             // u32_t location;
+    Attribute->binding  = 0;                             // u32_t binding;
+    Attribute->format   = VK_FORMAT_R32G32_SFLOAT; // VkFormat format;
+    Attribute->offset   = offsetof(vertex_point,UV);  // u32_t offset;
 
     InputsDescription.Bindings[0] = Binding; // CONSTANTARRAY   Bindings;
 
@@ -617,7 +689,7 @@ VulkanReCreatePipelinesOnWindowResize()
             vertex_inputs_description VertexInputDesc = RenderGetVertexInputsDescription();
             VulkanPipeline->VertexInputInfo.vertexBindingDescriptionCount   = 1;                              // u32_t vertexBindingDescriptionCount;
             VulkanPipeline->VertexInputInfo.pVertexBindingDescriptions      = &VertexInputDesc.Bindings[0];   // Typedef * pVertexBindingDescriptions;
-            VulkanPipeline->VertexInputInfo.vertexAttributeDescriptionCount = 3;                              // u32_t vertexAttributeDescriptionCount;
+            VulkanPipeline->VertexInputInfo.vertexAttributeDescriptionCount = ArrayCount(VertexInputDesc.Attributes);                              // u32_t vertexAttributeDescriptionCount;
             VulkanPipeline->VertexInputInfo.pVertexAttributeDescriptions    = &VertexInputDesc.Attributes[0]; // Typedef * pVertexAttributeDescriptions;
 
             VulkanPipeline->Viewport       = VulkanCreateDefaultViewport(GlobalVulkan.WindowExtension); // VkViewport Viewport;
@@ -642,21 +714,19 @@ VulkanReCreatePipelinesOnWindowResize()
     return Result;
 }
 
-/*
- * Returns internal index array of pipeline handler
- * In case of failure during creation, index is < 0
- */
-i32
+
+pipeline_creation_result
 RenderCreatePipeline(i32 VertexShaderIndex,
                      i32 FragmentShaderIndex)
 {
+
+    pipeline_creation_result Result = {};
+
     Assert((VertexShaderIndex >= 0) && (ArrayCount(GlobalVulkan.ShaderModules) > VertexShaderIndex));
     Assert((FragmentShaderIndex >= 0) && (ArrayCount(GlobalVulkan.ShaderModules) > FragmentShaderIndex));
 
     VkShaderModule VertexShader = GlobalVulkan.ShaderModules[VertexShaderIndex];
     VkShaderModule FragmentShader = GlobalVulkan.ShaderModules[FragmentShaderIndex];
-
-    i32 IndexPipeline = -1; // signal error creation pipeline
 
     vulkan_pipeline VulkanPipeline;
 
@@ -669,7 +739,7 @@ RenderCreatePipeline(i32 VertexShaderIndex,
     vertex_inputs_description VertexInputDesc = RenderGetVertexInputsDescription();
     VulkanPipeline.VertexInputInfo.vertexBindingDescriptionCount   = 1;                              // u32_t vertexBindingDescriptionCount;
     VulkanPipeline.VertexInputInfo.pVertexBindingDescriptions      = &VertexInputDesc.Bindings[0];   // Typedef * pVertexBindingDescriptions;
-    VulkanPipeline.VertexInputInfo.vertexAttributeDescriptionCount = 3;                              // u32_t vertexAttributeDescriptionCount;
+    VulkanPipeline.VertexInputInfo.vertexAttributeDescriptionCount = ArrayCount(VertexInputDesc.Attributes);                              // u32_t vertexAttributeDescriptionCount;
     VulkanPipeline.VertexInputInfo.pVertexAttributeDescriptions    = &VertexInputDesc.Attributes[0]; // Typedef * pVertexAttributeDescriptions;
 
 
@@ -680,8 +750,8 @@ RenderCreatePipeline(i32 VertexShaderIndex,
     DepthStencil.flags                 = 0;                           // VkPipelineDepthStencilStateCreateFlags flags;
     DepthStencil.depthTestEnable       = VK_TRUE;                     // VkBool32 depthTestEnable;
     DepthStencil.depthWriteEnable      = VK_TRUE;                     // VkBool32 depthWriteEnable;
-    //DepthStencil.depthCompareOp        = VK_COMPARE_OP_LESS_OR_EQUAL; // VkCompareOp depthCompareOp;
-    DepthStencil.depthCompareOp        = VK_COMPARE_OP_LESS; // VkCompareOp depthCompareOp;
+    DepthStencil.depthCompareOp        = VK_COMPARE_OP_LESS_OR_EQUAL; // VkCompareOp depthCompareOp;
+    //DepthStencil.depthCompareOp        = VK_COMPARE_OP_LESS; // VkCompareOp depthCompareOp;
     DepthStencil.depthBoundsTestEnable = VK_FALSE;                    // VkBool32 depthBoundsTestEnable;
     DepthStencil.stencilTestEnable     = VK_FALSE;                    // VkBool32 stencilTestEnable;
     //DepthStencil.front               = ; // VkStencilOpState front;
@@ -715,13 +785,19 @@ RenderCreatePipeline(i32 VertexShaderIndex,
 
     if (VK_VALID_HANDLE(Pipeline))
     {
-        Assert((GlobalVulkan.PipelinesCount+1) <= ArrayCount(GlobalVulkan.Pipelines));
-        IndexPipeline = GlobalVulkan.PipelinesCount++;
+        Assert(GlobalVulkan.PipelinesCount < ArrayCount(GlobalVulkan.Pipelines));
+
+        i32 IndexPipeline = GlobalVulkan.PipelinesCount++;
+
         GlobalVulkan.PipelinesDefinition[IndexPipeline] = VulkanPipeline;
         GlobalVulkan.Pipelines[IndexPipeline]= Pipeline;
+
+        Result.Pipeline = IndexPipeline;
+        Result.Success = true;
+        Result.PipelineLayout = 0; // only 1 for now, hardcoded as the first 
     }
 
-    return IndexPipeline;
+    return Result;
 }
 
 
@@ -1200,7 +1276,7 @@ WaitForRender()
 
 
 i32
-VulkanCopyBuffer(VkCommandBuffer CommandBuffer, VkBuffer Src, VkBuffer Dest, VkDeviceSize Size, VkDeviceSize Offset)
+BeginCommandBuffer(VkCommandBuffer CommandBuffer)
 {
     VkCommandBufferBeginInfo CommandBufferBeginInfo;
     CommandBufferBeginInfo.sType            = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO; // VkStructureType   sType;
@@ -1211,13 +1287,11 @@ VulkanCopyBuffer(VkCommandBuffer CommandBuffer, VkBuffer Src, VkBuffer Dest, VkD
     VK_CHECK(vkResetCommandBuffer(CommandBuffer, 0));
     VK_CHECK(vkBeginCommandBuffer(CommandBuffer,&CommandBufferBeginInfo));
 
-    VkBufferCopy CopyRegion = {};
-    CopyRegion.srcOffset = 0;    // VkDeviceSize srcOffset;
-    CopyRegion.dstOffset = Offset;    // VkDeviceSize dstOffset;
-    CopyRegion.size      = Size; // VkDeviceSize size;
-
-    vkCmdCopyBuffer(CommandBuffer, Src, Dest, 1, &CopyRegion);
-
+    return 0;
+}
+i32
+EndCommandBuffer(VkCommandBuffer CommandBuffer)
+{
     vkEndCommandBuffer(CommandBuffer);
 
     VkSubmitInfo SubmitInfo = {};
@@ -1234,6 +1308,23 @@ VulkanCopyBuffer(VkCommandBuffer CommandBuffer, VkBuffer Src, VkBuffer Dest, VkD
     VK_CHECK(vkQueueSubmit(GlobalVulkan.TransferOnlyQueue, 1, &SubmitInfo, VK_NULL_HANDLE));
     vkQueueWaitIdle(GlobalVulkan.TransferOnlyQueue);
 
+    return 0;
+}
+
+
+i32
+VulkanCopyBuffer(VkCommandBuffer CommandBuffer, VkBuffer Src, VkBuffer Dest, VkDeviceSize Size, VkDeviceSize Offset)
+{
+    BeginCommandBuffer(CommandBuffer);
+
+    VkBufferCopy CopyRegion = {};
+    CopyRegion.srcOffset = 0;    // VkDeviceSize srcOffset;
+    CopyRegion.dstOffset = Offset;    // VkDeviceSize dstOffset;
+    CopyRegion.size      = Size; // VkDeviceSize size;
+
+    vkCmdCopyBuffer(CommandBuffer, Src, Dest, 1, &CopyRegion);
+
+    EndCommandBuffer(CommandBuffer);
 
     return 0;
 }
@@ -1332,6 +1423,105 @@ RenderGetVertexMemAlign()
 {
     u32 Align = (u32)GlobalVulkan.VertexMemAlign;
     return  Align;
+}
+
+i32
+VulkanPushTexture(void * Data, u32 DataSize, u32 Width, u32 Height, u32 BaseOffset)
+{
+    VkDeviceSize Offset = BaseOffset;
+    VkDeviceSize DeviceSize = DataSize;
+
+    // https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VkMemoryMapFlags.html
+    VkMemoryMapFlags Flags = 0; // RESERVED FUTURE USE
+
+    void * WriteToAddr;
+
+    /*
+     * 1) Copy CPU to GPU visible memory
+     * 2) Transition Image as destination
+     * 3) Copy GPU temp memory to Image
+     * 4) Transition Image to readable by shaders
+     */
+    VK_CHECK(vkMapMemory(GlobalVulkan.PrimaryDevice,
+                         GlobalVulkan.TransferBitDeviceMemory, 0 /*Offset*/, DeviceSize, Flags , &WriteToAddr));
+
+    memcpy(WriteToAddr, Data, DataSize);
+
+    vkUnmapMemory(GlobalVulkan.PrimaryDevice,GlobalVulkan.TransferBitDeviceMemory);
+
+    VkImageSubresourceRange Range;
+    Range.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT;
+    Range.baseMipLevel   = 0; // uint32_t baseMipLevel;
+    Range.levelCount     = 1; // uint32_t levelCount;
+    Range.baseArrayLayer = 0; // uint32_t baseArrayLayer;
+    Range.layerCount     = 1; // uint32_t layerCount;
+
+    BeginCommandBuffer(GlobalVulkan.TransferBitCommandBuffer);
+
+    VkImageMemoryBarrier TransferBarrier = {};
+    TransferBarrier.sType               = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+    TransferBarrier.oldLayout           = VK_IMAGE_LAYOUT_UNDEFINED;
+    TransferBarrier.newLayout           = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+    TransferBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    TransferBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    TransferBarrier.image               = GlobalVulkan.TextureImage;
+    TransferBarrier.subresourceRange    = Range;
+
+    TransferBarrier.srcAccessMask = 0;
+    TransferBarrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+
+    vkCmdPipelineBarrier(GlobalVulkan.TransferBitCommandBuffer, 
+                            VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, 
+                            VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, nullptr, 0, nullptr, 1, &TransferBarrier);
+
+    VkBufferImageCopy Copy;
+
+    VkImageSubresourceLayers   ImageSubresource;
+    ImageSubresource.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT; // VkImageAspectFlags   aspectMask;
+    ImageSubresource.mipLevel       = 0; // uint32_t   mipLevel;
+    ImageSubresource.baseArrayLayer = 0; // uint32_t   baseArrayLayer;
+    ImageSubresource.layerCount     = 1; // uint32_t   layerCount;
+
+    VkExtent3D   ImageExtent;
+    ImageExtent.width  = Width; // uint32_t   width;
+    ImageExtent.height = Height; // uint32_t   height;
+    ImageExtent.depth  = 0; // uint32_t   depth;
+
+    VkOffset3D ImageOffset;
+    ImageOffset.x = 0; // int32_t   x;
+    ImageOffset.y = 0; // int32_t   y;
+    ImageOffset.z = 0; // int32_t   z;
+
+    Copy.bufferOffset      = 0; // VkDeviceSize   bufferOffset;
+    Copy.bufferRowLength   = 0; // uint32_t   bufferRowLength;
+    Copy.bufferImageHeight = Height; // uint32_t   bufferImageHeight;
+    Copy.imageSubresource  = ImageSubresource; // VkImageSubresourceLayers   imageSubresource;
+    Copy.imageOffset       = ImageOffset; // VkOffset3D   imageOffset;
+    Copy.imageExtent       = ImageExtent; // VkExtent3D   imageExtent;
+
+
+	vkCmdCopyBufferToImage(GlobalVulkan.TransferBitCommandBuffer, 
+                           GlobalVulkan.TransferBitBuffer, GlobalVulkan.TextureImage, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &Copy);
+
+    VkImageMemoryBarrier ReadableBarrier = {};
+    TransferBarrier.sType               = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+    TransferBarrier.oldLayout           = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+    TransferBarrier.newLayout           = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+    TransferBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    TransferBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    TransferBarrier.image               = GlobalVulkan.TextureImage;
+    TransferBarrier.subresourceRange    = Range;
+
+    TransferBarrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+    TransferBarrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+
+    vkCmdPipelineBarrier(GlobalVulkan.TransferBitCommandBuffer, 
+                            VK_PIPELINE_STAGE_TRANSFER_BIT, 
+                            VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0, nullptr, 0, nullptr, 1, &ReadableBarrier);
+
+    EndCommandBuffer(GlobalVulkan.TransferBitCommandBuffer);
+
+    return 0;
 }
 
 i32
@@ -1527,13 +1717,22 @@ RenderPushMeshIndexed(u32 TotalMeshInstances, u32 IndicesSize, VkDeviceSize Offs
     return 0;
 }
 i32
-RenderPushMesh(u32 TotalMeshInstances, u32 VertexSize, u32 Offset)
+RenderDrawMesh(u32 VertexSize)
+{
+    VkCommandBuffer cmd = GlobalVulkan.PrimaryCommandBuffer[0];
+
+    vkCmdDraw(cmd,VertexSize, 1, 0 , 0);
+
+    return 0;
+}
+
+i32
+RenderBindMesh(u32 VertexSize, u32 Offset)
 {
     VkCommandBuffer cmd = GlobalVulkan.PrimaryCommandBuffer[0];
 
     VkDeviceSize OffsetVertex = Offset;
     vkCmdBindVertexBuffers(cmd, 0, 1, &GlobalVulkan.VertexBuffer, &OffsetVertex);
-    vkCmdDraw(cmd,VertexSize, 1, 0 , 0);
 
     return 0;
 }
@@ -2145,6 +2344,7 @@ VulkanGetInstance(b32 EnableValidationLayer,
     VK_INSTANCE_LEVEL_FN(Instance,vkBeginCommandBuffer);
     VK_INSTANCE_LEVEL_FN(Instance,vkEndCommandBuffer);
     VK_INSTANCE_LEVEL_FN(Instance,vkCmdCopyBuffer);
+    VK_INSTANCE_LEVEL_FN(Instance,vkCmdCopyBufferToImage);
     VK_INSTANCE_LEVEL_FN(Instance,vkCmdPushConstants);
     VK_INSTANCE_LEVEL_FN(Instance,vkCmdBeginRenderPass);
     VK_INSTANCE_LEVEL_FN(Instance,vkCmdEndRenderPass);
@@ -2248,6 +2448,12 @@ InitializeVulkan(i32 Width, i32 Height,
                 &GlobalVulkan.TransferBitBuffer, &GlobalVulkan.TransferBitDeviceMemory,&GlobalVulkan.TransferMemAlign,
                 2,&SharedBufferFamilyIndexArray[0])) return 1;
 
+    VkDeviceSize TextureBufferSize = Megabytes(50);
+    if (VulkanCreateImage(
+                GlobalVulkan.PrimaryGPU,GlobalVulkan.PrimaryDevice, 
+                &GlobalVulkan.TextureImage , &GlobalVulkan.TextureDeviceMemory, &GlobalVulkan.TextureMemAlign,
+                2048,2048)) return 1;
+
     VkDeviceSize VertexBufferSize = Megabytes(50);
     if (VulkanCreateBuffer(
                 GlobalVulkan.PrimaryGPU,GlobalVulkan.PrimaryDevice, 
@@ -2300,6 +2506,16 @@ CloseVulkan()
     if (VK_VALID_HANDLE(GlobalVulkan.TransferBitDeviceMemory))
     {
         vkFreeMemory(GlobalVulkan.PrimaryDevice, GlobalVulkan.TransferBitDeviceMemory, 0);
+    }
+
+    if (VK_VALID_HANDLE(GlobalVulkan.TextureImage))
+    {
+        vkDestroyImage(GlobalVulkan.PrimaryDevice,GlobalVulkan.TextureImage,0);
+    }
+
+    if (VK_VALID_HANDLE(GlobalVulkan.TextureDeviceMemory))
+    {
+        vkFreeMemory(GlobalVulkan.PrimaryDevice, GlobalVulkan.TextureDeviceMemory, 0);
     }
 
     if (VK_VALID_HANDLE(GlobalVulkan.VertexBuffer))

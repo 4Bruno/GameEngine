@@ -203,6 +203,22 @@ THREAD_WORK_HANDLER(AsyncUpdateEntitiesModel)
 }
 
 void
+UpdateTransform(entity * Entity)
+{
+    entity_transform * T = &Entity->Transform;
+
+    Translate(T->WorldP,T->LocalP);
+    T->WorldR = T->LocalR;
+    T->WorldS = T->LocalS;
+    m4 R = Quaternion_toMatrix(T->WorldR);
+    R[0].x = -R[0].x;
+    R[1].x = -R[1].x;
+    R[2].x = -R[2].x;
+    //Log("Pitch: %f, Yaw: %f\n",T->Pitch,T->Yaw);
+    T->WorldT = T->WorldP * R * M4(T->WorldS);
+}
+
+void
 UpdateGroundModel(world * World)
 {
     for (u32 EntityIndex = 0;
@@ -254,11 +270,13 @@ EntityDelete(entity * Entity)
 }
 
 void
-EntityAddMesh(entity * Entity, mesh_id MeshID)
+EntityAddMesh(entity * Entity, mesh_id MeshID, v3 Color, r32 Transparency)
 {
     mesh_group Mesh = GetMeshInfo(MeshID);
     Entity->MeshID = MeshID;
     Entity->MeshObjCount = Mesh.TotalMeshObjects;
+    Entity->Color = Color;
+    Entity->Transparency = Transparency;
 #if 0
     mesh_group Mesh = GestMeshInfo(MeshID.ID);
     for (uint32 MeshIndex = 0;

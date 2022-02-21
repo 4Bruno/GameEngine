@@ -13,7 +13,7 @@
 
 #define MAX_WORLD_ENTITY_COUNT (1 << 14)
 #define MAX_WORLD_ENTITY_COUNT_MINUS_ONE (MAX_WORLD_ENTITY_COUNT - 1)
-#define MAX_WORLD_GROUND_COUNT (128)
+#define MAX_WORLD_GROUND_COUNT (64)
 
 // Helpers to printf world positions
 #define STRP "fx:%f fy:%f fz:%f"
@@ -95,7 +95,9 @@ struct entity
     u32 MeshObjCount;
     u32 MeshObjTransOcuppancyIndex;
 
+    material_type Material;
     v3 Color; // 36
+    r32 Transparency;
 
     entity_transform Transform; // 170 + 36 = 206
 
@@ -318,5 +320,8 @@ BeginSimMeshObjTransformIterator(simulation * Sim, entity * Entity);
 
 GAME_API entity_transform *  
 AdvanceSimMeshObjTransformIterator(simulation_mesh_obj_transform_iterator * Iter);
+
+GAME_API entity *
+FindEntityByID(world * World,entity_id EntityID);
 
 #endif

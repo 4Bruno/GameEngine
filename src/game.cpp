@@ -2,42 +2,46 @@
 
 #include "game_animation.cpp"
 //#include "game_ground_generator.cpp"
-#include "game_ground_generator_3.cpp"
+#include "game_ground_generator.cpp"
 #include "game_memory.h"
 
 
 void
-FreeCameraView(game_state * GameState, v3 dP, r32 Yaw, r32 Pitch)
+FreeCameraView(render_controller * Renderer, camera * Camera, v3 dP, r32 Yaw, r32 Pitch)
 {
+
     if (dP.z)
     {
-        MoveViewForward(GameState, -dP.z);
+        MoveViewForward(Renderer, -dP.z);
     }
     if (dP.x)
     {
-        MoveViewRight(GameState, dP.x);
+        MoveViewRight(Renderer, dP.x);
     }
     if (Yaw)
     {
-        GameState->Camera.Yaw += -Yaw * 10.0f;
+        Camera->Yaw += -Yaw * 10.0f;
     }
     if (Pitch)
     {
-        GameState->Camera.Pitch += Pitch * 10.0f;
+        Camera->Pitch += Pitch * 10.0f;
     }
-    if (GameState->Camera.Pitch > 89.9f)
+    if (Camera->Pitch > 89.9f)
     {
-        GameState->Camera.Pitch = 89.9f;
+        Camera->Pitch = 89.9f;
     }
-    else if (GameState->Camera.Pitch < -89.9f)
+    else if (Camera->Pitch < -89.9f)
     {
-        GameState->Camera.Pitch = -89.9f;
+        Camera->Pitch = -89.9f;
     }
-    GameState->ViewRotationMatrix = M4();
+    Renderer->ViewRotationMatrix = M4();
+    RotateFill(&Renderer->ViewRotationMatrix, ToRadians(Camera->Pitch), ToRadians(Camera->Yaw), 0);
+#if 0
+    // This makes dizzy rotation
     GameState->ViewRotationMatrix[0].y = GameState->WorldUp.x;
     GameState->ViewRotationMatrix[1].y = GameState->WorldUp.y;
     GameState->ViewRotationMatrix[2].y = GameState->WorldUp.z;
-    RotateFill(&GameState->ViewRotationMatrix, ToRadians(GameState->Camera.Pitch), ToRadians(GameState->Camera.Yaw), 0);
+#endif
 }
 
 b32
@@ -87,7 +91,7 @@ CreateWorld(world * World)
 {
 
     // Sun == white
-    world_pos WC = MapIntoCell(World,WorldPosition(0,0,0),V3(0,-10.f,0));
+    world_pos WC = MapIntoCell(World,WorldPosition(0,0,0),V3(0,10.f,0));
     entity * Entity = AddEntity(World, WC);
     EntityAddTranslation(Entity,0,V3(0), V3(1.0f),3.0f);
     Entity->Color = V3(1.0f,1.0f,1.0f);
@@ -96,26 +100,22 @@ CreateWorld(world * World)
     WC = WorldPosition(0,0,0);
     Entity = AddEntity(World, WC);
     EntityAddTranslation(Entity,0,V3(0), V3(1.0f),3.0f);
-    Entity->Color = V3(0.5f,0.5f,0.5f);
-    EntityAddMesh(Entity,Mesh(0));
+    EntityAddMesh(Entity,Mesh(0), V3(0.5f,0.5f,0.5f));
 
     WC = WorldPosition(2,0,0);
     Entity = AddEntity(World, WC);
     EntityAddTranslation(Entity,0,V3(0), V3(1.0f),3.0f);
-    Entity->Color = V3(1.0f,0.0f,0.0f);
-    EntityAddMesh(Entity,Mesh(0));
+    EntityAddMesh(Entity,Mesh(0),V3(1.0f,0.0f,0.0f));
 
     WC = WorldPosition(0,0,-2);
     Entity = AddEntity(World, WC);
     EntityAddTranslation(Entity,0,V3(0), V3(1.0f),3.0f);
-    Entity->Color = V3(0.0f,0.0f,1.0f);
-    EntityAddMesh(Entity,Mesh(0));
+    EntityAddMesh(Entity,Mesh(0),V3(0.0f,0.0f,1.0f));
 
     WC = WorldPosition(0,2,0);
     Entity = AddEntity(World, WC);
     EntityAddTranslation(Entity,0,V3(0), V3(1.0f),3.0f);
-    Entity->Color = V3(0.0f,1.0f,0.0f);
-    EntityAddMesh(Entity,Mesh(0));
+    EntityAddMesh(Entity,Mesh(0),V3(0.0f,1.0f,0.0f));
 
 #if 0
     WC = WorldPosition(0,0,0);
@@ -194,7 +194,36 @@ RemoveGroundEntity(world * World)
 }
 
 
+
+#if DEBUG
 debug_cycle * DebugCycles = 0;
+
+void
+DebugDraw(render_controller * Renderer,v3 LocalP, v3 Scale, v3 Color, r32 Transparency)
+{
+    entity E = {};
+    EntityAddTranslation(&E,0, LocalP, Scale,0);
+    UpdateTransform(&E);
+    E.Color = Color;
+    E.Transparency = Transparency;
+    PushDrawDebug(Renderer,&E);
+}
+#endif
+
+enum enum_textures
+{
+    enum_texture_none = 0,
+    enum_texture_ground_stone = 1
+};
+
+struct gpu_arena
+{
+    u32 TotalSize;
+    u32 CurrentSize;
+    i32 MemoryAlign;
+};
+
+
 
 extern "C"
 GAME_API
@@ -206,13 +235,15 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
 
     game_state * GameState = (game_state *)Memory->PermanentMemory;
     world * World = &GameState->World;
+    render_controller * Renderer = &GameState->Renderer;
 
-    if (!GameState->IsInitialized)
-    {
 #if DEBUG
         Assert(Memory->DebugCycle);
         DebugCycles = Memory->DebugCycle;
 #endif
+
+    if (!GameState->IsInitialized)
+    {
         u8 * Base = ((u8 *)Memory->PermanentMemory + sizeof(game_state));
         i32 AvailablePermanentMemory = Memory->PermanentMemorySize - sizeof(game_state);
         InitializeArena(&GameState->PermanentArena,Base, AvailablePermanentMemory);
@@ -236,7 +267,7 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
             // Do I need so many buckets?
             thread_memory_arena * ThreadArena = GameState->ThreadArena + ThreadBucketIndex;
 
-            u32 ArenaSize = Megabytes(4);
+            u32 ArenaSize = Megabytes(6);
             Base = PushSize(&GameState->TemporaryArena,ArenaSize);
             memory_arena * Arena = &ThreadArena->Arena;
             InitializeArena(Arena,Base, ArenaSize);
@@ -254,7 +285,7 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
         //GenerateWorld(World, WorldCenter);
         GameState->Simulation = PushStruct(&GameState->TemporaryArena,simulation);
         GameState->Simulation->Origin = WorldCenter;
-        GameState->Simulation->Dim = V3(80.0f, 10.0f, 80.0f);
+        GameState->Simulation->Dim = V3(80.0f, 25.0f, 80.0f);
         GameState->Simulation->MeshObjTransformCount = 0;
 
         u32 ShaderArenaSize = Megabytes(30);
@@ -266,23 +297,6 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
         InitializeArena(&GameState->MeshesArena, Base, MeshesArenaSize);
         GameState->LimitMeshes = 100;
         GameState->Meshes = PushArray(&GameState->MeshesArena, GameState->LimitMeshes, mesh_group);
-
-        // TODO: how to properly push vertex inputs to render?
-        // Game should tell how much arena?
-        // Should buffers be game runtime?
-        // or we always reserve a size and then use like we do with cpu memory
-        GameState->VertexArena = RenderGetMemoryArena();
-        GameState->IndicesArena = RenderGetMemoryArena();
-
-        // TODO: Procedural ground generation
-        // Pre-allocate in vertex buffer the ground mesh buffer
-        // vertex_point = 40 bytes
-        // With meshes of 30*30 = 3042 triangles
-        // approx 0.11 megabytes
-        // 5 MB / 0.12 = 41 ground tiles
-        u32 MaxGroundByteSize = Megabytes(5);
-        GameState->MaxGroundByteSize = MaxGroundByteSize;
-        //u32 VertexBufferBeginOffset = PushMeshSize(&GameState->VertexArena, MaxGroundByteSize,1);
 
         Assert(World->GroundEntityLimit > 0);
         GameState->GroundMeshLimit = World->GroundEntityLimit;
@@ -298,20 +312,30 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
             MeshGroup->Loaded = false;
         }
 
-        CreatePipeline(Memory,GameState);
-
         v3 WorldCenterV3 = V3(0,0,0);
 
+        u32 RenderArenaSize = Megabytes(15);
+        Base = PushSize(&GameState->TemporaryArena,RenderArenaSize);
+        InitializeArena(&GameState->RenderArena,Base, RenderArenaSize);
+
         r32 FarView = 2000.0f;
-        WorldInitializeView(GameState, (ToRadians(70.0f)), 
-                           ScreenWidth,ScreenHeight, 
-                           0.1f, FarView, 
-                           WorldCenterV3);
+        GameState->Renderer = 
+            NewRenderController(&GameState->RenderArena,
+                V3(0,1,0), ToRadians(70.0f),
+                ScreenWidth,ScreenHeight, 
+                0.1f, FarView,
+                WorldCenterV3);
+
+        CreateAllPipelines(GameState, Memory);
 
         GameState->CameraMode = true;
         GameState->CameraWorldP = WorldCenter;
 
-        Translate(GameState->ViewMoveMatrix, V3(0,1,0));
+#if 0
+        BeginTempArena(TempArena,2);
+        GetTexture(Memory,TempArena, enum_texture_ground_stone);
+        EndTempArena(TempArena,2);
+#endif
 
         GameState->IsInitialized = true;
     }
@@ -322,7 +346,8 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
 
     if (Input->ShaderHasChanged)
     {
-        CreatePipeline(Memory,GameState);
+        DestroyPipelines(GameState,Renderer);
+        CreateAllPipelines(GameState, Memory);
         Input->ShaderHasChanged = false;
     }
 
@@ -336,7 +361,7 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
     if (FirstTimePressed(&Input->Controller.R))
     {
         //GameState->Simulation->Origin = WorldPosition(0,0,0);
-        Translate(GameState->ViewMoveMatrix, V3(0,0,0));
+        Translate(Renderer->ViewMoveMatrix, V3(0,0,0));
 
         GameState->GroundMeshCount = 0;
         RemoveGroundEntity(&GameState->World);
@@ -384,15 +409,41 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
     r32 Speed = 30.0f * Input->DtFrame;
     r32 Gravity = 0.0f;//9.8f;
 
+    /* ------------------------- GAME BEGIN RENDER ------------------------- */
+
+    v4 ClearColor = V4(0,0,0,1);
+
+    BeginRender(Renderer, ClearColor);
+
     /* ----------------------- GAME SYSTEMS UPDATE ---------------------------- */
     // Move camera and set simulation in new center
-    FreeCameraView(GameState, InputdP * Speed, Yaw, Pitch);
-    v3 CameraP = GetViewPos(GameState) + V3(0,1,0);
-    CameraP.x = -CameraP.x;
-    CameraP.z = -CameraP.z;
-    CameraP.y = -CameraP.y;
+#if 1
+    FreeCameraView(Renderer,&GameState->Camera, InputdP * Speed, Yaw, Pitch);
+    v3 CameraP = GetViewPos(Renderer);
     //Translate(GameState->ViewMoveMatrix,V3(0));
-    GameState->CameraWorldP = MapIntoCell(World,GameState->Simulation->Origin, CameraP);
+    GameState->CameraWorldP = MapIntoCell(World,GameState->Simulation->Origin,CameraP);
+#else 
+    if (GameState->DebugBox)
+    {
+        ViewLookAt(GameState, V3(-8.0f,12.0f,-5.0f), GameState->DebugBox->Transform.LocalP);
+        if (Input->Controller.Up.IsPressed)
+        {
+            GameState->DebugBox->Transform.LocalP.z += World->GridCellDimInMeters.z;
+        } 
+        if (Input->Controller.Down.IsPressed)
+        {
+            GameState->DebugBox->Transform.LocalP.z -= World->GridCellDimInMeters.z;
+        }
+        if (Input->Controller.Left.IsPressed)
+        {
+            GameState->DebugBox->Transform.LocalP.x -= World->GridCellDimInMeters.x;
+        } 
+        if (Input->Controller.Right.IsPressed)
+        {
+            GameState->DebugBox->Transform.LocalP.x += World->GridCellDimInMeters.x;
+        }
+    }
+#endif
 
     //GameState->Simulation->Origin = MapIntoCell(World, GameState->CameraWorldP, V3(0,0,50));
     //Logn("Camera P " STRWORLDP, FWORLDP(GameState->CameraWorldP));
@@ -402,29 +453,27 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
     /* -------------- GROUND ------------------------ */
     world_pos BeginWorldP = GameState->CameraWorldP;
 
-#if 1
-    GenerateGround(Memory,GameState,World,BeginWorldP);
-    //GenerateGround2(Memory,GameState,World,BeginWorldP);
-#else
-    if (GameState->GroundMeshGroup->Loaded == false)
+    for (u32 i = 0; i < 10;++i)
     {
-        memory_arena * Arena = &GameState->TemporaryArena;
-        world_pos P = WorldPosition(0,0,0);
-
-        BeginTempArena(Arena,1);
-
-        vertex_point * VertexBuffer = (vertex_point *)Arena->Base + Arena->CurrentSize;
-        FillBufferTestGround(Arena, P, P, 3);
-        
-        RenderPushVertexData(Vertices,SizeVertexBuffer, VertexBufferBeginOffset); 
-
-        EndTempArena(Arena,1);
-
-        //TestGroundSingleMeshMultipleVoxel3(GameState,WorldPosition(0,0,0));
-        GameState->GroundMeshGroup->Loaded = true;
+        v3 LocalP = V3(5,(r32)i * World->GridCellDimInMeters.y,0);
+        v3 Scale = World->GridCellDimInMeters * 0.5f;
+        entity E = {};
+        EntityAddTranslation(&E,0, LocalP, Scale,0);
+        UpdateTransform(&E);
+        E.Color = V3((i % 3) == 0,((i + 1) % 3) == 0,((i + 2) % 3) == 0);
+        E.Transparency = 0.0f;
+        PushDrawDebug(Renderer,&E);
     }
-#endif
 
+#if 0
+    if (GameState->DebugBox)
+    {
+        world_pos P = MapIntoCell(World,GameState->Simulation->Origin,-GameState->DebugBox->Transform.LocalP);
+        GenerateGround(Memory,GameState,World,P);
+    }
+#else
+        GenerateGround(Memory,GameState,World,BeginWorldP);
+#endif
 
     /* -------------- SIMULATION ------------------------ */
     BeginSimulation(World, GameState->Simulation);
@@ -536,15 +585,14 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
 
     SetSourceLight(GameState,World);
 
-    /* ------------------------- GAME RENDER ------------------------- */
+    PushDrawSimulation(Memory, GameState,GameState->Simulation);
 
-    v4 ClearColor = V4(0,0,0,1);
+    /* ------------------------- GAME END RENDER ------------------------- */
 
-    BeginRender(GameState, ClearColor);
-
-    RenderEntities(Memory, GameState);
+    RenderDraw(GameState, Memory,Renderer);
+    RenderDrawGround(GameState,Renderer, GameState->Simulation);
     
-    EndRender(GameState);
+    EndRender(Renderer);
 
    // Logn("Total ground entities %i",GroundEntitiesCount);
 }

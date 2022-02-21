@@ -9,8 +9,11 @@ struct async_load_ground
     thread_memory_arena * ThreadArena;
     mesh_group  * MeshGroup;
 
-    void * FragmentedBuffer;
-
+    memory_arena * VertexArena;
     world_pos WorldP;
+    i32 MaxTileX;
+    i32 MaxTileY;
+    i32 MaxTileZ;
     u32 VoxelsPerAxis;
+    game_state * GameState;
 };

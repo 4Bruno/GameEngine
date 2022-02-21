@@ -92,14 +92,12 @@ struct game_state
     memory_arena PermanentArena;
     memory_arena TemporaryArena;
     memory_arena ShadersArena;
+    memory_arena RenderArena;
+
     // beginning of arena is for mesh_group
     // (sizeof(mesh_group) * LimitMeshes)
     // remaining buffer is for mesh children
     memory_arena MeshesArena;
-    // This arena has no memory backup
-    // it only tracks GPU vertex buffer offsets
-    memory_arena VertexArena;
-    memory_arena IndicesArena;
 
     memory_arena WorldArena;
     world World;
@@ -109,10 +107,6 @@ struct game_state
     thread_memory_arena * ThreadArena;
     u32 LimitThreadArenas;
 
-    i32 PipelineIndex;
-    i32 VertexShaders[2];
-    i32 FragmentShaders[2];
-
     mesh_group * Meshes;
     u32 LimitMeshes;
 
@@ -121,11 +115,7 @@ struct game_state
     u32 GroundMeshCount;
     u32 MaxGroundByteSize;
 
-    v3 WorldUp;
-    m4 ViewMoveMatrix;
-    m4 ViewRotationMatrix;
-    m4 ViewTransform;
-    m4 Projection;
+    render_controller Renderer;
 
     world_pos CameraWorldP;
     b32 CameraMode;

@@ -19,6 +19,23 @@ struct vertex_point
     v3 P;
     v3 N;
     v4 Color;
+    v2 UV;
+};
+
+struct mesh_material
+{
+    i32 Pipeline;
+    i32 PipelineLayout;
+};
+
+enum material_type
+{
+    material_type_plain = 0,
+    material_type_texture
+
+
+    ,
+    material_type_count
 };
 
 struct mesh
@@ -30,7 +47,6 @@ struct mesh
     
     u32 OffsetVertices;
     u32 OffsetIndices;
-
 };
 
 struct mesh_group

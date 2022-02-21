@@ -37,7 +37,10 @@ GAME_API void
 EntityAddTranslation(entity * Entity, entity * Parent, v3 P, v3 Scale, r32 Speed);
 
 GAME_API void
-EntityAddMesh(entity * Entity, mesh_id MeshID);
+UpdateTransform(entity * Entity);
+
+GAME_API void
+EntityAddMesh(entity * Entity, mesh_id MeshID, v3 Color = V3(1.0f,1.0f,1.0f), r32 Transparency = 0.0f);
 
 GAME_API void
 EntityDelete(entity * Entity);

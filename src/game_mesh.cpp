@@ -522,7 +522,7 @@ mesh_group *
 GetMesh(game_memory * Memory, game_state * GameState,mesh_id MeshID)
 {
 
-    if (!IS_VALID_MESHID(MeshID.ID)) return 0;
+    Assert(IS_VALID_MESHID(MeshID.ID));
 
     mesh_group * MeshGroup = (GameState->Meshes + MeshID.ID);
     
@@ -560,10 +560,12 @@ GetMesh(game_memory * Memory, game_state * GameState,mesh_id MeshID)
             //Logn("Worst case scenario mesh size %i", MeshSize);
             // calculate vertex arena new size in worst case scenario
             // to avoid new any mesh overlapping
-            Data->BaseOffset = PushMeshSize(&GameState->VertexArena, MeshSize, 1);
+            Data->BaseOffset = PushMeshSize(&GameState->Renderer.VertexArena, MeshSize, 1);
 
             Memory->AddWorkToWorkQueue(Memory->RenderWorkQueue , LoadMesh,Data);
         }
+        // use default 0 while loading others
+        MeshGroup = GameState->Meshes + 0;
     }
 
     return MeshGroup;

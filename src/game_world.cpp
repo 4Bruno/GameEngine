@@ -23,6 +23,24 @@ i32 NeighborOffsets[27][3] = {
 	-1,  1,  1,	 0,  1,  1,	 1,  1,  1
 };
 
+entity *
+FindEntityByID(world * World, entity_id EntityID)
+{
+    entity * EntityFound = 0;
+    for (u32 EntityIndex = 0;
+                EntityIndex < World->ActiveEntitiesCount;
+                ++EntityIndex)
+    {
+        entity * Entity = World->ActiveEntities + EntityIndex;
+        if (Entity->ID.ID == EntityID.ID)
+        {
+            EntityFound = Entity;
+            break;
+        }
+    }
+    return EntityFound;
+}
+
 u32
 WorldPosHash(world * World,world_pos P)
 {
@@ -224,7 +242,7 @@ BuildHierarchicalGridInnerNeighbors(cell_neighbor_offset * Neighbors, u32 DimX, 
 world
 NewWorld(memory_arena * Arena, u32 DimX, u32 DimY, u32 DimZ)
 {
-    world World;
+    world World = {};
 
     // Push data first so hash table is together
     World.ActiveEntitiesCount = 0;
@@ -236,7 +254,8 @@ NewWorld(memory_arena * Arena, u32 DimX, u32 DimY, u32 DimZ)
     u32 CountCells = DimX * DimY * DimZ;
     World.HashGridSizeMinusOne = CountCells - 1;
 
-    World.GridCellDimInMeters   = V3(1.5f) ; // RECORD   GridCellDimInMeters;
+    //World.GridCellDimInMeters   = V3(1.5f) ; // RECORD   GridCellDimInMeters;
+    World.GridCellDimInMeters   = V3(3.0f) ; // RECORD   GridCellDimInMeters;
     World.OneOverGridCellDimInMeters = VectorDivide(V3(1.0f),World.GridCellDimInMeters);
 
     World.TotalWorldEntities    = 0; // u32   TotalWorldEntities;
@@ -263,7 +282,8 @@ NewWorld(memory_arena * Arena, u32 DimX, u32 DimY, u32 DimZ)
     World.GroundEntityCount = 0;
     u32 HashGridSize = (World.GroundEntityLimit * 4);
     World.HashGroundEntities= PushArray(Arena, HashGridSize, entity *);
-    World.HashGroundOccupancy = PushArray(Arena, HashGridSize, b32); 
+    World.HashGroundOccupancy = PushArray(Arena, HashGridSize, i32); 
+    World.HashGridUsageCount = 0;
     World.HashGridGroundEntitiesSize = HashGridSize;
 
     for (u32 SlotIndex = 0;
@@ -633,7 +653,7 @@ UpdateWorldLocation(world * World, simulation * Sim)
 
                             if (EntityHasFlag(Dest,component_transform))
                             {
-                                v3 EntityInSimulationP = Substract(World,Sim->Origin, Dest->WorldP);
+                                v3 EntityInSimulationP = Substract(World,Dest->WorldP,Sim->Origin);
                                 Dest->Transform.LocalP = EntityInSimulationP;
                             }
                             ++EntitiesUnpacked;
@@ -656,7 +676,7 @@ UpdateWorldLocation(world * World, simulation * Sim)
              ++GroundIndex)
     {
         entity * Ground = World->GroundEntities + GroundIndex;
-        v3 EntityInSimulationP = Substract(World,Sim->Origin, Ground->WorldP);
+        v3 EntityInSimulationP = Substract(World,Ground->WorldP,Sim->Origin);
         //Logn(STRP, FP(EntityInSimulationP));
         if (InVolume(MinCorner, MaxCorner, EntityInSimulationP))
         {

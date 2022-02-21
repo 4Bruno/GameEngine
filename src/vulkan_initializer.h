@@ -31,6 +31,14 @@ struct mesh_push_constant
     v4 DebugColor;
 };
 
+struct pipeline_creation_result
+{
+    b32 Success;
+    i32 Pipeline;
+    i32 PipelineLayout;
+};
+
+
 RENDER_API
 i32
 InitializeVulkan(i32 Width, i32 Height, 
@@ -57,7 +65,7 @@ i32
 RenderFreeShaders();
 
 RENDER_API
-i32
+pipeline_creation_result
 RenderCreatePipeline(i32 VertexShaderIndex,
                      i32 FragmentShaderIndex);
 RENDER_API
@@ -70,7 +78,7 @@ RenderSetPipeline(i32 PipelineIndex);
 
 RENDER_API
 i32
-RenderPushMesh(u32 TotalMeshInstances, u32 VertexSize, u32 Offset);
+RenderDrawMesh(u32 VertexSize);
 
 RENDER_API
 i32
@@ -97,8 +105,15 @@ memory_arena
 RenderGetMemoryArena();
 
 RENDER_API
+i32
+RenderBindMesh(u32 VertexSize, u32 Offset);
+
+RENDER_API
 void
 RenderPushVertexConstant(u32 Size,void * Data);
+
+RENDER_API i32
+VulkanPushTexture(void * Data, u32 DataSize, u32 Width, u32 Height, u32 BaseOffset);
 
 RENDER_API
 void

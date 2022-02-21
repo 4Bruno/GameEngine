@@ -29,11 +29,16 @@ void main()
     FragToLightSrc = FragToLightSrc * FragToLightSrcLength;
     float AmbientLight = 0.2f;
     float SpecularLight = min(max(dot(N,FragToLightSrc),0.0f) * (FragToLightSrcLength*10.0f),0.8f);
-
-    //vec3 ColorDebug = vec3(PushConstants.ColorDebug);
-    outColor = (AmbientLight + SpecularLight) * PushConstants.ColorDebug;
-    TextCoord = UV;
-
+    //if (PushConstants.SourceLight.y == 0.0f)
+    vec3 ColorDebug = vec3(PushConstants.ColorDebug);
+    if (ColorDebug.x == 1.0f && ColorDebug.y == 1.0f && ColorDebug.z == 1.0f)
+    {
+        outColor = vec4(1.0,1.0f,1.0f,1.0f);
+    }
+    else
+    {
+        outColor = (AmbientLight + SpecularLight) * PushConstants.ColorDebug;
+    }
     //outColor = vec4(N,1.0f);
     //outColor = PushConstants.ColorDebug;
     //outColor = vec4(FragToLightSrc,1.0f);
@@ -41,5 +46,6 @@ void main()
     //outColor = PushConstants.ColorDebug * clamp(Position.y,0,1.0f) * (AmbientLight + SpecularLight);
     //outColor = vec4(1.0,1.0f,1.0f,1.0f);
     gl_Position = PushConstants.RenderMatrix * vec4(Position, 1.0f);
+    TextCoord = UV;
 }
 
