@@ -120,6 +120,8 @@ PFN_vkCreateRenderPass                        vkCreateRenderPass                
 PFN_vkDestroyRenderPass                       vkDestroyRenderPass                       = 0;
 PFN_vkCreateImageView                         vkCreateImageView                         = 0;
 PFN_vkCreateImage                             vkCreateImage                             = 0;
+PFN_vkCreateSampler                           vkCreateSampler                           = 0;
+PFN_vkDestroySampler                          vkDestroySampler                          = 0;
 PFN_vkDestroyImageView                        vkDestroyImageView                        = 0;
 PFN_vkCreateFramebuffer                       vkCreateFramebuffer                       = 0; 
 PFN_vkDestroyFramebuffer                      vkDestroyFramebuffer                      = 0; 
@@ -127,6 +129,14 @@ PFN_vkCreateGraphicsPipelines                 vkCreateGraphicsPipelines         
 PFN_vkCreatePipelineLayout                    vkCreatePipelineLayout                    = 0;
 PFN_vkDestroyPipeline                         vkDestroyPipeline                         = 0;
 PFN_vkDestroyPipelineLayout                   vkDestroyPipelineLayout                   = 0;
+
+PFN_vkCreateDescriptorSetLayout               vkCreateDescriptorSetLayout               = 0;
+PFN_vkDestroyDescriptorSetLayout              vkDestroyDescriptorSetLayout              = 0;
+PFN_vkAllocateDescriptorSets                  vkAllocateDescriptorSets                  = 0;  
+PFN_vkUpdateDescriptorSets                    vkUpdateDescriptorSets                    = 0;
+PFN_vkCreateDescriptorPool                    vkCreateDescriptorPool                    = 0;
+PFN_vkDestroyDescriptorPool                   vkDestroyDescriptorPool                   = 0;
+PFN_vkCmdBindDescriptorSets                   vkCmdBindDescriptorSets                   = 0;
 
 PFN_vkAllocateMemory                          vkAllocateMemory                          = 0;
 PFN_vkFreeMemory                              vkFreeMemory                              = 0;
@@ -177,6 +187,7 @@ struct vulkan_pipeline
     VkPipelineLayout PipelineLayout;
 };
 
+
 i32
 VulkanFindSuitableMemoryIndex(VkPhysicalDevice PhysicalDevice, VkMemoryRequirements MemoryRequirements,VkMemoryPropertyFlags PropertyFlags)
 {
@@ -206,6 +217,44 @@ struct depth_buffer
     VkFormat       Format;
     VkDeviceMemory DeviceMemory;
 };
+
+struct vulkan_buffer
+{
+    VkBuffer             Buffer;
+    VkDeviceMemory       DeviceMemory;
+    VkMemoryRequirements MemoryRequirements;
+    VkDevice             DeviceAllocator;
+};
+
+
+
+VkDescriptorSetLayoutBinding
+VulkanCreateDescriptorSetLayoutBinding(u32 BindingSlot,VkDescriptorType DescriptorType,VkShaderStageFlags ShaderStageFlags)
+{
+    VkDescriptorSetLayoutBinding Result;
+    Result.binding            = BindingSlot; // uint32_t   binding;
+    Result.descriptorType     = DescriptorType; // VkDescriptorType   descriptorType;
+    Result.descriptorCount    = 1; // uint32_t   descriptorCount;
+    Result.stageFlags         = ShaderStageFlags; // VkShaderStageFlags   stageFlags;
+    Result.pImmutableSamplers = 0; // Typedef * pImmutableSamplers;
+
+    return Result;
+}
+
+inline void
+DeleteVulkanBuffer(vulkan_buffer * Buffer)
+{
+    if (VK_VALID_HANDLE(Buffer->Buffer))
+    {
+        vkDestroyBuffer(Buffer->DeviceAllocator,Buffer->Buffer,0);
+    } 
+
+    if (VK_VALID_HANDLE(Buffer->DeviceMemory))
+    {
+        vkFreeMemory(Buffer->DeviceAllocator, Buffer->DeviceMemory, 0);
+    }
+}
+
 
 i32
 VulkanCreateDepthBuffer(VkPhysicalDevice PhysicalDevice,VkDevice Device, VkExtent3D Extent, depth_buffer * DepthBuffer)
@@ -290,8 +339,8 @@ i32
 VulkanCreateImage(VkPhysicalDevice PhysicalDevice,VkDevice Device, 
                   VkImage * Image,
                   VkDeviceMemory * DeviceMemory, 
-                  VkDeviceSize * MemAlign,
-                  u32 Width, u32 Height)
+                  VkMemoryRequirements * MemReq,
+                  u32 Width, u32 Height, u32 Channels)
 {
     VkImageCreateInfo ImageCreateInfo;
 
@@ -299,7 +348,23 @@ VulkanCreateImage(VkPhysicalDevice PhysicalDevice,VkDevice Device,
     ImageCreateInfo.pNext                 = 0; // Void * pNext;
     ImageCreateInfo.flags                 = 0; // VkImageCreateFlags   flags;
     ImageCreateInfo.imageType             = VK_IMAGE_TYPE_2D; // VkImageType   imageType;
+
+    Assert((Channels == 3) || (Channels == 4));
+
+#if 0
+    if (Channels == 3)
+    {
+        Assert(0); // CHECK IF SUPPORTED!
+        ImageCreateInfo.format                = VK_FORMAT_R8G8B8_UNORM;
+    }
+    else if (Channels == 4)
+    {
+        ImageCreateInfo.format                = VK_FORMAT_R8G8B8A8_SRGB; // VkFormat   format;
+    }
+#endif
+
     ImageCreateInfo.format                = VK_FORMAT_R8G8B8A8_SRGB; // VkFormat   format;
+
     ImageCreateInfo.extent.width  = Width;
     ImageCreateInfo.extent.height = Height;
     ImageCreateInfo.extent.depth  = 1;
@@ -317,24 +382,21 @@ VulkanCreateImage(VkPhysicalDevice PhysicalDevice,VkDevice Device,
 
     VK_CHECK(vkCreateImage(Device,&ImageCreateInfo, 0, Image));
 
-    VkMemoryRequirements MemReq;
-    vkGetImageMemoryRequirements(Device, *Image, &MemReq);
+    vkGetImageMemoryRequirements(Device, *Image, MemReq);
     VkMemoryPropertyFlags PropertyFlags = VK_MEMORY_GPU;
 
-    u32 MemoryTypeIndex = VulkanFindSuitableMemoryIndex(PhysicalDevice,MemReq,PropertyFlags);
+    u32 MemoryTypeIndex = VulkanFindSuitableMemoryIndex(PhysicalDevice,*MemReq,PropertyFlags);
     if (MemoryTypeIndex < 0)
     {
         Log("Couldn't find suitable CPU-GPU memory index\n");
         return 1;
     }
 
-    *MemAlign = MemReq.alignment;
-
     VkMemoryAllocateInfo AllocateInfo;
 
     AllocateInfo.sType           = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO; // VkStructureType   sType;
     AllocateInfo.pNext           = 0;                       // Void * pNext;
-    AllocateInfo.allocationSize  = MemReq.size;             // VkDeviceSize allocationSize;
+    AllocateInfo.allocationSize  = MemReq->size;             // VkDeviceSize allocationSize;
     AllocateInfo.memoryTypeIndex = (u32)MemoryTypeIndex; // u32_t memoryTypeIndex;
 
     VK_CHECK(vkAllocateMemory(Device, &AllocateInfo, 0, DeviceMemory));
@@ -343,6 +405,25 @@ VulkanCreateImage(VkPhysicalDevice PhysicalDevice,VkDevice Device,
 
     return 0;
 }
+
+struct frame_data 
+{
+    VkFence     RenderFence;
+    VkSemaphore ImageAvailableSemaphore;
+    VkSemaphore RenderSemaphore;
+
+    VkCommandPool   CommandPool;
+    VkCommandBuffer PrimaryCommandBuffer;
+
+    VkDescriptorSet GlobalDescriptor;
+    VkDescriptorSet ObjectsDescriptor;
+
+    vulkan_buffer ObjectsBuffer;
+    u32 ObjectsCount;
+};
+
+// number of frames  [0-2] we are looping
+#define FRAME_OVERLAP 2
 
 struct vulkan
 {
@@ -363,34 +444,33 @@ struct vulkan
     u32  TransferOnlyQueueFamilyIndex;
     VkQueue TransferOnlyQueue;
 
-    VkCommandPool   CommandPool;
-    VkCommandBuffer PrimaryCommandBuffer[3];
-
     VkCommandPool   CommandPoolTransferBit;
     VkCommandBuffer TransferBitCommandBuffer;
 
-    VkDeviceMemory TransferBitDeviceMemory;
-    VkBuffer       TransferBitBuffer;
-    VkDeviceSize   TransferMemAlign;
+    vulkan_buffer TransferBitBuffer;
 
     VkDeviceMemory TextureDeviceMemory;
     VkImage        TextureImage;
+    VkImageView    TextureImageView;
+    VkSampler      TextureSampler;
     VkDeviceSize   TextureMemAlign;
 
-    VkDeviceMemory VertexDeviceMemory;
-    VkBuffer       VertexBuffer;
-    VkDeviceSize   VertexMemAlign;
-
-    VkDeviceMemory IndexDeviceMemory;
-    VkBuffer       IndexBuffer;
-    VkDeviceSize   IndexMemAlign;
+    vulkan_buffer VertexBuffer;
+    vulkan_buffer IndexBuffer;
 
     VkRenderPass  RenderPass;
     VkFramebuffer Framebuffers[3];
 
-    VkFence     RenderFence;
-    VkSemaphore ImageAvailableSemaphore;
-    VkSemaphore RenderSemaphore;
+    VkDescriptorSetLayout _GlobalSetLayout;
+    VkDescriptorSetLayout _ObjectsSetLayout;
+    VkDescriptorPool _DescriptorPool;
+
+    // Global buffer for simulation data to
+    // be passed to shaders
+    vulkan_buffer SimulationBuffer;
+
+    frame_data FrameData[FRAME_OVERLAP];
+    i32 _CurrentFrameData;
 
     // Secondary GPU if available
     VkPhysicalDevice SecondaryGPU;
@@ -421,6 +501,19 @@ struct vulkan
 global_variable vulkan        GlobalVulkan    = {};
 global_variable b32        GlobalWindowIsMinimized = false;
 
+
+VkDeviceSize
+PaddedUniformBuffer(VkDeviceSize Size)
+{
+    VkPhysicalDeviceProperties properties{};
+    vkGetPhysicalDeviceProperties(GlobalVulkan.PrimaryGPU, &properties);
+    VkDeviceSize Align = 
+        (properties.limits.minUniformBufferOffsetAlignment - 1);
+
+    VkDeviceSize AlignedSize = (Size + Align) & ~Align;
+
+    return AlignedSize;
+}
 
 VkPipelineShaderStageCreateInfo
 VulkanCreateShaderStageInfo(VkShaderStageFlagBits Stage, VkShaderModule Module)
@@ -848,6 +941,49 @@ struct surface_capabilities
     b32                          Minimized;
 };
 
+inline frame_data *
+GetCurrentFrame()
+{
+    frame_data * FrameData = GlobalVulkan.FrameData + (GlobalVulkan._CurrentFrameData % FRAME_OVERLAP);
+    
+    return FrameData;
+}
+
+GPUObjectData *
+VulkanBeginObjectDataMapping(u32 * CurrentObjectCount)
+{
+    void * WriteToAddr = 0;
+
+    VkMemoryMapFlags Flags = 0; // RESERVED FUTURE USE
+
+    *CurrentObjectCount = GetCurrentFrame()->ObjectsCount;
+
+    VkDeviceSize OffsetObjects = 
+        GetCurrentFrame()->ObjectsCount * sizeof(GPUObjectData);
+
+    VkDeviceSize Size =
+        GetCurrentFrame()->ObjectsBuffer.MemoryRequirements.size - OffsetObjects;
+
+    if (VK_FAILS(vkMapMemory(GlobalVulkan.PrimaryDevice,
+                         GetCurrentFrame()->ObjectsBuffer.DeviceMemory, 
+                         OffsetObjects, Size, Flags , &WriteToAddr))
+       )
+    {
+        Logn("Failed to initiate mapping on Objects buffer");
+        *CurrentObjectCount = 0;
+    }
+
+    return (GPUObjectData *)WriteToAddr;
+}
+
+void
+VulkanEndObjectDataMapping(u32 CountObjects)
+{
+    vkUnmapMemory(GlobalVulkan.PrimaryDevice,GetCurrentFrame()->ObjectsBuffer.DeviceMemory);
+
+    GetCurrentFrame()->ObjectsCount = CountObjects;
+}
+
 i32
 VulkanGetSurfaceCapabilities(VkPhysicalDevice PhysicalDevice,VkSurfaceKHR Surface,
                              u32 Width, u32 Height,
@@ -1268,8 +1404,70 @@ WaitForRender()
 {
     if (GlobalWindowIsMinimized) return 0;
 
-    VK_CHECK(vkWaitForFences(GlobalVulkan.PrimaryDevice, 1, &GlobalVulkan.RenderFence, true, 1000000000));
-    VK_CHECK(vkResetFences(GlobalVulkan.PrimaryDevice, 1, &GlobalVulkan.RenderFence));
+    VK_CHECK(vkWaitForFences(GlobalVulkan.PrimaryDevice, 1, &GetCurrentFrame()->RenderFence, true, 1000000000));
+    VK_CHECK(vkResetFences(GlobalVulkan.PrimaryDevice, 1, &GetCurrentFrame()->RenderFence));
+
+    return 0;
+}
+
+VkCommandBuffer
+BeginSingleCommandBuffer()
+{
+    VkResult Result;
+
+    VkCommandBufferAllocateInfo CommandBufferAllocateInfo;
+
+    CommandBufferAllocateInfo.sType              = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO; // VkStructureType   sType;
+    CommandBufferAllocateInfo.pNext              = 0;                               // Void * pNext;
+    CommandBufferAllocateInfo.commandPool        = GetCurrentFrame()->CommandPool;
+    CommandBufferAllocateInfo.level              = VK_COMMAND_BUFFER_LEVEL_PRIMARY; // VkCommandBufferLevel level;
+    CommandBufferAllocateInfo.commandBufferCount = 1;              // u32_t commandBufferCount;
+
+    VkCommandBuffer CommandBuffer;
+
+    Result = vkAllocateCommandBuffers(GlobalVulkan.PrimaryDevice, &CommandBufferAllocateInfo , &CommandBuffer);
+
+    if (VK_SUCCESS(Result))
+    {
+
+        VkCommandBufferBeginInfo CommandBufferBeginInfo;
+        CommandBufferBeginInfo.sType            = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO; // VkStructureType   sType;
+        CommandBufferBeginInfo.pNext            = 0;                                           // Void * pNext;
+        CommandBufferBeginInfo.flags            = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT; // VkCommandBufferUsageFlags   flags;
+        CommandBufferBeginInfo.pInheritanceInfo = 0;                                           // Typedef * pInheritanceInfo;
+
+        Result = vkBeginCommandBuffer(CommandBuffer,&CommandBufferBeginInfo);
+        if (VK_FAILS(Result))
+        {
+            Assert(0);
+            vkFreeCommandBuffers(GlobalVulkan.PrimaryDevice, GetCurrentFrame()->CommandPool, 1, &CommandBuffer);
+            CommandBuffer = VK_NULL_HANDLE;
+        }
+    }
+
+    return CommandBuffer;
+}
+
+i32
+EndSingleCommandBuffer(VkCommandBuffer CommandBuffer)
+{
+    vkEndCommandBuffer(CommandBuffer);
+
+    VkSubmitInfo SubmitInfo = {};
+    SubmitInfo.sType                = VK_STRUCTURE_TYPE_SUBMIT_INFO; // VkStructureType   sType;
+    SubmitInfo.pNext                = 0; // Void * pNext;
+    SubmitInfo.waitSemaphoreCount   = 0; // u32_t   waitSemaphoreCount;
+    SubmitInfo.pWaitSemaphores      = 0; // Typedef * pWaitSemaphores;
+    SubmitInfo.pWaitDstStageMask    = 0; // Typedef * pWaitDstStageMask;
+    SubmitInfo.commandBufferCount   = 1; // u32_t   commandBufferCount;
+    SubmitInfo.pCommandBuffers      = &CommandBuffer; // Typedef * pCommandBuffers;
+    SubmitInfo.signalSemaphoreCount = 0; // u32_t   signalSemaphoreCount;
+    SubmitInfo.pSignalSemaphores    = 0; // Typedef * pSignalSemaphores;
+
+    VK_CHECK(vkQueueSubmit(GlobalVulkan.GraphicsQueue, 1, &SubmitInfo, VK_NULL_HANDLE));
+    vkQueueWaitIdle(GlobalVulkan.GraphicsQueue);
+
+    vkFreeCommandBuffers(GlobalVulkan.PrimaryDevice, GetCurrentFrame()->CommandPool, 1, &CommandBuffer);
 
     return 0;
 }
@@ -1290,7 +1488,7 @@ BeginCommandBuffer(VkCommandBuffer CommandBuffer)
     return 0;
 }
 i32
-EndCommandBuffer(VkCommandBuffer CommandBuffer)
+EndCommandBuffer(VkCommandBuffer CommandBuffer, VkQueue FamilyQueue)
 {
     vkEndCommandBuffer(CommandBuffer);
 
@@ -1305,8 +1503,8 @@ EndCommandBuffer(VkCommandBuffer CommandBuffer)
     SubmitInfo.signalSemaphoreCount = 0; // u32_t   signalSemaphoreCount;
     SubmitInfo.pSignalSemaphores    = 0; // Typedef * pSignalSemaphores;
 
-    VK_CHECK(vkQueueSubmit(GlobalVulkan.TransferOnlyQueue, 1, &SubmitInfo, VK_NULL_HANDLE));
-    vkQueueWaitIdle(GlobalVulkan.TransferOnlyQueue);
+    VK_CHECK(vkQueueSubmit(FamilyQueue, 1, &SubmitInfo, VK_NULL_HANDLE));
+    vkQueueWaitIdle(FamilyQueue);
 
     return 0;
 }
@@ -1324,18 +1522,24 @@ VulkanCopyBuffer(VkCommandBuffer CommandBuffer, VkBuffer Src, VkBuffer Dest, VkD
 
     vkCmdCopyBuffer(CommandBuffer, Src, Dest, 1, &CopyRegion);
 
-    EndCommandBuffer(CommandBuffer);
+    EndCommandBuffer(CommandBuffer,GlobalVulkan.TransferOnlyQueue);
 
     return 0;
 }
 
+
 i32
 VulkanCreateBuffer(VkPhysicalDevice PhysicalDevice,VkDevice Device, 
-                    VkDeviceSize Size, VkSharingMode SharingMode,VkMemoryPropertyFlags PropertyFlags, VkBufferUsageFlags Usage,
-                    VkBuffer * Buffer, VkDeviceMemory * DeviceMemory, VkDeviceSize * MemAlign,
+                    VkDeviceSize Size, 
+                    VkSharingMode SharingMode,
+                    VkMemoryPropertyFlags PropertyFlags, 
+                    VkBufferUsageFlags Usage,
+                    vulkan_buffer * Buffer,
                     u32 SharedBufferQueueFamilyIndexCount = 0,
                     u32 * SharedBufferQueueFamilyIndexArray = 0)
 {
+    Buffer->DeviceAllocator = Device; 
+
     VkBufferCreateInfo BufferCreateInfo;
 
     BufferCreateInfo.sType                 = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO; // VkStructureType sType;
@@ -1361,14 +1565,11 @@ VulkanCreateBuffer(VkPhysicalDevice PhysicalDevice,VkDevice Device,
         BufferCreateInfo.pQueueFamilyIndices   = 0;           // Typedef * pQueueFamilyIndices;
     }
 
-    VK_CHECK(vkCreateBuffer(Device, &BufferCreateInfo,0, Buffer));
+    VK_CHECK(vkCreateBuffer(Device, &BufferCreateInfo,0, &Buffer->Buffer));
 
-    VkMemoryRequirements MemReq;
-    vkGetBufferMemoryRequirements(Device, *Buffer, &MemReq);
+    vkGetBufferMemoryRequirements(Device, Buffer->Buffer, &Buffer->MemoryRequirements);
 
-    *MemAlign = MemReq.alignment;
-
-    u32 MemoryTypeIndex = VulkanFindSuitableMemoryIndex(PhysicalDevice,MemReq,PropertyFlags);
+    u32 MemoryTypeIndex = VulkanFindSuitableMemoryIndex(PhysicalDevice,Buffer->MemoryRequirements,PropertyFlags);
     if (MemoryTypeIndex < 0)
     {
 #if 0
@@ -1388,12 +1589,12 @@ VulkanCreateBuffer(VkPhysicalDevice PhysicalDevice,VkDevice Device,
 
     AllocateInfo.sType           = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO; // VkStructureType   sType;
     AllocateInfo.pNext           = 0;                       // Void * pNext;
-    AllocateInfo.allocationSize  = MemReq.size;             // VkDeviceSize allocationSize;
+    AllocateInfo.allocationSize  = Buffer->MemoryRequirements.size;             // VkDeviceSize allocationSize;
     AllocateInfo.memoryTypeIndex = (u32)MemoryTypeIndex; // u32_t memoryTypeIndex;
 
-    VK_CHECK(vkAllocateMemory(Device, &AllocateInfo, 0, DeviceMemory));
+    VK_CHECK(vkAllocateMemory(Device, &AllocateInfo, 0, &Buffer->DeviceMemory));
 
-    vkBindBufferMemory(Device,*Buffer,*DeviceMemory,0);
+    vkBindBufferMemory(Device,Buffer->Buffer,Buffer->DeviceMemory,0);
 
     return 0;
 }
@@ -1413,7 +1614,7 @@ RenderGetMemoryArena()
 void
 RenderPushVertexConstant(u32 Size,void * Data)
 {
-    VkCommandBuffer cmd = GlobalVulkan.PrimaryCommandBuffer[0];
+    VkCommandBuffer cmd = GetCurrentFrame()->PrimaryCommandBuffer;
 
     vkCmdPushConstants(cmd,GlobalVulkan.PipelineLayout,VK_SHADER_STAGE_VERTEX_BIT,0,Size,Data);
 }
@@ -1421,20 +1622,57 @@ RenderPushVertexConstant(u32 Size,void * Data)
 u32
 RenderGetVertexMemAlign()
 {
-    u32 Align = (u32)GlobalVulkan.VertexMemAlign;
+    u32 Align = (u32)GlobalVulkan.VertexBuffer.MemoryRequirements.alignment;
     return  Align;
 }
 
+void
+DestroyTextures()
+{
+    if (VK_VALID_HANDLE(GlobalVulkan.TextureSampler))
+    {
+        vkDestroySampler(GlobalVulkan.PrimaryDevice,GlobalVulkan.TextureSampler,0);
+    }
+    if (VK_VALID_HANDLE(GlobalVulkan.TextureImageView))
+    {
+        vkDestroyImageView(GlobalVulkan.PrimaryDevice,GlobalVulkan.TextureImageView,0);
+    }
+
+    if (VK_VALID_HANDLE(GlobalVulkan.TextureImage))
+    {
+        vkDestroyImage(GlobalVulkan.PrimaryDevice,GlobalVulkan.TextureImage,0);
+    }
+
+    if (VK_VALID_HANDLE(GlobalVulkan.TextureDeviceMemory))
+    {
+        vkFreeMemory(GlobalVulkan.PrimaryDevice, GlobalVulkan.TextureDeviceMemory, 0);
+    }
+}
+
 i32
-VulkanPushTexture(void * Data, u32 DataSize, u32 Width, u32 Height, u32 BaseOffset)
+VulkanPushTexture(void * Data, u32 Width, u32 Height, u32 BaseOffset, u32 Channels)
 {
     VkDeviceSize Offset = BaseOffset;
-    VkDeviceSize DeviceSize = DataSize;
 
     // https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VkMemoryMapFlags.html
     VkMemoryMapFlags Flags = 0; // RESERVED FUTURE USE
 
     void * WriteToAddr;
+
+    DestroyTextures();
+
+    VkMemoryRequirements MemReq;
+
+    if (VulkanCreateImage(
+                GlobalVulkan.PrimaryGPU,GlobalVulkan.PrimaryDevice, 
+                &GlobalVulkan.TextureImage , &GlobalVulkan.TextureDeviceMemory, &MemReq,
+                Width,Height,Channels)) 
+        return 1;
+
+    GlobalVulkan.TextureMemAlign = MemReq.alignment;
+
+    VkDeviceSize DeviceSize = MemReq.size;
+    DeviceSize = Width * Height * Channels;
 
     /*
      * 1) Copy CPU to GPU visible memory
@@ -1443,11 +1681,15 @@ VulkanPushTexture(void * Data, u32 DataSize, u32 Width, u32 Height, u32 BaseOffs
      * 4) Transition Image to readable by shaders
      */
     VK_CHECK(vkMapMemory(GlobalVulkan.PrimaryDevice,
-                         GlobalVulkan.TransferBitDeviceMemory, 0 /*Offset*/, DeviceSize, Flags , &WriteToAddr));
+                         GlobalVulkan.TransferBitBuffer.DeviceMemory, 
+                         0 /*Offset*/, DeviceSize, Flags , &WriteToAddr));
 
-    memcpy(WriteToAddr, Data, DataSize);
+    memcpy(WriteToAddr, Data, DeviceSize);
 
-    vkUnmapMemory(GlobalVulkan.PrimaryDevice,GlobalVulkan.TransferBitDeviceMemory);
+    vkUnmapMemory(GlobalVulkan.PrimaryDevice,GlobalVulkan.TransferBitBuffer.DeviceMemory);
+
+
+    /* TRANSITION LAYOUT */
 
     VkImageSubresourceRange Range;
     Range.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT;
@@ -1455,8 +1697,6 @@ VulkanPushTexture(void * Data, u32 DataSize, u32 Width, u32 Height, u32 BaseOffs
     Range.levelCount     = 1; // uint32_t levelCount;
     Range.baseArrayLayer = 0; // uint32_t baseArrayLayer;
     Range.layerCount     = 1; // uint32_t layerCount;
-
-    BeginCommandBuffer(GlobalVulkan.TransferBitCommandBuffer);
 
     VkImageMemoryBarrier TransferBarrier = {};
     TransferBarrier.sType               = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
@@ -1470,10 +1710,18 @@ VulkanPushTexture(void * Data, u32 DataSize, u32 Width, u32 Height, u32 BaseOffs
     TransferBarrier.srcAccessMask = 0;
     TransferBarrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
 
-    vkCmdPipelineBarrier(GlobalVulkan.TransferBitCommandBuffer, 
+    VkCommandBuffer SingleCmd = BeginSingleCommandBuffer();
+
+    Assert(VK_VALID_HANDLE(SingleCmd));
+
+    vkCmdPipelineBarrier(SingleCmd, 
                             VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, 
                             VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, nullptr, 0, nullptr, 1, &TransferBarrier);
 
+    EndSingleCommandBuffer(SingleCmd);
+
+
+    /* COPY IMAGE */
     VkBufferImageCopy Copy;
 
     VkImageSubresourceLayers   ImageSubresource;
@@ -1485,7 +1733,7 @@ VulkanPushTexture(void * Data, u32 DataSize, u32 Width, u32 Height, u32 BaseOffs
     VkExtent3D   ImageExtent;
     ImageExtent.width  = Width; // uint32_t   width;
     ImageExtent.height = Height; // uint32_t   height;
-    ImageExtent.depth  = 0; // uint32_t   depth;
+    ImageExtent.depth  = 1; // uint32_t   depth;
 
     VkOffset3D ImageOffset;
     ImageOffset.x = 0; // int32_t   x;
@@ -1494,32 +1742,95 @@ VulkanPushTexture(void * Data, u32 DataSize, u32 Width, u32 Height, u32 BaseOffs
 
     Copy.bufferOffset      = 0; // VkDeviceSize   bufferOffset;
     Copy.bufferRowLength   = 0; // uint32_t   bufferRowLength;
-    Copy.bufferImageHeight = Height; // uint32_t   bufferImageHeight;
+    Copy.bufferImageHeight = 0; // uint32_t   bufferImageHeight;
     Copy.imageSubresource  = ImageSubresource; // VkImageSubresourceLayers   imageSubresource;
     Copy.imageOffset       = ImageOffset; // VkOffset3D   imageOffset;
     Copy.imageExtent       = ImageExtent; // VkExtent3D   imageExtent;
 
+    BeginCommandBuffer(GlobalVulkan.TransferBitCommandBuffer);
+
 
 	vkCmdCopyBufferToImage(GlobalVulkan.TransferBitCommandBuffer, 
-                           GlobalVulkan.TransferBitBuffer, GlobalVulkan.TextureImage, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &Copy);
+                           GlobalVulkan.TransferBitBuffer.Buffer, 
+                           GlobalVulkan.TextureImage, 
+                           VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &Copy);
 
+    EndCommandBuffer(GlobalVulkan.TransferBitCommandBuffer, GlobalVulkan.TransferOnlyQueue);
+
+    /* TRANSITION LAYOUT */
     VkImageMemoryBarrier ReadableBarrier = {};
-    TransferBarrier.sType               = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-    TransferBarrier.oldLayout           = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
-    TransferBarrier.newLayout           = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-    TransferBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    TransferBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    TransferBarrier.image               = GlobalVulkan.TextureImage;
-    TransferBarrier.subresourceRange    = Range;
+    ReadableBarrier.sType               = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+    ReadableBarrier.oldLayout           = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+    ReadableBarrier.newLayout           = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+    ReadableBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    ReadableBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    ReadableBarrier.image               = GlobalVulkan.TextureImage;
+    ReadableBarrier.subresourceRange    = Range;
 
-    TransferBarrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-    TransferBarrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+    ReadableBarrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+    ReadableBarrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
 
-    vkCmdPipelineBarrier(GlobalVulkan.TransferBitCommandBuffer, 
+    SingleCmd = BeginSingleCommandBuffer();
+
+    vkCmdPipelineBarrier(SingleCmd, 
                             VK_PIPELINE_STAGE_TRANSFER_BIT, 
                             VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0, nullptr, 0, nullptr, 1, &ReadableBarrier);
 
-    EndCommandBuffer(GlobalVulkan.TransferBitCommandBuffer);
+    EndSingleCommandBuffer(SingleCmd);
+
+    VkImageViewCreateInfo ImageViewCreateInfo;
+
+    ImageViewCreateInfo.sType            = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO; // VkStructureType   sType;
+    ImageViewCreateInfo.pNext            = 0; // Void * pNext;
+    ImageViewCreateInfo.flags            = 0; // VkImageViewCreateFlags   flags;
+    ImageViewCreateInfo.image            = GlobalVulkan.TextureImage; // VkImage   image;
+    ImageViewCreateInfo.viewType         = VK_IMAGE_VIEW_TYPE_2D; // VkImageViewType   viewType;
+    ImageViewCreateInfo.format           = VK_FORMAT_R8G8B8A8_SRGB; // VkFormat   format;
+
+    VkComponentMapping   components;
+    components.r = VK_COMPONENT_SWIZZLE_IDENTITY; // VkComponentSwizzle   r;
+    components.g = VK_COMPONENT_SWIZZLE_IDENTITY; // VkComponentSwizzle   g;
+    components.b = VK_COMPONENT_SWIZZLE_IDENTITY; // VkComponentSwizzle   b;
+    components.a = VK_COMPONENT_SWIZZLE_IDENTITY; // VkComponentSwizzle   a;
+    ImageViewCreateInfo.components       = components; // VkComponentMapping   components;
+
+    VkImageSubresourceRange   subresourceRange;
+    subresourceRange.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT; // VkImageAspectFlags   aspectMask;
+    subresourceRange.baseMipLevel   = 0; // uint32_t   baseMipLevel;
+    subresourceRange.levelCount     = 1; // uint32_t   levelCount;
+    subresourceRange.baseArrayLayer = 0; // uint32_t   baseArrayLayer;
+    subresourceRange.layerCount     = 1; // uint32_t   layerCount;
+
+    ImageViewCreateInfo.subresourceRange = subresourceRange; // VkImageSubresourceRange   subresourceRange;
+
+    VK_CHECK(vkCreateImageView( GlobalVulkan.PrimaryDevice, &ImageViewCreateInfo, 0, &GlobalVulkan.TextureImageView));
+
+    VkPhysicalDeviceProperties properties{};
+    vkGetPhysicalDeviceProperties(GlobalVulkan.PrimaryGPU, &properties);
+    r32 MaxSamplerAnisotropy = properties.limits.maxSamplerAnisotropy;
+
+    VkSamplerCreateInfo SamplerCreateInfo;
+
+    SamplerCreateInfo.sType                   = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO; // VkStructureType   sType;
+    SamplerCreateInfo.pNext                   = 0; // Void * pNext;
+    SamplerCreateInfo.flags                   = 0; // VkSamplerCreateFlags   flags;
+    SamplerCreateInfo.magFilter               = VK_FILTER_LINEAR; // VkFilter   magFilter;
+    SamplerCreateInfo.minFilter               = VK_FILTER_LINEAR; // VkFilter   minFilter;
+    SamplerCreateInfo.mipmapMode              = VK_SAMPLER_MIPMAP_MODE_LINEAR; // VkSamplerMipmapMode   mipmapMode;
+    SamplerCreateInfo.addressModeU            = VK_SAMPLER_ADDRESS_MODE_REPEAT; // VkSamplerAddressMode   addressModeU;
+    SamplerCreateInfo.addressModeV            = VK_SAMPLER_ADDRESS_MODE_REPEAT; // VkSamplerAddressMode   addressModeV;
+    SamplerCreateInfo.addressModeW            = VK_SAMPLER_ADDRESS_MODE_REPEAT; // VkSamplerAddressMode   addressModeW;
+    SamplerCreateInfo.mipLodBias              = 0.0f; // FLOAT   mipLodBias;
+    SamplerCreateInfo.anisotropyEnable        = VK_TRUE; // VkBool32   anisotropyEnable;
+    SamplerCreateInfo.maxAnisotropy           = MaxSamplerAnisotropy; // FLOAT   maxAnisotropy;
+    SamplerCreateInfo.compareEnable           = VK_FALSE; // VkBool32   compareEnable;
+    SamplerCreateInfo.compareOp               = VK_COMPARE_OP_ALWAYS; // VkCompareOp   compareOp;
+    SamplerCreateInfo.minLod                  = 0.0f; // FLOAT   minLod;
+    SamplerCreateInfo.maxLod                  = 0.0f; // FLOAT   maxLod;
+    SamplerCreateInfo.borderColor             = VK_BORDER_COLOR_INT_OPAQUE_BLACK; // VkBorderColor   borderColor;
+    SamplerCreateInfo.unnormalizedCoordinates = VK_FALSE; // VkBool32   unnormalizedCoordinates;
+
+    VK_CHECK(vkCreateSampler(GlobalVulkan.PrimaryDevice,&SamplerCreateInfo,0,&GlobalVulkan.TextureSampler));
 
     return 0;
 }
@@ -1536,14 +1847,14 @@ RenderPushVertexData(void * Data, u32 DataSize, u32 BaseOffset)
     void * WriteToAddr;
 
     VK_CHECK(vkMapMemory(GlobalVulkan.PrimaryDevice,
-                         GlobalVulkan.TransferBitDeviceMemory, 0 /*Offset*/, DeviceSize, Flags , &WriteToAddr));
+                         GlobalVulkan.TransferBitBuffer.DeviceMemory, 0 /*Offset*/, DeviceSize, Flags , &WriteToAddr));
 
     memcpy(WriteToAddr, Data, DataSize);
 
-    vkUnmapMemory(GlobalVulkan.PrimaryDevice,GlobalVulkan.TransferBitDeviceMemory);
+    vkUnmapMemory(GlobalVulkan.PrimaryDevice,GlobalVulkan.TransferBitBuffer.DeviceMemory);
 
     if (VulkanCopyBuffer(GlobalVulkan.TransferBitCommandBuffer, 
-                     GlobalVulkan.TransferBitBuffer,GlobalVulkan.VertexBuffer, DataSize, BaseOffset))
+                     GlobalVulkan.TransferBitBuffer.Buffer,GlobalVulkan.VertexBuffer.Buffer, DataSize, BaseOffset))
     {
         Log("Failed to copy data from buffer to gpu\n");
         return 1;
@@ -1565,15 +1876,15 @@ RenderPushIndexData(void * Data,u32 DataSize, u32 BaseOffset)
     void * WriteToAddr;
 
     VK_CHECK(vkMapMemory(GlobalVulkan.PrimaryDevice,
-                         GlobalVulkan.TransferBitDeviceMemory, 0 /* offset */, DeviceSize, Flags , &WriteToAddr));
+                         GlobalVulkan.TransferBitBuffer.DeviceMemory, 0 /* offset */, DeviceSize, Flags , &WriteToAddr));
 
     memcpy(WriteToAddr, Data, DataSize);
 
-    vkUnmapMemory(GlobalVulkan.PrimaryDevice,GlobalVulkan.TransferBitDeviceMemory);
+    vkUnmapMemory(GlobalVulkan.PrimaryDevice,GlobalVulkan.TransferBitBuffer.DeviceMemory);
 
 
     if (VulkanCopyBuffer(GlobalVulkan.TransferBitCommandBuffer, 
-                     GlobalVulkan.TransferBitBuffer,GlobalVulkan.IndexBuffer, DataSize, BaseOffset))
+                     GlobalVulkan.TransferBitBuffer.Buffer,GlobalVulkan.IndexBuffer.Buffer, DataSize, BaseOffset))
     {
         Log("Failed to copy data from buffer to gpu\n");
         return 1;
@@ -1630,8 +1941,46 @@ i32
 VulkanSetCurrentImageSwap()
 {
     u32 SwapchainImageIndex;
-    VK_CHECK(vkAcquireNextImageKHR(GlobalVulkan.PrimaryDevice, GlobalVulkan.Swapchain, 1000000000, GlobalVulkan.ImageAvailableSemaphore, 0 , &SwapchainImageIndex));
+    VK_CHECK(vkAcquireNextImageKHR(GlobalVulkan.PrimaryDevice, GlobalVulkan.Swapchain, 1000000000, GetCurrentFrame()->ImageAvailableSemaphore, 0 , &SwapchainImageIndex));
     GlobalVulkan.CurrentSwapchainImageIndex = SwapchainImageIndex;
+
+    return 0;
+}
+
+void
+DeleteFrameDataObjectsBuffer()
+{
+    for (i32 FrameIndex = 0;
+            FrameIndex < FRAME_OVERLAP;
+            ++FrameIndex)
+    {
+        frame_data * FrameData = GlobalVulkan.FrameData + FrameIndex;
+        DeleteVulkanBuffer(&FrameData->ObjectsBuffer);
+    }
+}
+
+i32
+AllocateFrameDataObjectsBuffer(u32 TotalObjects)
+{
+    u32 ObjectsSize = sizeof(GPUObjectData) * TotalObjects;
+
+    for (i32 FrameIndex = 0;
+            FrameIndex < FRAME_OVERLAP;
+            ++FrameIndex)
+    {
+        frame_data * FrameData = GlobalVulkan.FrameData + FrameIndex;
+        if (VulkanCreateBuffer(
+                    GlobalVulkan.PrimaryGPU,
+                    GlobalVulkan.PrimaryDevice, 
+                    ObjectsSize, 
+                    VK_SHARING_MODE_EXCLUSIVE,
+                    VK_MEMORY_CPU_TO_GPU_PREFERRED,
+                    VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+                    &FrameData->ObjectsBuffer))
+        {
+            return 1;
+        }
+    }
 
     return 0;
 }
@@ -1649,9 +1998,9 @@ RenderBeginPass(v4 ClearColor)
     }
 
     u32 SwapchainImageIndex = GlobalVulkan.CurrentSwapchainImageIndex;
-    VK_CHECK(vkResetCommandBuffer(GlobalVulkan.PrimaryCommandBuffer[SwapchainImageIndex], 0));
+    VK_CHECK(vkResetCommandBuffer(GetCurrentFrame()->PrimaryCommandBuffer, 0));
 
-    VkCommandBuffer cmd = GlobalVulkan.PrimaryCommandBuffer[0];
+    VkCommandBuffer cmd = GetCurrentFrame()->PrimaryCommandBuffer;
 
     VkCommandBufferBeginInfo CommandBufferBeginInfo;
     CommandBufferBeginInfo.sType            = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO; // VkStructureType   sType;
@@ -1686,6 +2035,8 @@ RenderBeginPass(v4 ClearColor)
 
     vkCmdBeginRenderPass(cmd, &RenderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
 
+    GetCurrentFrame()->ObjectsCount = 0;
+
     return 0;
 }
 
@@ -1695,12 +2046,42 @@ RenderSetPipeline(i32 PipelineIndex)
     Assert((PipelineIndex >= 0) && ((u32)PipelineIndex < GlobalVulkan.PipelinesCount));
     Assert(VK_VALID_HANDLE(GlobalVulkan.Pipelines[PipelineIndex]));
 
-    VkCommandBuffer cmd = GlobalVulkan.PrimaryCommandBuffer[0];
+    VkCommandBuffer cmd = GetCurrentFrame()->PrimaryCommandBuffer;
 
     VkPipeline Pipeline = GlobalVulkan.Pipelines[PipelineIndex];
 
-    // Actual shit
     vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, Pipeline);
+
+    u32 CurrentFrameIndex = GlobalVulkan._CurrentFrameData % FRAME_OVERLAP;
+    u32 UniformOffset = (u32)PaddedUniformBuffer(sizeof(GPUSimulationData)) * CurrentFrameIndex;
+
+    VkPipelineLayout PipelineLayout = 
+        GlobalVulkan.PipelinesDefinition[PipelineIndex].PipelineLayout;
+
+    /*
+    uint32_t firstSet, 
+    uint32_t descriptorSetCount, 
+    VkDescriptorSet*, 
+    uint32_t dynamicOffsetCount, 
+    const uint32_t* pDynamicOffsets
+    */
+    u32 FirstSet = 0;
+    vkCmdBindDescriptorSets(cmd, 
+                            VK_PIPELINE_BIND_POINT_GRAPHICS, 
+                            PipelineLayout, 
+                            FirstSet, 1, 
+                            &GetCurrentFrame()->GlobalDescriptor, 
+                            1, 
+                            &UniformOffset);
+
+
+    FirstSet = 1;
+    vkCmdBindDescriptorSets(cmd, 
+                            VK_PIPELINE_BIND_POINT_GRAPHICS, 
+                            PipelineLayout, 
+                            FirstSet, 1, 
+                            &GetCurrentFrame()->ObjectsDescriptor, 
+                            0, nullptr);
 
     return 0;
 }
@@ -1708,20 +2089,20 @@ RenderSetPipeline(i32 PipelineIndex)
 i32
 RenderPushMeshIndexed(u32 TotalMeshInstances, u32 IndicesSize, VkDeviceSize OffsetVertex, VkDeviceSize OffsetIndices)
 {
-    VkCommandBuffer cmd = GlobalVulkan.PrimaryCommandBuffer[0];
+    VkCommandBuffer cmd = GetCurrentFrame()->PrimaryCommandBuffer;
 
-    vkCmdBindVertexBuffers(cmd, 0, 1, &GlobalVulkan.VertexBuffer, &OffsetVertex);
-    vkCmdBindIndexBuffer(cmd, GlobalVulkan.IndexBuffer, OffsetIndices, VK_INDEX_TYPE_UINT16);
+    vkCmdBindVertexBuffers(cmd, 0, 1, &GlobalVulkan.VertexBuffer.Buffer, &OffsetVertex);
+    vkCmdBindIndexBuffer(cmd, GlobalVulkan.IndexBuffer.Buffer, OffsetIndices, VK_INDEX_TYPE_UINT16);
     vkCmdDrawIndexed(cmd,IndicesSize,1,0,0,0);
 
     return 0;
 }
 i32
-RenderDrawMesh(u32 VertexSize)
+RenderDrawObject(u32 VertexSize,u32 FirstInstance)
 {
-    VkCommandBuffer cmd = GlobalVulkan.PrimaryCommandBuffer[0];
+    VkCommandBuffer cmd = GetCurrentFrame()->PrimaryCommandBuffer;
 
-    vkCmdDraw(cmd,VertexSize, 1, 0 , 0);
+    vkCmdDraw(cmd,VertexSize, 1, 0 , FirstInstance);
 
     return 0;
 }
@@ -1729,18 +2110,43 @@ RenderDrawMesh(u32 VertexSize)
 i32
 RenderBindMesh(u32 VertexSize, u32 Offset)
 {
-    VkCommandBuffer cmd = GlobalVulkan.PrimaryCommandBuffer[0];
+    VkCommandBuffer cmd = GetCurrentFrame()->PrimaryCommandBuffer;
 
     VkDeviceSize OffsetVertex = Offset;
-    vkCmdBindVertexBuffers(cmd, 0, 1, &GlobalVulkan.VertexBuffer, &OffsetVertex);
+    vkCmdBindVertexBuffers(cmd, 0, 1, &GlobalVulkan.VertexBuffer.Buffer, &OffsetVertex);
+
+    return 0;
+}
+i32
+RenderPushSimulationData(GPUSimulationData * SimData)
+{
+    void * WriteToAddr;
+
+    u32 CurrentFrame = GlobalVulkan._CurrentFrameData % FRAME_OVERLAP;
+
+    VkDeviceSize DeviceSize = sizeof(GPUSimulationData);
+
+    VkDeviceSize Offset = 
+        PaddedUniformBuffer(sizeof(GPUSimulationData)) * CurrentFrame;
+
+    VkMemoryMapFlags Flags = 0; // RESERVED FUTURE USE
+
+    VK_CHECK(vkMapMemory(GlobalVulkan.PrimaryDevice,
+                         GlobalVulkan.SimulationBuffer.DeviceMemory, 
+                         Offset , DeviceSize, Flags , &WriteToAddr));
+
+    memcpy(WriteToAddr, (void *)SimData, DeviceSize);
+
+    vkUnmapMemory(GlobalVulkan.PrimaryDevice,GlobalVulkan.SimulationBuffer.DeviceMemory);
 
     return 0;
 }
 
+
 i32
 RenderEndPass()
 {
-    VkCommandBuffer cmd = GlobalVulkan.PrimaryCommandBuffer[0];
+    VkCommandBuffer cmd = GetCurrentFrame()->PrimaryCommandBuffer;
     u32 SwapchainImageIndex = GlobalVulkan.CurrentSwapchainImageIndex;
 
     vkCmdEndRenderPass(cmd);
@@ -1753,26 +2159,28 @@ RenderEndPass()
     SubmitInfo.sType                = VK_STRUCTURE_TYPE_SUBMIT_INFO;         // VkStructureType   sType;
     SubmitInfo.pNext                = 0;                                     // Void * pNext;
     SubmitInfo.waitSemaphoreCount   = 1;                                     // u32_t   waitSemaphoreCount;
-    SubmitInfo.pWaitSemaphores      = &GlobalVulkan.ImageAvailableSemaphore; // Typedef * pWaitSemaphores;
+    SubmitInfo.pWaitSemaphores      = &GetCurrentFrame()->ImageAvailableSemaphore; // Typedef * pWaitSemaphores;
     SubmitInfo.pWaitDstStageMask    = &WaitStage;                            // Typedef * pWaitDstStageMask;
     SubmitInfo.commandBufferCount   = 1;                                     // u32_t   commandBufferCount;
     SubmitInfo.pCommandBuffers      = &cmd;                                  // Typedef * pCommandBuffers;
     SubmitInfo.signalSemaphoreCount = 1;                                     // u32_t   signalSemaphoreCount;
-    SubmitInfo.pSignalSemaphores    = &GlobalVulkan.RenderSemaphore;         // Typedef * pSignalSemaphores;
+    SubmitInfo.pSignalSemaphores    = &GetCurrentFrame()->RenderSemaphore;         // Typedef * pSignalSemaphores;
 
-    VK_CHECK(vkQueueSubmit(GlobalVulkan.GraphicsQueue, 1, &SubmitInfo, GlobalVulkan.RenderFence));
+    VK_CHECK(vkQueueSubmit(GlobalVulkan.GraphicsQueue, 1, &SubmitInfo, GetCurrentFrame()->RenderFence));
 
     VkPresentInfoKHR PresentInfo;
     PresentInfo.sType              = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR; // VkStructureType   sType;
     PresentInfo.pNext              = 0; // Void * pNext;
     PresentInfo.waitSemaphoreCount = 1; // u32_t   waitSemaphoreCount;
-    PresentInfo.pWaitSemaphores    = &GlobalVulkan.RenderSemaphore; // Typedef * pWaitSemaphores;
+    PresentInfo.pWaitSemaphores    = &GetCurrentFrame()->RenderSemaphore; // Typedef * pWaitSemaphores;
     PresentInfo.swapchainCount     = 1; // u32_t   swapchainCount;
     PresentInfo.pSwapchains        = &GlobalVulkan.Swapchain; // Typedef * pSwapchains;
     PresentInfo.pImageIndices      = &SwapchainImageIndex; // Typedef * pImageIndices;
     PresentInfo.pResults           = 0; // Typedef * pResults;
 
     VK_CHECK(vkQueuePresentKHR(GlobalVulkan.GraphicsQueue, &PresentInfo));
+
+    ++GlobalVulkan._CurrentFrameData;
 
     return 0;
 }
@@ -1801,7 +2209,13 @@ FreeSwapchain()
             }
         }
 
-        vkFreeCommandBuffers(GlobalVulkan.PrimaryDevice,GlobalVulkan.CommandPool, SwapchainImageCount,GlobalVulkan.PrimaryCommandBuffer);
+        for (i32 FrameIndex = 0;
+                FrameIndex < FRAME_OVERLAP;
+                ++FrameIndex)
+        {
+            frame_data * FrameData = GlobalVulkan.FrameData + FrameIndex;
+            vkFreeCommandBuffers(GlobalVulkan.PrimaryDevice,FrameData->CommandPool, 1,&FrameData->PrimaryCommandBuffer);
+        }
 
         if ( VK_VALID_HANDLE(GlobalVulkan.RenderPass) )
         {
@@ -1846,11 +2260,19 @@ VulkanOnWindowResize(i32 Width,i32 Height)
         // If window is minimized process is halt
         if (GlobalWindowIsMinimized) return 0;
 
-        if (VulkanCreateCommandBuffers(
-                    GlobalVulkan.PrimaryDevice,
-                    GlobalVulkan.CommandPool,
-                    GlobalVulkan.SwapchainImageCount,
-                    GlobalVulkan.PrimaryCommandBuffer)) return 1;
+        // (fef) for each frame
+        for (i32 FrameIndex = 0;
+                FrameIndex < FRAME_OVERLAP;
+                ++FrameIndex)
+        {
+            frame_data * FrameData = GlobalVulkan.FrameData + FrameIndex;
+
+            if (VulkanCreateCommandBuffers(
+                        GlobalVulkan.PrimaryDevice,
+                        FrameData->CommandPool,
+                        1,
+                        &FrameData->PrimaryCommandBuffer)) return 1;
+        }
 
         if (VulkanInitDefaultRenderPass()) return 1;
 
@@ -1953,6 +2375,8 @@ VulkanCreateLogicaDevice()
     VK_DEVICE_LEVEL_FN(GlobalVulkan.PrimaryDevice,vkDestroyRenderPass);
     VK_DEVICE_LEVEL_FN(GlobalVulkan.PrimaryDevice,vkCreateImageView);
     VK_DEVICE_LEVEL_FN(GlobalVulkan.PrimaryDevice,vkCreateImage);
+    VK_DEVICE_LEVEL_FN(GlobalVulkan.PrimaryDevice,vkCreateSampler);
+    VK_DEVICE_LEVEL_FN(GlobalVulkan.PrimaryDevice,vkDestroySampler);
     VK_DEVICE_LEVEL_FN(GlobalVulkan.PrimaryDevice,vkDestroyImageView);
     VK_DEVICE_LEVEL_FN(GlobalVulkan.PrimaryDevice,vkCreateFramebuffer);
     VK_DEVICE_LEVEL_FN(GlobalVulkan.PrimaryDevice,vkDestroyFramebuffer);
@@ -1964,6 +2388,16 @@ VulkanCreateLogicaDevice()
     VK_DEVICE_LEVEL_FN(GlobalVulkan.PrimaryDevice,vkCreatePipelineLayout);
     VK_DEVICE_LEVEL_FN(GlobalVulkan.PrimaryDevice,vkDestroyPipeline);
     VK_DEVICE_LEVEL_FN(GlobalVulkan.PrimaryDevice,vkDestroyPipelineLayout);
+
+    VK_DEVICE_LEVEL_FN(GlobalVulkan.PrimaryDevice,vkCreateDescriptorSetLayout);
+    VK_DEVICE_LEVEL_FN(GlobalVulkan.PrimaryDevice,vkDestroyDescriptorSetLayout);
+    VK_DEVICE_LEVEL_FN(GlobalVulkan.PrimaryDevice,vkAllocateDescriptorSets);
+    VK_DEVICE_LEVEL_FN(GlobalVulkan.PrimaryDevice,vkUpdateDescriptorSets);
+    VK_DEVICE_LEVEL_FN(GlobalVulkan.PrimaryDevice,vkCreateDescriptorPool);
+    VK_DEVICE_LEVEL_FN(GlobalVulkan.PrimaryDevice,vkDestroyDescriptorPool);
+    VK_DEVICE_LEVEL_FN(GlobalVulkan.PrimaryDevice,vkCmdBindDescriptorSets);
+    
+    
 
     VK_DEVICE_LEVEL_FN(GlobalVulkan.PrimaryDevice,vkAllocateMemory);
     VK_DEVICE_LEVEL_FN(GlobalVulkan.PrimaryDevice,vkFreeMemory);
@@ -1984,22 +2418,6 @@ VulkanCreateLogicaDevice()
     vkGetDeviceQueue(GlobalVulkan.PrimaryDevice, GlobalVulkan.GraphicsQueueFamilyIndex, 0, &GlobalVulkan.GraphicsQueue);
     vkGetDeviceQueue(GlobalVulkan.PrimaryDevice, GlobalVulkan.PresentationQueueFamilyIndex, 0, &GlobalVulkan.PresentationQueue);
     vkGetDeviceQueue(GlobalVulkan.PrimaryDevice, GlobalVulkan.TransferOnlyQueueFamilyIndex, 0, &GlobalVulkan.TransferOnlyQueue);
-
-    VkFenceCreateInfo FenceCreateInfo;
-    FenceCreateInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO; // VkStructureType   sType;
-    FenceCreateInfo.pNext = 0;                                   // Void * pNext;
-    FenceCreateInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT;        // VkFenceCreateFlags   flags;
-
-    VK_CHECK(vkCreateFence(GlobalVulkan.PrimaryDevice, &FenceCreateInfo, 0,&GlobalVulkan.RenderFence));
-
-    VkSemaphoreCreateInfo SemaphoreCreateInfo = {
-        VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO,
-        0,
-        0
-    };
-
-    VK_CHECK(vkCreateSemaphore(GlobalVulkan.PrimaryDevice, &SemaphoreCreateInfo, 0, &GlobalVulkan.ImageAvailableSemaphore));
-    VK_CHECK(vkCreateSemaphore(GlobalVulkan.PrimaryDevice, &SemaphoreCreateInfo, 0, &GlobalVulkan.RenderSemaphore));
 
     return 0;
 }
@@ -2045,12 +2463,14 @@ VulkanGetPhysicalDevice()
         VkPhysicalDeviceFeatures    PhysicalDeviceFeatures;
         vkGetPhysicalDeviceFeatures(PhysicalDevices[i],   &PhysicalDeviceFeatures);
 
+        b32 SupportsAnisotropyFilter = (PhysicalDeviceFeatures.samplerAnisotropy == VK_TRUE);
+
         vk_version Version = GetVkVersionFromu32(PhysicalDeviceProperties.apiVersion);
 
         u32 TotalQueueFamilyPropertyCount = 0;
         vkGetPhysicalDeviceQueueFamilyProperties(PhysicalDevices[i],&TotalQueueFamilyPropertyCount,0);
 
-        if (TotalQueueFamilyPropertyCount > 0)
+        if (TotalQueueFamilyPropertyCount > 0 && SupportsAnisotropyFilter)
         {
 
             // TODO: Family queues can have bigger internal queues count and 
@@ -2362,6 +2782,93 @@ VulkanGetInstance(b32 EnableValidationLayer,
 }
 
 i32
+CreateDescriptorSetLayoutGlobal()
+{
+    VkDescriptorSetLayoutBinding SimulationBufferBinding = 
+        VulkanCreateDescriptorSetLayoutBinding(0,
+                VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC,
+                VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT);
+
+    VkDescriptorSetLayoutBinding DescriptorSetLayoutBindings[] = 
+    {
+        SimulationBufferBinding
+    };
+
+    VkDescriptorSetLayoutCreateInfo SetInfo;
+    SetInfo.sType        = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO; // VkStructureType   sType;
+    SetInfo.pNext        = 0; // Void * pNext;
+    SetInfo.flags        = 0; // VkDescriptorSetLayoutCreateFlags   flags;
+    SetInfo.bindingCount = ArrayCount(DescriptorSetLayoutBindings); // uint32_t   bindingCount;
+    SetInfo.pBindings    = &DescriptorSetLayoutBindings[0]; // Typedef * pBindings;
+
+    VK_CHECK(vkCreateDescriptorSetLayout(GlobalVulkan.PrimaryDevice,&SetInfo,0,&GlobalVulkan._GlobalSetLayout));
+
+    return 0;
+}
+
+i32
+CreateDescriptorSetLayoutObjects()
+{
+    VkDescriptorSetLayoutBinding LayoutBinding = 
+        VulkanCreateDescriptorSetLayoutBinding(0,
+                VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+                VK_SHADER_STAGE_VERTEX_BIT);
+
+    VkDescriptorSetLayoutBinding DescriptorSetLayoutBindings[] = 
+    {
+        LayoutBinding
+    };
+
+    VkDescriptorSetLayoutCreateInfo SetInfo;
+    SetInfo.sType        = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO; // VkStructureType   sType;
+    SetInfo.pNext        = 0; // Void * pNext;
+    SetInfo.flags        = 0; // VkDescriptorSetLayoutCreateFlags   flags;
+    SetInfo.bindingCount = ArrayCount(DescriptorSetLayoutBindings); // uint32_t   bindingCount;
+    SetInfo.pBindings    = &DescriptorSetLayoutBindings[0]; // Typedef * pBindings;
+
+    VK_CHECK(vkCreateDescriptorSetLayout(GlobalVulkan.PrimaryDevice,&SetInfo,nullptr,&GlobalVulkan._ObjectsSetLayout));
+
+    return 0;
+}
+
+i32
+VulkanAllocateDescriptor(VkDescriptorSetLayout  * SetLayout,
+                   VkDescriptorPool Pool,
+                   VkDescriptorSet * Set)
+{
+    VkDescriptorSetAllocateInfo AllocInfo;
+    AllocInfo.sType              = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO; // VkStructureType   sType;
+    AllocInfo.pNext              = 0; // Void * pNext;
+    AllocInfo.descriptorPool     = Pool; // VkDescriptorPool   descriptorPool;
+    AllocInfo.descriptorSetCount = 1; // uint32_t   descriptorSetCount;
+    AllocInfo.pSetLayouts        = SetLayout; // Typedef * pSetLayouts;
+
+    vkAllocateDescriptorSets(GlobalVulkan.PrimaryDevice, &AllocInfo, Set);
+
+    return 0;
+}
+
+VkWriteDescriptorSet
+VulkanWriteDescriptor(u32 BindingSlot,VkDescriptorSet Set,VkDescriptorType DescriptorType, VkDescriptorBufferInfo * BufferInfo)
+{
+    VkWriteDescriptorSet WriteDescriptor;
+
+    WriteDescriptor.sType            = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET; // VkStructureType   sType;
+    WriteDescriptor.pNext            = 0; // Void * pNext;
+    WriteDescriptor.dstSet           = Set; // VkDescriptorSet   dstSet;
+    WriteDescriptor.dstBinding       = BindingSlot; // uint32_t   dstBinding;
+    WriteDescriptor.dstArrayElement  = 0; // uint32_t   dstArrayElement;
+    WriteDescriptor.descriptorCount  = 1; // uint32_t   descriptorCount;
+    WriteDescriptor.descriptorType   = DescriptorType;
+    WriteDescriptor.pImageInfo       = 0; // Typedef * pImageInfo;
+    WriteDescriptor.pBufferInfo      = BufferInfo; // Typedef * pBufferInfo;
+    WriteDescriptor.pTexelBufferView = 0; // Typedef * pTexelBufferView;
+
+    return WriteDescriptor;
+}
+
+// ivp -- initialize vulkan procedure
+i32
 InitializeVulkan(i32 Width, i32 Height, 
                  vulkan_platform_window PlatformWindow,
                  b32 EnableValidationLayer,
@@ -2386,19 +2893,121 @@ InitializeVulkan(i32 Width, i32 Height,
 
     if (VulkanCreateSwapChain(Width, Height)) return 1;
 
-    // Render commands
-    if (VulkanCreateCommandPool(
-                GlobalVulkan.PrimaryDevice,
-                GlobalVulkan.PresentationQueueFamilyIndex,
-                VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT,
-                &GlobalVulkan.CommandPool
-                )) return 1;
+    // Single uniform buffer shared by each FRAME_OVERLAP
+    VkDeviceSize SimulationBufferPaddedSize = FRAME_OVERLAP * PaddedUniformBuffer(sizeof(GPUSimulationData));
 
-    if (VulkanCreateCommandBuffers(
-                GlobalVulkan.PrimaryDevice,
-                GlobalVulkan.CommandPool,
-                GlobalVulkan.SwapchainImageCount,
-                GlobalVulkan.PrimaryCommandBuffer)) return 1;
+    if (VulkanCreateBuffer(
+                GlobalVulkan.PrimaryGPU,GlobalVulkan.PrimaryDevice, 
+                SimulationBufferPaddedSize, 
+                VK_SHARING_MODE_EXCLUSIVE,
+                VK_MEMORY_CPU_TO_GPU_PREFERRED,
+                VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+                &GlobalVulkan.SimulationBuffer
+                ))
+    {
+        return 1;
+    }
+
+    /* INIT DESCRIPTOR SETS */
+    /* Level 1 */ CreateDescriptorSetLayoutGlobal();
+    /* Level 2 */ CreateDescriptorSetLayoutObjects();
+
+    VkDescriptorPoolSize DescriptorPoolSizes[] =
+	{
+		{ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 10 },
+		{ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, 10 },
+		{ VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 10 }
+	};
+
+	VkDescriptorPoolCreateInfo PoolInfo = {};
+	PoolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+	PoolInfo.flags = 0;
+	PoolInfo.maxSets = 10;
+	PoolInfo.poolSizeCount = ArrayCount(DescriptorPoolSizes);
+	PoolInfo.pPoolSizes = DescriptorPoolSizes;
+
+	vkCreateDescriptorPool(GlobalVulkan.PrimaryDevice, &PoolInfo, nullptr, &GlobalVulkan._DescriptorPool);
+
+    AllocateFrameDataObjectsBuffer(10000);
+
+    // (fef) for each frame
+    for (i32 FrameIndex = 0;
+            FrameIndex < FRAME_OVERLAP;
+            ++FrameIndex)
+    {
+        frame_data * FrameData = GlobalVulkan.FrameData + FrameIndex;
+
+        VkFenceCreateInfo FenceCreateInfo;
+
+        FenceCreateInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO; // VkStructureType   sType;
+        FenceCreateInfo.pNext = 0;                                   // Void * pNext;
+        FenceCreateInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT;        // VkFenceCreateFlags   flags;
+
+        VK_CHECK(vkCreateFence(GlobalVulkan.PrimaryDevice, &FenceCreateInfo, 0,&FrameData->RenderFence));
+
+        VkSemaphoreCreateInfo SemaphoreCreateInfo = {
+            VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO,
+            0,
+            0
+        };
+
+        VK_CHECK(vkCreateSemaphore(GlobalVulkan.PrimaryDevice, &SemaphoreCreateInfo, 0, &FrameData->ImageAvailableSemaphore));
+        VK_CHECK(vkCreateSemaphore(GlobalVulkan.PrimaryDevice, &SemaphoreCreateInfo, 0, &FrameData->RenderSemaphore));
+
+        if (VulkanCreateCommandPool(
+                    GlobalVulkan.PrimaryDevice,
+                    GlobalVulkan.PresentationQueueFamilyIndex,
+                    VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT,
+                    &FrameData->CommandPool
+                    )) return 1;
+
+        if (VulkanCreateCommandBuffers(
+                    GlobalVulkan.PrimaryDevice,
+                    FrameData->CommandPool,
+                    1,
+                    &FrameData->PrimaryCommandBuffer)) return 1;
+
+#if 0
+        if (VulkanCreateBuffer(
+                    GlobalVulkan.PrimaryGPU,GlobalVulkan.PrimaryDevice, 
+                    sizeof(GPUSimulationData), 
+                    VK_SHARING_MODE_EXCLUSIVE,
+                    VK_MEMORY_CPU_TO_GPU_PREFERRED,
+                    VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+                    &FrameData->SimulationBuffer, 
+                    &FrameData->SimulationBufferDeviceMemory,
+                    &FrameData->SimulationBufferAlignment)) return 1;
+#endif
+
+        // from pool, this layout, out ID
+        VulkanAllocateDescriptor(&GlobalVulkan._GlobalSetLayout, GlobalVulkan._DescriptorPool, &FrameData->GlobalDescriptor);
+
+        VkDescriptorBufferInfo BufferInfo;
+        BufferInfo.buffer = GlobalVulkan.SimulationBuffer.Buffer; // VkBuffer   buffer;
+        BufferInfo.offset = 0;//FrameIndex * PaddedUniformBuffer(sizeof(GPUSimulationData)); // VkDeviceSize   offset;
+        BufferInfo.range  = sizeof(GPUSimulationData); // VkDeviceSize   range;
+
+        VkWriteDescriptorSet SimulationWriteSet =
+            VulkanWriteDescriptor(0,FrameData->GlobalDescriptor, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, &BufferInfo);
+
+        VulkanAllocateDescriptor(&GlobalVulkan._ObjectsSetLayout, GlobalVulkan._DescriptorPool, &FrameData->ObjectsDescriptor);
+
+        VkDescriptorBufferInfo BufferInfoObjects;
+        BufferInfoObjects.buffer = FrameData->ObjectsBuffer.Buffer; // VkBuffer   buffer;
+        BufferInfoObjects.offset = 0;//FrameIndex * PaddedUniformBuffer(sizeof(GPUSimulationData)); // VkDeviceSize   offset;
+        BufferInfoObjects.range  = FrameData->ObjectsBuffer.MemoryRequirements.size; // VkDeviceSize   range;
+
+        VkWriteDescriptorSet ObjectsWriteSet =
+            VulkanWriteDescriptor(0,FrameData->ObjectsDescriptor, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &BufferInfoObjects);
+
+        VkWriteDescriptorSet WriteSets[] = 
+        {
+            SimulationWriteSet,
+            ObjectsWriteSet
+        };
+
+        vkUpdateDescriptorSets(GlobalVulkan.PrimaryDevice, ArrayCount(WriteSets), WriteSets, 0, nullptr);
+    }
 
     // Staging buffer commands
     if (VulkanCreateCommandPool(
@@ -2424,6 +3033,13 @@ InitializeVulkan(i32 Width, i32 Height,
 
     if (VulkanInitFramebuffers()) return 1;
 
+    /* INIT PIPELINE */
+    VkDescriptorSetLayout LayoutSets[] = 
+    {
+        GlobalVulkan._GlobalSetLayout,
+        GlobalVulkan._ObjectsSetLayout
+    };
+
     VkPipelineLayoutCreateInfo PipelineLayoutCreateInfo = VulkanCreatePipelineLayoutCreateInfo();
 
     VkPushConstantRange PushConstant;
@@ -2433,6 +3049,9 @@ InitializeVulkan(i32 Width, i32 Height,
 
     PipelineLayoutCreateInfo.pushConstantRangeCount = 1;
     PipelineLayoutCreateInfo.pPushConstantRanges = &PushConstant;
+
+    PipelineLayoutCreateInfo.setLayoutCount = ArrayCount(LayoutSets);
+    PipelineLayoutCreateInfo.pSetLayouts = LayoutSets;
 
     VK_CHECK(vkCreatePipelineLayout(GlobalVulkan.PrimaryDevice, &PipelineLayoutCreateInfo, 0, &GlobalVulkan.PipelineLayout));
 
@@ -2445,29 +3064,28 @@ InitializeVulkan(i32 Width, i32 Height,
                 GlobalVulkan.PrimaryGPU,GlobalVulkan.PrimaryDevice, 
                 TransferbitBufferSize, VK_SHARING_MODE_CONCURRENT,VK_MEMORY_CPU_TO_GPU_HOST_VISIBLE,
                 VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-                &GlobalVulkan.TransferBitBuffer, &GlobalVulkan.TransferBitDeviceMemory,&GlobalVulkan.TransferMemAlign,
+                &GlobalVulkan.TransferBitBuffer,
                 2,&SharedBufferFamilyIndexArray[0])) return 1;
-
-    VkDeviceSize TextureBufferSize = Megabytes(50);
-    if (VulkanCreateImage(
-                GlobalVulkan.PrimaryGPU,GlobalVulkan.PrimaryDevice, 
-                &GlobalVulkan.TextureImage , &GlobalVulkan.TextureDeviceMemory, &GlobalVulkan.TextureMemAlign,
-                2048,2048)) return 1;
 
     VkDeviceSize VertexBufferSize = Megabytes(50);
     if (VulkanCreateBuffer(
                 GlobalVulkan.PrimaryGPU,GlobalVulkan.PrimaryDevice, 
                 VertexBufferSize, VK_SHARING_MODE_EXCLUSIVE,VK_MEMORY_GPU,
                 VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
-                &GlobalVulkan.VertexBuffer, &GlobalVulkan.VertexDeviceMemory, &GlobalVulkan.VertexMemAlign)) return 1;
+                &GlobalVulkan.VertexBuffer))
+    {
+        return 1;
+    }
 
     VkDeviceSize IndexBufferSize = Megabytes(16);
     if (VulkanCreateBuffer(
                 GlobalVulkan.PrimaryGPU,GlobalVulkan.PrimaryDevice, 
                 IndexBufferSize, VK_SHARING_MODE_EXCLUSIVE,VK_MEMORY_GPU,
                 VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
-                &GlobalVulkan.IndexBuffer, &GlobalVulkan.IndexDeviceMemory, &GlobalVulkan.IndexMemAlign)) return 1;
-
+                &GlobalVulkan.IndexBuffer)) 
+    {
+        return 1;
+    }
 
     GlobalVulkan.Initialized = true;
 
@@ -2498,45 +3116,12 @@ CloseVulkan()
     VulkanWaitForDevices();
 
     /* ALWAYS AFTER WAIT IDLE */
-    if (VK_VALID_HANDLE(GlobalVulkan.TransferBitBuffer))
-    {
-        vkDestroyBuffer(GlobalVulkan.PrimaryDevice,GlobalVulkan.TransferBitBuffer,0);
-    }
+    DeleteVulkanBuffer(&GlobalVulkan.TransferBitBuffer);
 
-    if (VK_VALID_HANDLE(GlobalVulkan.TransferBitDeviceMemory))
-    {
-        vkFreeMemory(GlobalVulkan.PrimaryDevice, GlobalVulkan.TransferBitDeviceMemory, 0);
-    }
+    DestroyTextures();
 
-    if (VK_VALID_HANDLE(GlobalVulkan.TextureImage))
-    {
-        vkDestroyImage(GlobalVulkan.PrimaryDevice,GlobalVulkan.TextureImage,0);
-    }
-
-    if (VK_VALID_HANDLE(GlobalVulkan.TextureDeviceMemory))
-    {
-        vkFreeMemory(GlobalVulkan.PrimaryDevice, GlobalVulkan.TextureDeviceMemory, 0);
-    }
-
-    if (VK_VALID_HANDLE(GlobalVulkan.VertexBuffer))
-    {
-        vkDestroyBuffer(GlobalVulkan.PrimaryDevice,GlobalVulkan.VertexBuffer,0);
-    }
-
-    if (VK_VALID_HANDLE(GlobalVulkan.VertexDeviceMemory))
-    {
-        vkFreeMemory(GlobalVulkan.PrimaryDevice, GlobalVulkan.VertexDeviceMemory, 0);
-    }
-
-    if (VK_VALID_HANDLE(GlobalVulkan.IndexBuffer))
-    {
-        vkDestroyBuffer(GlobalVulkan.PrimaryDevice,GlobalVulkan.IndexBuffer,0);
-    }
-
-    if (VK_VALID_HANDLE(GlobalVulkan.IndexDeviceMemory))
-    {
-        vkFreeMemory(GlobalVulkan.PrimaryDevice, GlobalVulkan.IndexDeviceMemory, 0);
-    }
+    DeleteVulkanBuffer(&GlobalVulkan.VertexBuffer);
+    DeleteVulkanBuffer(&GlobalVulkan.IndexBuffer);
 
     VulkanDestroyPipeline();
 
@@ -2547,29 +3132,55 @@ CloseVulkan()
 
     FreeSwapchain();
 
-    if (VK_VALID_HANDLE(GlobalVulkan.CommandPool)) 
+    
+    // (fef) for each frame
+    for (i32 FrameIndex = 0;
+            FrameIndex < FRAME_OVERLAP;
+            ++FrameIndex)
     {
-        vkDestroyCommandPool(GlobalVulkan.PrimaryDevice,GlobalVulkan.CommandPool,0);
+        frame_data * FrameData = GlobalVulkan.FrameData + FrameIndex;
+        if (VK_VALID_HANDLE(FrameData->CommandPool)) 
+        {
+            vkDestroyCommandPool(GlobalVulkan.PrimaryDevice,FrameData->CommandPool,0);
+        }
+        if (VK_VALID_HANDLE(FrameData->ImageAvailableSemaphore))
+        {
+            vkDestroySemaphore(GlobalVulkan.PrimaryDevice, FrameData->ImageAvailableSemaphore, 0);
+        }
+
+        if (VK_VALID_HANDLE(FrameData->RenderSemaphore))
+        {
+            vkDestroySemaphore(GlobalVulkan.PrimaryDevice, FrameData->RenderSemaphore, 0);
+        }
+
+        if (VK_VALID_HANDLE(FrameData->RenderFence))
+        {
+            vkDestroyFence(GlobalVulkan.PrimaryDevice, FrameData->RenderFence, 0);
+        }
+    }
+
+    DeleteFrameDataObjectsBuffer();
+
+    DeleteVulkanBuffer(&GlobalVulkan.SimulationBuffer);
+
+    if (VK_VALID_HANDLE(GlobalVulkan._GlobalSetLayout))
+    {
+        vkDestroyDescriptorSetLayout(GlobalVulkan.PrimaryDevice,GlobalVulkan._GlobalSetLayout,0);
+    }
+
+    if (VK_VALID_HANDLE(GlobalVulkan._ObjectsSetLayout))
+    {
+        vkDestroyDescriptorSetLayout(GlobalVulkan.PrimaryDevice,GlobalVulkan._ObjectsSetLayout,0);
+    }
+
+    if (VK_VALID_HANDLE(GlobalVulkan._DescriptorPool))
+    {
+        vkDestroyDescriptorPool(GlobalVulkan.PrimaryDevice,GlobalVulkan._DescriptorPool,0);
     }
 
     if (VK_VALID_HANDLE(GlobalVulkan.CommandPoolTransferBit)) 
     {
         vkDestroyCommandPool(GlobalVulkan.PrimaryDevice,GlobalVulkan.CommandPoolTransferBit,0);
-    }
-
-    if (VK_VALID_HANDLE(GlobalVulkan.ImageAvailableSemaphore))
-    {
-        vkDestroySemaphore(GlobalVulkan.PrimaryDevice, GlobalVulkan.ImageAvailableSemaphore, 0);
-    }
-
-    if (VK_VALID_HANDLE(GlobalVulkan.RenderSemaphore))
-    {
-        vkDestroySemaphore(GlobalVulkan.PrimaryDevice, GlobalVulkan.RenderSemaphore, 0);
-    }
-
-    if (VK_VALID_HANDLE(GlobalVulkan.RenderFence))
-    {
-        vkDestroyFence(GlobalVulkan.PrimaryDevice, GlobalVulkan.RenderFence, 0);
     }
 
     if ( VK_VALID_HANDLE(GlobalVulkan.Swapchain) )

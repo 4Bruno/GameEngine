@@ -26,9 +26,21 @@ struct mesh_push_constant
     v4 Data;
     m4 RenderMatrix;
     m4 Model;
-    v3 SourceLight;
-    r32 Dummy;
     v4 DebugColor;
+};
+
+struct GPUSimulationData
+{
+    v4 AmbientLight;
+    v4 SunlightDirection;
+    v4 SunlightColor;
+};
+
+struct GPUObjectData
+{
+    m4 MVP;
+    m4 ModelMatrix;
+    v4 Color;
 };
 
 struct pipeline_creation_result
@@ -38,6 +50,8 @@ struct pipeline_creation_result
     i32 PipelineLayout;
 };
 
+RENDER_API i32
+RenderPushSimulationData(GPUSimulationData * SimData);
 
 RENDER_API
 i32
@@ -48,6 +62,14 @@ InitializeVulkan(i32 Width, i32 Height,
 RENDER_API
 void
 CloseVulkan();
+
+RENDER_API
+GPUObjectData *
+VulkanBeginObjectDataMapping(u32 * CurrentObjectCount);
+
+RENDER_API
+void
+VulkanEndObjectDataMapping(u32 ObjectCount);
 
 RENDER_API
 i32
@@ -78,7 +100,7 @@ RenderSetPipeline(i32 PipelineIndex);
 
 RENDER_API
 i32
-RenderDrawMesh(u32 VertexSize);
+RenderDrawObject(u32 VertexSize,u32 FirstInstance);
 
 RENDER_API
 i32
@@ -113,7 +135,7 @@ void
 RenderPushVertexConstant(u32 Size,void * Data);
 
 RENDER_API i32
-VulkanPushTexture(void * Data, u32 DataSize, u32 Width, u32 Height, u32 BaseOffset);
+VulkanPushTexture(void * Data, u32 Width, u32 Height, u32 BaseOffset, u32 Channels);
 
 RENDER_API
 void
