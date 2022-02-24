@@ -1,4 +1,4 @@
-#version 450
+#version 460
 
 layout (location = 0) in vec3 Position;
 layout (location = 1) in vec3 Normal;
@@ -13,33 +13,57 @@ layout ( push_constant ) uniform constants
     vec4 Data;
     mat4 RenderMatrix;
     mat4 Model;
-    vec3 SourceLight;
-    float Dummy;
     vec4 ColorDebug;
 
 } PushConstants;
 
-void main()
+layout (set = 0, binding = 0) uniform SimulationBuffer
 {
-    vec3 FragPos = vec3(PushConstants.Model * vec4(Position,1.0f));
-    vec3 N = normalize(mat3(transpose(inverse(PushConstants.Model))) * Normal);
-    float Intensity = 1.0f;
-    vec3 FragToLightSrc = PushConstants.SourceLight - FragPos;
+    vec4 AmbientLight;
+    vec4 SunlightDirection;
+    vec4 SunlightColor;
+
+} SimulationData;
+
+struct objects_data 
+{
+    mat4 MVP;
+    mat4 ModelMatrix;
+    vec4 Color;
+};
+
+layout (std140, set = 1, binding = 0) readonly buffer objects_buffer
+{
+    objects_data Objects[]; 
+} ObjectsArray;
+
+float
+CalculateSpecularLight(mat4 ModelMatrix)
+{
+    vec3 FragPos = vec3(ModelMatrix * vec4(Position,1.0f));
+    vec3 N = normalize(mat3(transpose(inverse(ModelMatrix))) * Normal);
+    vec3 FragToLightSrc = vec3(SimulationData.SunlightDirection) - FragPos;
     float FragToLightSrcLength = 1.0f / length(FragToLightSrc);
     FragToLightSrc = FragToLightSrc * FragToLightSrcLength;
-    float AmbientLight = 0.2f;
     float SpecularLight = min(max(dot(N,FragToLightSrc),0.0f) * (FragToLightSrcLength*10.0f),0.8f);
 
-    //vec3 ColorDebug = vec3(PushConstants.ColorDebug);
-    outColor = (AmbientLight + SpecularLight) * PushConstants.ColorDebug;
+    return SpecularLight;
+}
+
+void main()
+{
+    mat4 ModelMatrix = ObjectsArray.Objects[gl_BaseInstance].ModelMatrix;
+    mat4 MVP = ObjectsArray.Objects[gl_BaseInstance].MVP;
+    vec4 Color = ObjectsArray.Objects[gl_BaseInstance].Color;
+    float AmbientLight = SimulationData.AmbientLight.w;
+
+    float SpecularLight = CalculateSpecularLight(ModelMatrix);
+
+    outColor = (AmbientLight + SpecularLight) * Color;
+    //outColor = vec4(N,1.0f);
+
     TextCoord = UV;
 
-    //outColor = vec4(N,1.0f);
-    //outColor = PushConstants.ColorDebug;
-    //outColor = vec4(FragToLightSrc,1.0f);
-    //outColor = PushConstants.ColorDebug * clamp(Position.y,0.2f,1.0f);
-    //outColor = PushConstants.ColorDebug * clamp(Position.y,0,1.0f) * (AmbientLight + SpecularLight);
-    //outColor = vec4(1.0,1.0f,1.0f,1.0f);
-    gl_Position = PushConstants.RenderMatrix * vec4(Position, 1.0f);
+    gl_Position = MVP * vec4(Position, 1.0f);
 }
 

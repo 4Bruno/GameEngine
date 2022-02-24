@@ -7,5 +7,6 @@ layout (location = 0) out vec4 outFragColor;
 
 void main()
 {
-    outFragColor = vec4(inTextCoord.x,inTextCoord.y,0.5f,1.0f);
+    //outFragColor = vec4(inTextCoord.x,inTextCoord.y,0.5f,1.0f);
+    outFragColor = inColor;
 }
