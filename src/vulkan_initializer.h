@@ -23,8 +23,6 @@ struct vulkan_platform_window
 
 struct mesh_push_constant
 {
-    v4 Data;
-    m4 RenderMatrix;
     m4 Model;
     v4 DebugColor;
 };
@@ -144,6 +142,11 @@ VulkanWaitForDevices();
 RENDER_API
 void
 VulkanDestroyPipeline();
+
+
+RENDER_API
+i32
+RenderBindMaterial(u32 PipelineIndex);
 
 #define VULKAN_INITIALIZER_H
 #endif
