@@ -76,6 +76,14 @@ BeginRender(render_controller * Renderer, v4 ClearColor)
     RenderBeginPass(ClearColor);
 
     UpdateView(Renderer);
+
+    GPUSimulationData SimData;
+
+    SimData.AmbientLight      = V4(0,0,0,0.2f); // RECORD   AmbientLight;
+    SimData.SunlightDirection = V4(GetViewPos(Renderer) + V3(0,1,0),1.0f);
+    SimData.SunlightColor     = V4(1,1,1,1); // RECORD   SunlightColor;
+
+    RenderPushSimulationData(&SimData);
 }
 
 void
@@ -98,6 +106,38 @@ EndRender(render_controller * Renderer)
 void
 RenderDraw(game_state * GameState, game_memory * Memory,render_controller * Renderer)
 {
+
+    u32 ObjectCount,BeginObjectCount;
+    GPUObjectData * ObjectData = VulkanBeginObjectDataMapping(&ObjectCount);
+    BeginObjectCount = ObjectCount;
+
+    for (u32 RenderPassIndex = 0;
+                RenderPassIndex < ArrayCount(Renderer->RenderPasses);
+                ++RenderPassIndex)
+    {
+        render_pass * RenderPass = Renderer->RenderPasses + RenderPassIndex;
+
+        for (u32 UnitIndex = 0;
+                UnitIndex < RenderPass->Count;
+                ++UnitIndex)
+        {
+            render_unit * Unit = RenderPass->Units + UnitIndex;
+
+            m4 MVP = Renderer->Projection * Renderer->ViewTransform * Unit->ModelTransform;
+
+            ObjectData->ModelMatrix = Unit->ModelTransform;
+            ObjectData->MVP = MVP;
+            ObjectData->Color = Unit->Color;
+
+            ++ObjectCount;
+            ++ObjectData;
+        }
+    }
+
+    VulkanEndObjectDataMapping(ObjectCount);
+
+    ObjectCount = BeginObjectCount;
+
     for (u32 RenderPassIndex = 0;
                 RenderPassIndex < ArrayCount(Renderer->RenderPasses);
                 ++RenderPassIndex)
@@ -127,30 +167,51 @@ RenderDraw(game_state * GameState, game_memory * Memory,render_controller * Rend
                 RenderBindMesh(MeshSize, Mesh->OffsetVertices);
                 LastMeshGroup = MeshGroup;
             }
-
+#if 0
             mesh_push_constant Constants;
-
-            m4 MVP = Renderer->Projection * Renderer->ViewTransform * Unit->ModelTransform;
-
             Constants.RenderMatrix = MVP;
-            Constants.SourceLight = V3(0,10.0f,0);
             Constants.Model = Unit->ModelTransform;
             Constants.DebugColor = Unit->Color;
-
             RenderPushVertexConstant(sizeof(mesh_push_constant),(void *)&Constants);
-            RenderDrawMesh(MeshSize);
+#endif
+            RenderDrawObject(MeshSize,ObjectCount);
+            ++ObjectCount;
         }
     }
-#if DEBUG
 
-
-#endif
 }
+
 void
 RenderDrawGround(game_state * GameState,render_controller * Renderer, simulation * Sim)
 {
     simulation_iterator SimIter = BeginSimGroundIterator(&GameState->World, Sim);
-    v3 SourceLight = GetViewPos(Renderer) + V3(0,1,0) ;
+
+    RenderSetPipeline(Renderer->Pipelines[0]);
+
+    u32 ObjectCount,BeginObjectCount;
+    GPUObjectData * ObjectData = VulkanBeginObjectDataMapping(&ObjectCount);
+    BeginObjectCount = ObjectCount;
+
+    for (entity * Entity = SimIter.Entity;
+            Entity;
+            Entity = AdvanceSimGroundIterator(&SimIter))
+    {
+        m4 ModelTransform = Entity->Transform.WorldT;
+
+        m4 MVP = Renderer->Projection * Renderer->ViewTransform * ModelTransform;
+
+        ObjectData->ModelMatrix = ModelTransform;
+        ObjectData->MVP = MVP;
+        ObjectData->Color = V4(Entity->Color,1.0f - Entity->Transparency);
+
+        ++ObjectCount;
+        ++ObjectData;
+    }
+
+    VulkanEndObjectDataMapping(ObjectCount);
+
+    ObjectCount = BeginObjectCount;
+    SimIter = BeginSimGroundIterator(&GameState->World, Sim);
 
     for (entity * Entity = SimIter.Entity;
             Entity;
@@ -158,23 +219,21 @@ RenderDrawGround(game_state * GameState,render_controller * Renderer, simulation
     {
         mesh_group * MeshGroup = GameState->GroundMeshGroup + Entity->MeshID.ID;
         mesh * Mesh = MeshGroup->Meshes;
-
-        m4 ModelTransform = Entity->Transform.WorldT;
-
-        mesh_push_constant Constants;
-        m4 MVP = Renderer->Projection * Renderer->ViewTransform * ModelTransform;
-
-        Constants.RenderMatrix = MVP;
-        Constants.SourceLight = SourceLight;
-        Constants.Model = ModelTransform;
-
-        Constants.DebugColor = V4(Entity->Color,1.0f - Entity->Transparency);
+#if 0
+            mesh_push_constant Constants;
+            Constants.RenderMatrix = MVP;
+            Constants.Model = ModelTransform;
+            Constants.DebugColor = V4(Entity->Color,1.0f - Entity->Transparency);
+            RenderPushVertexConstant(sizeof(mesh_push_constant),(void *)&Constants);
+#endif
 
         u32 MeshSize = Mesh->VertexSize /sizeof(vertex_point);
-        RenderPushVertexConstant(sizeof(mesh_push_constant),(void *)&Constants);
         RenderBindMesh(MeshSize, Mesh->OffsetVertices);
-        RenderDrawMesh(MeshSize);
+        RenderDrawObject(MeshSize,ObjectCount);
+
+        ++ObjectCount;
     }
+
 }
 
 void
@@ -221,11 +280,7 @@ PushDrawSimulation(game_memory * Memory, game_state * GameState, simulation * Si
 
     START_CYCLE_COUNT(render_entities);
 
-    //v3 SourceLight = V3(0,10.0f,0);
-    //v3 SourceLight = GameState->DebugSourceLightP;
     v4 Color = V4(1.0f,0.5f,0.2f,1.0f);
-
-    v3 SourceLight = GetViewPos(&GameState->Renderer) + V3(0,1,0) ;
 
     simulation_iterator SimIter = BeginSimIterator(&GameState->World, Sim);
 
@@ -485,18 +540,6 @@ LoadShader(game_memory * Memory,memory_arena * Arena,const char * Filepath)
     return Result;
 }
 
-
-void
-RenderPushTexture(game_state * GameState, void * Data, u32 Width, u32 Height)
-{
-    i32 VulkanPushTexture(void * Data, u32 DataSize, u32 Width, u32 Height, u32 BaseOffset);
-}
-
-enum enum_textures
-{
-    texture_ground_stone = 1
-};
-
 void
 GetTexture(game_state * GameState,game_memory * Memory,memory_arena * Arena, enum_textures TextureID)
 {
@@ -514,9 +557,11 @@ GetTexture(game_state * GameState,game_memory * Memory,memory_arena * Arena, enu
     if (GetFileResult.Success)
     {
         i32 x,y,comp;
-        stbi_uc * Data = stbi_load_from_memory(Arena,GetFileResult.Base, GetFileResult.Size, &x,&y, &comp, 0);
-        u32 Size = x * y * comp;
-        //RenderPushTexture(Data, x, y, BaseOffset);
+        i32 DesiredChannels = 4;
+        stbi_uc * Data = 
+            stbi_load_from_memory(Arena,GetFileResult.Base, GetFileResult.Size, &x,&y, &comp, DesiredChannels);
+        u32 Size = x * y * DesiredChannels;
+        VulkanPushTexture(Data, x, y, 0,DesiredChannels);
     }
     else
     {

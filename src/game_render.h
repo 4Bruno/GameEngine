@@ -22,6 +22,16 @@ enum  shader_type_fragment
     shader_type_fragment_total
 };
 
+
+enum enum_textures
+{
+    enum_texture_none = 0,
+    enum_texture_ground_stone = 1
+};
+
+
+
+
 struct render_unit
 {
     m4 ModelTransform;
@@ -34,6 +44,13 @@ struct render_pass
     render_unit * Units;
     u32 Limit;
     u32 Count;
+};
+
+struct gpu_arena
+{
+    u32 TotalSize;
+    u32 CurrentSize;
+    i32 MemoryAlign;
 };
 
 struct render_controller
@@ -140,6 +157,9 @@ RenderDraw(game_state * GameState, game_memory * Memory,render_controller * Rend
 
 GAME_API void
 RenderDrawGround(game_state * GameState,render_controller * Renderer, simulation * Sim);
+
+GAME_API void
+GetTexture(game_state * GameState,game_memory * Memory,memory_arena * Arena, enum_textures TextureID);
 
 #define GAME_RENDER_H
 #endif

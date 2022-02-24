@@ -210,21 +210,6 @@ DebugDraw(render_controller * Renderer,v3 LocalP, v3 Scale, v3 Color, r32 Transp
 }
 #endif
 
-enum enum_textures
-{
-    enum_texture_none = 0,
-    enum_texture_ground_stone = 1
-};
-
-struct gpu_arena
-{
-    u32 TotalSize;
-    u32 CurrentSize;
-    i32 MemoryAlign;
-};
-
-
-
 extern "C"
 GAME_API
 GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
@@ -331,9 +316,10 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
         GameState->CameraMode = true;
         GameState->CameraWorldP = WorldCenter;
 
-#if 0
+#if 1
+        memory_arena * TempArena = &GameState->TemporaryArena;
         BeginTempArena(TempArena,2);
-        GetTexture(Memory,TempArena, enum_texture_ground_stone);
+        GetTexture(GameState,Memory,TempArena, enum_texture_ground_stone);
         EndTempArena(TempArena,2);
 #endif
 
