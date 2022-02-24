@@ -319,7 +319,7 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
 #if 1
         memory_arena * TempArena = &GameState->TemporaryArena;
         BeginTempArena(TempArena,2);
-        GetTexture(GameState,Memory,TempArena, enum_texture_ground_stone);
+        GetTexture(GameState,Memory,TempArena, enum_texture_ground_stone_02);
         EndTempArena(TempArena,2);
 #endif
 

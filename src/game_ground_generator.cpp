@@ -416,7 +416,7 @@ DensityAtP(v3 P)
      */
     // reverse so ground is >0 (inside terrain)
     // and above ground is <0
-#if 0
+#if 1
   r32 Density = -P.y;
 #else
   // sphere
@@ -822,8 +822,8 @@ FillBufferTestGroundCorner(memory_arena * TempArena, world_pos WorldP, world_pos
                                 Vertices[VerticeCount].P =  TestP0 + OffsetFromOrigin;
                                 //Vertices[VerticeCount].P.z = -Vertices[VerticeCount].P.z;
                                 Vertices[VerticeCount].P.x = -Vertices[VerticeCount].P.x;
-                                Vertices[VerticeCount].UV.x = 1.0f;
-                                Vertices[VerticeCount].UV.y = 0.0f;
+                                Vertices[VerticeCount].UV.x = TestP0.x;
+                                Vertices[VerticeCount].UV.y = 1.0f - TestP0.z;
                                 //Logn("Vertice %i at " STRP,VerticeCount,FP(Vertices[VerticeCount].P));
                                 ++VerticeCount;
 
@@ -1251,7 +1251,7 @@ GenerateGround(game_memory * Memory,game_state * GameState,world * World,world_p
 {
     START_CYCLE_COUNT(ground_generation);
     //OrigenP = WorldPosition(-2,0,-2);
-    OrigenP = WorldPosition(0,0,0);
+    //OrigenP = WorldPosition(0,0,0);
 
     v3 GroundArea = World->GridCellDimInMeters * 12.0f;
 

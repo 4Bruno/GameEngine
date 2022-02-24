@@ -26,7 +26,8 @@ enum  shader_type_fragment
 enum enum_textures
 {
     enum_texture_none = 0,
-    enum_texture_ground_stone = 1
+    enum_texture_ground_stone_01 = 1,
+    enum_texture_ground_stone_02 = 2
 };
 
 

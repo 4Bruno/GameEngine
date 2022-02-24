@@ -75,7 +75,7 @@ enum debug_cycle_function
 
 // Toggle on/off function to debug
 //#define BITMASK_DEBUG_FUNC debug_cycle_function_render_entities | debug_cycle_function_ground_generation 
-#define BITMASK_DEBUG_FUNC debug_cycle_function_begin_simulation
+#define BITMASK_DEBUG_FUNC debug_cycle_function_render_entities
 
 #define START_CYCLE_COUNT(name) u64 debug_cycle_function##_CycleBegin = __rdtsc();\
                                 u32 DebugCycleRingIndex = DebugCycles[name].RingIndex;\

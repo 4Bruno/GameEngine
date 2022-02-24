@@ -106,6 +106,7 @@ EndRender(render_controller * Renderer)
 void
 RenderDraw(game_state * GameState, game_memory * Memory,render_controller * Renderer)
 {
+    START_CYCLE_COUNT(render_entities);
 
     u32 ObjectCount,BeginObjectCount;
     GPUObjectData * ObjectData = VulkanBeginObjectDataMapping(&ObjectCount);
@@ -179,6 +180,7 @@ RenderDraw(game_state * GameState, game_memory * Memory,render_controller * Rend
         }
     }
 
+    END_CYCLE_COUNT(render_entities);
 }
 
 void
@@ -186,7 +188,11 @@ RenderDrawGround(game_state * GameState,render_controller * Renderer, simulation
 {
     simulation_iterator SimIter = BeginSimGroundIterator(&GameState->World, Sim);
 
-    RenderSetPipeline(Renderer->Pipelines[0]);
+    u32 PipelineIndex = 1;
+
+    RenderSetPipeline(Renderer->Pipelines[PipelineIndex]);
+
+    RenderBindMaterial(PipelineIndex);
 
     u32 ObjectCount,BeginObjectCount;
     GPUObjectData * ObjectData = VulkanBeginObjectDataMapping(&ObjectCount);
@@ -278,8 +284,6 @@ void
 PushDrawSimulation(game_memory * Memory, game_state * GameState, simulation * Sim)
 {
 
-    START_CYCLE_COUNT(render_entities);
-
     v4 Color = V4(1.0f,0.5f,0.2f,1.0f);
 
     simulation_iterator SimIter = BeginSimIterator(&GameState->World, Sim);
@@ -309,8 +313,6 @@ PushDrawSimulation(game_memory * Memory, game_state * GameState, simulation * Si
         }
     }
 
-
-    END_CYCLE_COUNT(render_entities);
 }
 
 
@@ -548,12 +550,13 @@ GetTexture(game_state * GameState,game_memory * Memory,memory_arena * Arena, enu
      * Reading a 2MB jpeg requires about 10 MB of temporary memory to do the entire process
      * without cleaning up in between
      */
-    Assert(TextureID == 1);
-    const char * PathTextures = {
-        "..\\..\\assets\\ground_stone_01.jpg"
+    Assert(TextureID >= 1);
+    const char * PathTextures[] = {
+        "..\\..\\assets\\ground_stone_01.jpg",
+        "..\\..\\assets\\ground_stone_02.jpg"
     };
 
-    file_contents GetFileResult = GetFileContents(Memory, Arena,&PathTextures[TextureID - 1]);
+    file_contents GetFileResult = GetFileContents(Memory, Arena,PathTextures[TextureID - 1]);
     if (GetFileResult.Success)
     {
         i32 x,y,comp;
@@ -585,7 +588,7 @@ CreateAllPipelines(game_state * GameState, game_memory * Memory)
 {
     for (i32 i = 0; i < material_type_count; ++i)
     {
-        pipeline_creation_result Result =  CreatePipeline(Memory,&GameState->TemporaryArena,&GameState->Renderer,material_type_texture);
+        pipeline_creation_result Result =  CreatePipeline(Memory,&GameState->TemporaryArena,&GameState->Renderer,(material_type)i);
         GameState->Renderer.Pipelines[i] = Result.Pipeline;
     }
 }
