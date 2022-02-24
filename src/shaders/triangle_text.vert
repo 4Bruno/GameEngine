@@ -6,7 +6,9 @@ layout (location = 2) in vec4 Color;
 layout (location = 3) in vec2 UV;
 
 layout (location = 0) out vec4 outColor;
-layout (location = 1) out vec2 TextCoord;
+layout (location = 1) out vec2 outTextCoord;
+layout (location = 2) out vec3 outNormal;
+layout (location = 3) out vec3 outPosition;
 
 layout ( push_constant ) uniform constants
 {
@@ -63,8 +65,10 @@ void main()
     outColor = (AmbientLight + SpecularLight) * Color;
     //outColor = vec4(N,1.0f);
 
-    TextCoord = UV;
+    outTextCoord = UV;
 
     gl_Position = MVP * vec4(Position, 1.0f);
+    outNormal = Normal;
+    outPosition = Position;
 }
 
