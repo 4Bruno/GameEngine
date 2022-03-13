@@ -19,21 +19,20 @@ ThreadEndArena(thread_memory_arena * ThreadArena)
     ThreadArena->InUse = false;
 }
 
-inline u8 *
-_PushSize(memory_arena * Arena,u32 Size)
-{
-    Assert((Arena->CurrentSize + Size) < Arena->MaxSize);
-    u8 * BaseAddr = Arena->Base + Arena->CurrentSize;
-    Arena->CurrentSize += Size;
-    return BaseAddr;
-}
-
 void
 InitializeArena(memory_arena * Arena,u8 * BaseAddr, u32 MaxSize)
 {
     Arena->MaxSize = MaxSize;
     Arena->CurrentSize = 0;
     Arena->Base = BaseAddr;
+}
+
+void
+SubArena(memory_arena * ParentArena,memory_arena * Arena, u32 Size)
+{
+    Arena->Base = PushSize(ParentArena,Size);
+    Arena->MaxSize = Size;
+    Arena->CurrentSize = 0;
 }
 
 /*
@@ -53,6 +52,27 @@ GetThreadArena(game_state * GameState)
                 ++ThreadArenaIndex)
     {
         thread_memory_arena * TestThreadArena = GameState->ThreadArena + ThreadArenaIndex;
+        if (!TestThreadArena->InUse)
+        {
+            TestThreadArena->InUse = true;
+            ThreadArena = TestThreadArena;
+            break;
+        }
+    }
+
+    return ThreadArena;
+}
+
+thread_memory_arena *
+GetThreadArena(thread_memory_arena * ThreadArenaArray, u32 LimitThreadArenas)
+{
+    thread_memory_arena * ThreadArena = 0;
+
+    for (u32 ThreadArenaIndex = 0;
+                ThreadArenaIndex < LimitThreadArenas;
+                ++ThreadArenaIndex)
+    {
+        thread_memory_arena * TestThreadArena = ThreadArenaArray + ThreadArenaIndex;
         if (!TestThreadArena->InUse)
         {
             TestThreadArena->InUse = true;

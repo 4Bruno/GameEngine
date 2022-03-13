@@ -2,7 +2,7 @@
 #include "game_platform.h"
 #include "win32_io.cpp"
 #include "vulkan\vulkan_win32.h"
-#include "vulkan_initializer.h"
+#include "graphics_api.h"
 #include "win32_threading.cpp"
 
 // https://docs.microsoft.com/en-us/windows/win32/dxtecharts/taking-advantage-of-high-dpi-mouse-movement?redirectedfrom=MSDN
@@ -16,6 +16,9 @@
 
 #define GAME_DLL "game.dll"
 #define GAME_DLL_TEMP "game_temp.dll"
+
+#define RENDER_DLL "graphics_api.dll"
+#define RENDER_DLL_TEMP "graphics_api_temp.dll"
 #define SHADER_VERTEX_DEBUG "shaders\\triangle.vert"
 
 #define APP_NAME "Vulkan_hardcore"
@@ -37,6 +40,13 @@ global_variable RECT GlobalOldRectClip;
 global_variable RECT GlobalNewRectClip;
 global_variable b32 AllowMouseConfinement = false;
 
+GRAPHICS_ON_WINDOW_RESIZE(StubOnWindowResize)
+{
+    // signal no error
+    return 0;
+}
+
+global_variable graphics_on_window_resize * GraphicsOnWindowResize = StubOnWindowResize;
 
 /* BEGIN of OS Specific calls to be replicated in other OS */
 
@@ -161,10 +171,15 @@ struct vulkan_window_data
     HWND      WindowHandle;
 };
 
-struct vulkan_handler
+struct graphics_handler
 {
-    HINSTANCE Lib;
+    HINSTANCE DriverLib;
     FARPROC GetInstanceProcAddr;
+
+    HINSTANCE InitializerLib;
+    FILETIME  InitializerLastModified;
+
+    graphics_api API;
 };
 
 VULKAN_CREATE_SURFACE(VulkanCreateSurface)
@@ -190,17 +205,105 @@ VULKAN_CREATE_SURFACE(VulkanCreateSurface)
     return 0;
 }
 
-vulkan_handler
-GetVulkanHandler()
+
+void
+UnloadGraphicsLib(graphics_handler * Graphics)
 {
-    vulkan_handler VulkanHandler      = {};
-    VulkanHandler.Lib                 = LoadLibrary("vulkan-1.dll"); // HINSTANCE   Lib;
-    if (VulkanHandler.Lib)
+    if (Graphics->InitializerLib)
     {
-        VulkanHandler.GetInstanceProcAddr = GetProcAddress(VulkanHandler.Lib, "vkGetInstanceProcAddr"); // FARPROC   GetInstanceProcAddr;
+        Assert(Graphics->API.GraphicsShutdownAPI);
+        Assert(Graphics->API.GraphicsWaitForRender);
+
+        Graphics->API.GraphicsWaitForRender();
+        Graphics->API.GraphicsShutdownAPI();
+
+        FreeLibrary(Graphics->InitializerLib);
+        Graphics->InitializerLib = 0;
     }
-    return VulkanHandler;
+
+    if (Graphics->DriverLib)
+    {
+        FreeLibrary(Graphics->DriverLib);
+        Graphics->DriverLib = 0;
+    }
+    GraphicsOnWindowResize = StubOnWindowResize;
 }
+
+b32
+LoadGraphicsLib(graphics_handler * Graphics)
+{
+    UnloadGraphicsLib(Graphics);
+
+#if DEBUG
+    if (!Win32FileExists(RENDER_DLL_TEMP))
+    {
+        return false;
+    }
+
+    if (!Win32CopyFile(RENDER_DLL_TEMP, RENDER_DLL))
+    {
+        return false;
+    }
+#endif
+
+    Graphics->DriverLib = LoadLibrary("vulkan-1.dll"); // HINSTANCE   Lib;
+
+    if (Graphics->DriverLib)
+    {
+        Graphics->GetInstanceProcAddr = GetProcAddress(Graphics->DriverLib, "vkGetInstanceProcAddr"); // FARPROC   GetInstanceProcAddr;
+    }
+    else
+    {
+        return false;
+    }
+
+    Graphics->InitializerLib = LoadLibrary(RENDER_DLL); // HMODULE   Lib;
+
+    if (Graphics->InitializerLib)
+    {
+        Graphics->InitializerLastModified = Win32GetLastWriteTime((char *)RENDER_DLL_TEMP);
+        graphics_api * API  = &Graphics->API;
+        API->GraphicsRenderDraw     = (graphics_render_draw *)      GetProcAddress(Graphics->InitializerLib,"RenderDraw");
+        API->GraphicsBeginRenderPass= (graphics_begin_render *)     GetProcAddress(Graphics->InitializerLib,"BeginRenderPass");
+        API->GraphicsEndRenderPass  = (graphics_end_render *)       GetProcAddress(Graphics->InitializerLib,"EndRenderPass");
+        API->GraphicsPushVertexData = (graphics_push_vertex_data *) GetProcAddress(Graphics->InitializerLib,"PushVertexData");
+        API->GraphicsInitializeApi  = (graphics_initialize_api *)   GetProcAddress(Graphics->InitializerLib,"InitializeAPI");
+        API->GraphicsShutdownAPI    = (graphics_close_api *)        GetProcAddress(Graphics->InitializerLib,"ShutdownAPI");
+        API->GraphicsWaitForRender  = (graphics_wait_for_render *)  GetProcAddress(Graphics->InitializerLib,"WaitForRender");
+        API->GraphicsOnWindowResize = (graphics_on_window_resize *) GetProcAddress(Graphics->InitializerLib,"OnWindowResize");
+        API->GraphicsCreateShaderModule = (graphics_create_shader_module *) GetProcAddress(Graphics->InitializerLib,"CreateShaderModule");
+        API->GraphicsDeleteShaderModule = (graphics_delete_shader_module *) GetProcAddress(Graphics->InitializerLib,"DeleteShaderModule");
+        API->GraphicsCreateMaterialPipeline = (graphics_create_material_pipeline *)GetProcAddress(Graphics->InitializerLib,"CreatePipeline");
+        API->GraphicsDestroyMaterialPipeline= (graphics_destroy_material_pipeline *)GetProcAddress(Graphics->InitializerLib,"FreeMaterialPipeline");
+
+        GraphicsOnWindowResize = API->GraphicsOnWindowResize;
+
+        b32 APILoaded =
+            Graphics->API.GraphicsRenderDraw      &&
+            Graphics->API.GraphicsBeginRenderPass &&
+            Graphics->API.GraphicsEndRenderPass   &&
+            Graphics->API.GraphicsPushVertexData  &&
+            Graphics->API.GraphicsInitializeApi   &&
+            Graphics->API.GraphicsShutdownAPI     &&
+            Graphics->API.GraphicsWaitForRender   &&
+            Graphics->API.GraphicsOnWindowResize  &&
+            Graphics->API.GraphicsCreateShaderModule &&
+            Graphics->API.GraphicsDeleteShaderModule &&
+            Graphics->API.GraphicsCreateMaterialPipeline &&
+            Graphics->API.GraphicsDestroyMaterialPipeline
+            ;
+
+        if (!APILoaded)
+        {
+            UnloadGraphicsLib(Graphics);
+        }
+    }
+
+    b32 Result = (Graphics->DriverLib && Graphics->InitializerLib);
+
+    return Result;
+}
+
 
 /* END of vulkan OS calls */
 
@@ -364,7 +467,7 @@ WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
             GetWindowRect(hWnd, &Rect);
             i32 Height =  Rect.bottom - Rect.top;
             i32 Width = Rect.right - Rect.left;
-            if (VulkanOnWindowResize(Width,Height))
+            if (GraphicsOnWindowResize(Width,Height))
             {
                 OutputDebugStringA("Error swap chain creation during window resize\n");
                 Log("Error during swap chain creation\n");
@@ -400,7 +503,7 @@ WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 
 struct game_state
 {
-    HMODULE                  Lib;
+    HMODULE                  GameLib;
     game_update_and_render * pfnGameUpdateAndRender;
     FILETIME                 CurrentLibLastModified;
     FILETIME                 ShaderVertexLastModified;
@@ -411,10 +514,10 @@ struct game_state
 b32
 LoadGameDll(game_state * GameState)
 {
-    if (GameState->Lib)
+    if (GameState->GameLib)
     {
-        FreeLibrary(GameState->Lib);
-        GameState->Lib = 0;
+        FreeLibrary(GameState->GameLib);
+        GameState->GameLib = 0;
     }
 
 
@@ -430,21 +533,21 @@ LoadGameDll(game_state * GameState)
     }
 #endif
 
-    GameState->Lib = LoadLibrary(GAME_DLL); // HMODULE   Lib;
+    GameState->GameLib = LoadLibrary(GAME_DLL); // HMODULE   Lib;
 
-    if (GameState->Lib)
+    if (GameState->GameLib)
     {
         GameState->pfnGameUpdateAndRender = 
-            (game_update_and_render *)GetProcAddress(GameState->Lib, "GameUpdateAndRender"); // game_update_and_render   pfnGameUpdateAndRender;
+            (game_update_and_render *)GetProcAddress(GameState->GameLib, "GameUpdateAndRender"); // game_update_and_render   pfnGameUpdateAndRender;
         GameState->CurrentLibLastModified = Win32GetLastWriteTime((char *)GAME_DLL_TEMP);
         if (!GameState->pfnGameUpdateAndRender)
         {
-            FreeLibrary(GameState->Lib);
-            GameState->Lib = 0;
+            FreeLibrary(GameState->GameLib);
+            GameState->GameLib = 0;
         }
     }
 
-    b32 Result = (GameState->Lib && GameState->pfnGameUpdateAndRender);
+    b32 Result = (GameState->GameLib && GameState->pfnGameUpdateAndRender);
 
     return Result;
 }
@@ -478,28 +581,48 @@ int main()
     VulkanWindowData.hInstance    = hInstance;    // HINSTANCE   hInstance;
     VulkanWindowData.WindowHandle = WindowHandle; // HWND   WindowHandle;
 
-    vulkan_handler Vulkan = GetVulkanHandler();
+    graphics_handler Graphics;
 
-    if (!Vulkan.Lib || !Vulkan.GetInstanceProcAddr)
+    if (!LoadGraphicsLib(&Graphics))
     {
-        Log("Couldn't load vulkan library/instance proc address\n");
+        Log("Couldn't load graphics library/instance proc address\n");
         return 1;
     }
 
-    vulkan_platform_window PlatformWindow;
+    graphics_platform_window PlatformWindow;
     PlatformWindow.pfnVulkanCreateSurface      = VulkanCreateSurface; // vulkan_create_surface   * pfnVulkanCreateSurface;
     PlatformWindow.SurfaceData                 = (void *)&VulkanWindowData; // Void * SurfaceData;
     PlatformWindow.VkKHROSSurfaceExtensionName = VK_KHR_WIN32_SURFACE_EXTENSION_NAME; // Char_S * VkKHROSSurfaceExtensionName;
     PlatformWindow.OSSurfaceFuncName           = "vkCreateWin32SurfaceKHR"; // Char_S * OSSurfaceFuncName;
 
-    if (InitializeVulkan(APP_WINDOW_WIDTH,APP_WINDOW_HEIGHT,
+#if DEBUG
+    u64 GameCycles[100] = {};
+    u32 CurrentCycle = 0;
+    LARGE_INTEGER LastTimeSinceDebugLog;
+    QueryPerformanceCounter(&LastTimeSinceDebugLog);
+    debug_cycle DebugCycles[DEBUG_CYCLE_COUNT] = {};
+
+    if (Graphics.API.GraphicsInitializeApi(
+                         &DebugCycles[0],
+                         APP_WINDOW_WIDTH,APP_WINDOW_HEIGHT,
                          PlatformWindow,
                          ENABLED_DEBUG_VULKAN_VALIDATION_LAYER,
-                         (PFN_vkGetInstanceProcAddr)Vulkan.GetInstanceProcAddr))
+                         (PFN_vkGetInstanceProcAddr)Graphics.GetInstanceProcAddr))
     {
         Log("Failed to initialize Vulkan\n");
         return 1;
     }
+#else
+    if (Graphics.API.GraphicsInitializeApi(APP_WINDOW_WIDTH,APP_WINDOW_HEIGHT,
+                         PlatformWindow,
+                         ENABLED_DEBUG_VULKAN_VALIDATION_LAYER,
+                         (PFN_vkGetInstanceProcAddr)Graphics.GetInstanceProcAddr))
+    {
+        Log("Failed to initialize Vulkan\n");
+        return 1;
+    }
+
+#endif
     /* ------------------------- END VULKAN ------------------------- */
 
 
@@ -515,6 +638,12 @@ int main()
 
         game_memory GameMemory     = {};
 
+        platform_api PlatformAPI;
+        PlatformAPI.OpenHandle  = Win32OpenFile; // platform_open_handle * OpenHandle
+        PlatformAPI.CloseHandle = Win32CloseFile; // platform_close_handle * CloseHandle
+        PlatformAPI.ReadHandle  = Win32ReadFile; // platform_read_handle * ReadHandle
+
+        GameMemory.PlatformAPI = PlatformAPI;
         GameMemory.DebugOpenFile       = Win32OpenFile;       // debug_open_file DebugOpenFile;
         GameMemory.DebugReadFile       = Win32ReadFile;       // debug_read_file DebugReadFile;
         GameMemory.DebugCloseFile      = Win32CloseFile;      // debug_close_file DebugCloseFile;
@@ -554,11 +683,6 @@ int main()
         GameState.ShaderVertexLastModified = Win32GetLastWriteTime((char *)SHADER_VERTEX_DEBUG);
 
 #if DEBUG
-        u64 GameCycles[100] = {};
-        u32 CurrentCycle = 0;
-        LARGE_INTEGER LastTimeSinceDebugLog;
-        QueryPerformanceCounter(&LastTimeSinceDebugLog);
-        debug_cycle DebugCycles[DEBUG_CYCLE_COUNT] = {};
         GameMemory.DebugCycle = &DebugCycles[0];
 #endif
         // Main loop
@@ -567,41 +691,81 @@ int main()
 #if DEBUG
             if (Win32HasFileBeenModified(GameState.CurrentLibLastModified, (char *)GAME_DLL_TEMP) && Win32FileExists(GAME_DLL_TEMP))
             {
-                VulkanWaitForDevices();
+                Graphics.API.GraphicsWaitForRender();
                 if (!LoadGameDll(&GameState))
                 {
                     GlobalAppRunning = false;
                     break;
                 }
-                Input.Reloaded = true;
+                Input.GameDllReloaded = true;
             }
             else
             {
-                Input.Reloaded = false;
+                Input.GameDllReloaded = false;
             }
             if (Win32HasFileBeenModified(GameState.ShaderVertexLastModified, 
-                                        (char *)SHADER_VERTEX_DEBUG) && Win32FileExists(SHADER_VERTEX_DEBUG))
+                        (char *)SHADER_VERTEX_DEBUG) && Win32FileExists(SHADER_VERTEX_DEBUG))
             {
-                VulkanWaitForDevices();
+                Graphics.API.GraphicsWaitForRender();
                 Input.ShaderHasChanged = true;
                 GameState.ShaderVertexLastModified = Win32GetLastWriteTime((char *)SHADER_VERTEX_DEBUG);
             }
+
+            if (Win32HasFileBeenModified(Graphics.InitializerLastModified, (char *)RENDER_DLL_TEMP) && Win32FileExists(RENDER_DLL_TEMP))
+            {
+                UnloadGraphicsLib(&Graphics);
+                if (!LoadGraphicsLib(&Graphics))
+                {
+                    GlobalAppRunning = false;
+                    break;
+                }
+#if DEBUG
+                if (Graphics.API.GraphicsInitializeApi(
+                            &DebugCycles[0],
+                            APP_WINDOW_WIDTH,APP_WINDOW_HEIGHT,
+                            PlatformWindow,
+                            ENABLED_DEBUG_VULKAN_VALIDATION_LAYER,
+                            (PFN_vkGetInstanceProcAddr)Graphics.GetInstanceProcAddr))
+                {
+                    GlobalAppRunning = false;
+                    Logn("Error while inializing graphics API");
+                    break;
+                }
+#else
+                if (Graphics.API.GraphicsInitializeApi(APP_WINDOW_WIDTH,APP_WINDOW_HEIGHT,
+                            PlatformWindow,
+                            ENABLED_DEBUG_VULKAN_VALIDATION_LAYER,
+                            (PFN_vkGetInstanceProcAddr)Graphics.GetInstanceProcAddr))
+                {
+                    GlobalAppRunning = false;
+                    Logn("Error while inializing graphics API");
+                    break;
+                }
+
 #endif
+                Input.GraphicsDllReloaded = true;
+            }
+            else
+            {
+                Input.GraphicsDllReloaded = false;
+            }
+#endif
+
             LARGE_INTEGER TimeElapsed = 
                 Win32QueryPerformanceDiff(Win32QueryPerformance(), StartingTime, PerfFreq);
             Input.TimeElapsed = (r32)(TimeElapsed.QuadPart * (1.0f / 1000000.0f));
             LARGE_INTEGER TimeFrameStart = Win32QueryPerformance();
 
             for (u32 ButtonIndex = 0;
-                        ButtonIndex < ArrayCount(Input.Controller.Buttons);
-                        ++ButtonIndex)
+                    ButtonIndex < ArrayCount(Input.Controller.Buttons);
+                    ++ButtonIndex)
             {
                 game_button * Button = Input.Controller.Buttons + ButtonIndex;
                 Button->WasPressed = Button->IsPressed;
             }
             for (u32 ButtonIndex = 0;
-                        ButtonIndex < ArrayCount(Input.Controller.Numbers);
-                        ++ButtonIndex)
+                    ButtonIndex < ArrayCount(Input.Controller.Numbers);
+                    ++ButtonIndex)
             {
                 game_button * Button = Input.Controller.Numbers + ButtonIndex;
                 Button->WasPressed = Button->IsPressed;
@@ -638,11 +802,11 @@ int main()
 
             GameCycles[CurrentCycle++] = GameCycleStart;
             CurrentCycle = CurrentCycle % ArrayCount(GameCycles);
-            
+
             r64 AvgCycle = 0.0f;
             for (u32 CyCleIndex = 0;
-                        CyCleIndex < ArrayCount(GameCycles);
-                        ++CyCleIndex)
+                    CyCleIndex < ArrayCount(GameCycles);
+                    ++CyCleIndex)
             {
                 AvgCycle += (r64)GameCycles[CyCleIndex];
             }
@@ -650,7 +814,7 @@ int main()
 
             //Log("Avg: %f Last: %I64u\n",AvgCycle,GameCycleStart);
 #else
-            GameState.pfnGameUpdateAndRender(&GameMemory,&Input,Width, Height);
+            GameState.pfnGameUpdateAndRender(&GameMemory,&Input, &Graphics.API,Width, Height);
 #endif
 
             LARGE_INTEGER TimeFrameElapsed = 
@@ -720,16 +884,12 @@ int main()
 
     } // Game Dll found
 
-    CloseVulkan();
 
-    if (Vulkan.Lib)
-    {
-        FreeLibrary(Vulkan.Lib);
-    }
+    UnloadGraphicsLib(&Graphics);
 
-    if (GameState.Lib)
+    if (GameState.GameLib)
     {
-        FreeLibrary(GameState.Lib);
+        FreeLibrary(GameState.GameLib);
     }
     return 0;
 

@@ -169,6 +169,7 @@ THREAD_WORK_HANDLER(AsyncUpdateEntitiesModel)
             T->WorldT = T->WorldP * R * M4(T->WorldS);
             //Log("Entity: %i",EntityIndex);LOG_P(GetMatrixPos(T->WorldP));
             
+#if 0
             simulation * Sim = GameState->Simulation;
             if ( (Entity->MeshObjCount > 1) && IS_NOT_NULL(Sim) )
             {
@@ -198,6 +199,7 @@ THREAD_WORK_HANDLER(AsyncUpdateEntitiesModel)
                     //LOG_P(GetMatrixPos(MeshObjT->WorldP));
                 }
             }
+#endif
         }
     }
 }
@@ -270,11 +272,11 @@ EntityDelete(entity * Entity)
 }
 
 void
-EntityAddMesh(entity * Entity, mesh_id MeshID, v3 Color, r32 Transparency)
+EntityAddMesh(entity * Entity, game_asset_id MeshID, v3 Color, r32 Transparency)
 {
-    mesh_group Mesh = GetMeshInfo(MeshID);
+    //mesh_group Mesh = GetMeshInfo(MeshID);
+    Assert(MeshID > game_asset_mesh_begin && MeshID < game_asset_mesh_end);
     Entity->MeshID = MeshID;
-    Entity->MeshObjCount = Mesh.TotalMeshObjects;
     Entity->Color = Color;
     Entity->Transparency = Transparency;
 #if 0

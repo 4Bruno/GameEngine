@@ -44,46 +44,7 @@ GetNextAvailableEntry(simulation * Sim)
 
     return Entry;
 }
-simulation_mesh_obj_transform_iterator
-BeginSimMeshObjTransformIterator(simulation * Sim, entity * Entity)
-{
-    simulation_mesh_obj_transform_iterator Iter;
-    Iter.Index = 0;
-    Iter.T = 0;
-    Iter.MeshObjCount = Entity->MeshObjCount;
-    if (Entity->MeshObjCount > 1)
-    {
-        if (IS_VALID_MESHOBJ_TRANSFORM_INDEX(Entity->MeshObjTransOcuppancyIndex))
-        {
-            u32 IndexStart = Sim->MeshObjTransformID[Entity->MeshObjTransOcuppancyIndex];
-            entity_transform * T = Sim->MeshObjTransform + IndexStart;
-            Iter.T = T;
-        }
-        else
-        {
-            Iter.T = 0;
-        }
-    }
-    else
-    {
-        Iter.T = &Entity->Transform;
-    }
-    return Iter;
-}
-entity_transform *
-AdvanceSimMeshObjTransformIterator(simulation_mesh_obj_transform_iterator * Iter)
-{
-    ++Iter->Index;
-    if (Iter->Index < Iter->MeshObjCount)
-    {
-        ++Iter->T;
-    }
-    else
-    {
-        Iter->T = 0;
-    }
-    return Iter->T;
-}
+
 
 simulation_iterator
 BeginSimGroundIterator(world * World, simulation * Sim)
@@ -152,6 +113,7 @@ AdvanceSimIterator(simulation_iterator * Iterator)
     return Iterator->Entity;
 }
 
+#if 0
 void
 SimulationUnregisterEntity(simulation * Sim, entity * Entity,  u32 StorageIndexID)
 {
@@ -226,6 +188,7 @@ FindAndSetFirstAvailableBucket(simulation * Sim,u32 BucketsCount)
 
     return BucketBitIndex;
 }
+#endif
 
 void
 SimulationRegisterGround(simulation * Sim,entity * Ground,u32 GroundIndex)
@@ -241,61 +204,6 @@ SimulationRegisterEntity(simulation * Sim, entity * Entity,  u32 StorageIndexID)
     Assert(Sim->EntryCount < ArrayCount(Sim->EntityEntries));
     sparse_entry * Entry = GetNextAvailableEntry(Sim);
     Entry->StorageIndex = StorageIndexID;
-
-    /*
-     * For entities with complex meshes (multiple objects).
-     * Each object within the mesh has local transform matrix.
-     * This data lives in a temporary array in the simulation.
-     * Consequence, once unregistered, we lose object transforms. I'm OK.
-     * Every time we load such a mesh, we assign specific bucket which
-     * storages the start index in the temporary array where all the 
-     * transforms for each object within the mesh.
-     * The bucket is inmutable, it is an interface pointed by entities.
-     * Where the bucket points is local to the simulation and can change
-     * if is convenient (ie: re-order/clean the array). 
-     */
-    if (
-            (Entity->MeshObjCount > 1) &&
-            IS_VALID_MESHID(Entity->MeshID.ID) &&
-            (!IS_VALID_MESHOBJ_TRANSFORM_INDEX(Entity->MeshObjTransOcuppancyIndex))
-       )
-    {
-        u32 BucketsCount = Entity->MeshObjCount;
-
-        u32 BucketIndex = FindAndSetFirstAvailableBucket(Sim,BucketsCount);
-
-        Assert(IS_VALID_MESHOBJ_TRANSFORM_INDEX(BucketIndex));
-
-        u32 * Bucket = Sim->MeshObjTransformID + BucketIndex;
-
-        Entity->MeshObjTransOcuppancyIndex = BucketIndex;
-
-        // TODO:  if this fails, reconstruct array to free buckets
-        //        then check again if still has no space
-        Assert((Sim->MeshObjTransformCount + BucketsCount) < ArrayCount(Sim->MeshObjTransform));
-
-        // points to the first available index will be used
-        *Bucket = Sim->MeshObjTransformCount;
-
-        mesh_group Mesh = GetMeshInfo(Entity->MeshID);
-
-        for (u32 MeshIndex = 0;
-                MeshIndex < Mesh.TotalMeshObjects;
-                ++MeshIndex)
-        {
-            entity_transform * T = (Sim->MeshObjTransform + Sim->MeshObjTransformCount++);
-            v3 Scale = V3(1,1,1);
-            T->LocalP = V3(0,0,0);
-            T->LocalS = Scale;
-            Quaternion_setIdentity(&T->LocalR);
-            Translate(T->WorldP,T->LocalP);
-            T->WorldS = Scale;
-            T->WorldR = T->LocalR;
-            T->WorldT = {};
-        }
-
-        //Logn("Registered Entity with multiple mesh objects %i",Entity->ID.ID);
-    }
 
 #if 0
     if (EntityHasFlag(Entity,component_transform))

@@ -1,6 +1,5 @@
 #ifndef GAME_H
 
-#include "vulkan_initializer.h"
 #include "game_platform.h"
 #if DEBUG
 extern "C" debug_cycle * DebugCycles;
@@ -13,6 +12,7 @@ extern "C" debug_cycle * DebugCycles;
 #include "game_render.h"
 #include "game_platform.h"
 #include "game_animation.h"
+#include "game_assets.h"
 
 #include "data_load.h"
 #include "collision.h"
@@ -91,14 +91,8 @@ struct game_state
 
     memory_arena PermanentArena;
     memory_arena TemporaryArena;
-    memory_arena ShadersArena;
+
     memory_arena RenderArena;
-
-    // beginning of arena is for mesh_group
-    // (sizeof(mesh_group) * LimitMeshes)
-    // remaining buffer is for mesh children
-    memory_arena MeshesArena;
-
     memory_arena WorldArena;
     world World;
 
@@ -107,6 +101,7 @@ struct game_state
     thread_memory_arena * ThreadArena;
     u32 LimitThreadArenas;
 
+#if 0
     mesh_group * Meshes;
     u32 LimitMeshes;
 
@@ -114,7 +109,9 @@ struct game_state
     u32 GroundMeshLimit;
     u32 GroundMeshCount;
     u32 MaxGroundByteSize;
+#endif
 
+    game_assets Assets;
     render_controller Renderer;
 
     world_pos CameraWorldP;
@@ -125,6 +122,21 @@ struct game_state
     v3 DebugSourceLightP;
 };
 
+extern graphics_render_draw * GraphicsRenderDraw ;
+extern graphics_begin_render * GraphicsBeginRenderPass ;
+extern graphics_end_render * GraphicsEndRenderPass ;
+extern graphics_push_vertex_data * GraphicsPushVertexData ;
+extern graphics_initialize_api * GraphicsInitializeApi ;
+extern graphics_close_api * GraphicsShutdownAPI ;
+extern graphics_wait_for_render * GraphicsWaitForRender ;
+extern graphics_on_window_resize * GraphicsOnWindowResize ;
+extern graphics_create_shader_module * GraphicsCreateShaderModule;
+extern graphics_delete_shader_module * GraphicsDeleteShaderModule;
+extern graphics_create_material_pipeline * GraphicsCreateMaterialPipeline;
+extern graphics_destroy_material_pipeline * GraphicsDestroyMaterialPipeline;
+
+extern game_memory * GlobalPlatformMemory;
+extern game_assets * GlobalAssets;
 
 
 #define GAME_H

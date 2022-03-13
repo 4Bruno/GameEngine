@@ -1,6 +1,4 @@
 #include "game.h"
-#include "data_load.h"
-
 
 
 #define STB_IMAGE_IMPLEMENTATION
@@ -15,8 +13,10 @@ GetViewPos(render_controller * Renderer)
     return P;
 }
 
+
 render_controller
 NewRenderController(memory_arena * Arena,
+                    u32 RenderUnitLimits,
                     v3 WorldUp,
                     r32 FOV,
                     i32 ScreenWidth, i32 ScreenHeight, 
@@ -33,31 +33,10 @@ NewRenderController(memory_arena * Arena,
     Renderer.ViewRotationMatrix = M4();
     Renderer.ViewTransform      = M4();
     Renderer.Projection         = ProjectionMatrix(FOV,((r32)ScreenWidth / (r32)ScreenHeight), n,f);
-    Renderer.Arena              = Arena;
+    Renderer.UnitsLimit = RenderUnitLimits;
+    Renderer.Units = PushArray(Arena,RenderUnitLimits,render_unit);
 
-    Renderer.VertexArena = RenderGetMemoryArena();
-    Renderer.IndicesArena = RenderGetMemoryArena();
-
-    for (i32 i = 0; i < ArrayCount(Renderer.Pipelines); ++i)
-    {
-        Renderer.Pipelines[i] = -1;
-    }
-
-    for (u32 RenderPassIndex = 0;
-                RenderPassIndex < ArrayCount(Renderer.RenderPasses);
-                ++RenderPassIndex)
-    {
-        render_pass * RenderPass = Renderer.RenderPasses + RenderPassIndex;
-        RenderPass->Limit = 4096;
-        RenderPass->Count = 0;
-        RenderPass->Units = PushArray(Renderer.Arena,RenderPass->Limit,render_unit);
-    }
-#if DEBUG
-    render_pass * RenderPass = &Renderer.RenderPassDebug;
-    RenderPass->Limit = 4096;
-    RenderPass->Count = 0;
-    RenderPass->Units = PushArray(Renderer.Arena,RenderPass->Limit,render_unit);
-#endif
+    Renderer.UnitsCount = 0;
 
     return Renderer;
 }
@@ -68,121 +47,8 @@ UpdateView(render_controller * Renderer)
     Renderer->ViewTransform = Renderer->ViewRotationMatrix * Renderer->ViewMoveMatrix;
 }
 
-void
-BeginRender(render_controller * Renderer, v4 ClearColor)
-{
-    WaitForRender();
 
-    RenderBeginPass(ClearColor);
-
-    UpdateView(Renderer);
-
-    GPUSimulationData SimData;
-
-    SimData.AmbientLight      = V4(0,0,0,0.2f); // RECORD   AmbientLight;
-    SimData.SunlightDirection = V4(GetViewPos(Renderer) + V3(0,1,0),1.0f);
-    SimData.SunlightColor     = V4(1,1,1,1); // RECORD   SunlightColor;
-
-    RenderPushSimulationData(&SimData);
-}
-
-void
-EndRender(render_controller * Renderer)
-{
-    RenderEndPass();
-
-    for (u32 RenderPassIndex = 0;
-                RenderPassIndex < ArrayCount(Renderer->RenderPasses);
-                ++RenderPassIndex)
-    {
-        render_pass * RenderPass = Renderer->RenderPasses + RenderPassIndex;
-        RenderPass->Count = 0;
-    }
-#if DEBUG
-    Renderer->RenderPassDebug.Count = 0;
-#endif
-}
-
-void
-RenderDraw(game_state * GameState, game_memory * Memory,render_controller * Renderer)
-{
-    START_CYCLE_COUNT(render_entities);
-
-    u32 ObjectCount,BeginObjectCount;
-    GPUObjectData * ObjectData = VulkanBeginObjectDataMapping(&ObjectCount);
-    BeginObjectCount = ObjectCount;
-
-    for (u32 RenderPassIndex = 0;
-                RenderPassIndex < ArrayCount(Renderer->RenderPasses);
-                ++RenderPassIndex)
-    {
-        render_pass * RenderPass = Renderer->RenderPasses + RenderPassIndex;
-
-        for (u32 UnitIndex = 0;
-                UnitIndex < RenderPass->Count;
-                ++UnitIndex)
-        {
-            render_unit * Unit = RenderPass->Units + UnitIndex;
-
-            m4 MVP = Renderer->Projection * Renderer->ViewTransform * Unit->ModelTransform;
-
-            ObjectData->ModelMatrix = Unit->ModelTransform;
-            ObjectData->MVP = MVP;
-            ObjectData->Color = Unit->Color;
-
-            ++ObjectCount;
-            ++ObjectData;
-        }
-    }
-
-    VulkanEndObjectDataMapping(ObjectCount);
-
-    ObjectCount = BeginObjectCount;
-
-    for (u32 RenderPassIndex = 0;
-                RenderPassIndex < ArrayCount(Renderer->RenderPasses);
-                ++RenderPassIndex)
-    {
-        render_pass * RenderPass = Renderer->RenderPasses + RenderPassIndex;
-
-        RenderSetPipeline(Renderer->Pipelines[RenderPassIndex]);
-
-        mesh_group * LastMeshGroup = 0;
-
-        for (u32 UnitIndex = 0;
-                UnitIndex < RenderPass->Count;
-                ++UnitIndex)
-        {
-            render_unit * Unit = RenderPass->Units + UnitIndex;
-
-            mesh_group * MeshGroup = 0;
-
-            MeshGroup = GetMesh(Memory,GameState,Unit->MeshID);
-
-            mesh * Mesh = MeshGroup->Meshes + 0;
-
-            u32 MeshSize = Mesh->VertexSize / sizeof(vertex_point);
-
-            if (LastMeshGroup != MeshGroup)
-            {
-                RenderBindMesh(MeshSize, Mesh->OffsetVertices);
-                LastMeshGroup = MeshGroup;
-            }
 #if 0
-            mesh_push_constant Constants;
-            Constants.RenderMatrix = MVP;
-            Constants.Model = Unit->ModelTransform;
-            Constants.DebugColor = Unit->Color;
-            RenderPushVertexConstant(sizeof(mesh_push_constant),(void *)&Constants);
-#endif
-            RenderDrawObject(MeshSize,ObjectCount);
-            ++ObjectCount;
-        }
-    }
-
-    END_CYCLE_COUNT(render_entities);
-}
-
 void
 RenderDrawGround(game_state * GameState,render_controller * Renderer, simulation * Sim)
 {
@@ -241,36 +107,26 @@ RenderDrawGround(game_state * GameState,render_controller * Renderer, simulation
     }
 
 }
-
-void
-PushDraw(render_controller * Renderer, material_type Material, m4 * ModelT, mesh_id MeshID, v3 Color, r32 Transparency)
-{
-
-    render_pass * RenderPass = Renderer->RenderPasses + Material;
-
-    Assert(RenderPass->Count <= RenderPass->Limit);
-
-    render_unit * Unit = RenderPass->Units + RenderPass->Count++;
-    Unit->ModelTransform = *ModelT;
-    Unit->MeshID = MeshID;
-    Unit->Color = V4(Color, 1.0f - Transparency);
-}
-
-#if DEBUG
-void
-PushDrawDebug(render_controller * Renderer,entity * Entity)
-{
-    render_pass * RenderPass = &Renderer->RenderPassDebug;
-
-    Assert(RenderPass->Count <= RenderPass->Limit);
-
-    render_unit * Unit = RenderPass->Units + RenderPass->Count++;
-    Unit->ModelTransform = Entity->Transform.WorldT;
-    mesh_id MeshID = {0};
-    Unit->MeshID = MeshID;
-    Unit->Color = V4(Entity->Color, 1.0f - Entity->Transparency);
-}
 #endif
+
+void
+PushDraw(render_controller * Renderer, game_asset_id Material, m4 * ModelT, game_asset_id MeshID, v3 Color, r32 Transparency)
+{
+
+    Assert(Renderer->UnitsCount <= Renderer->UnitsLimit);
+
+    mesh_group * MeshGroup = GetMesh(GlobalAssets,MeshID);
+    asset_material MaterialPipeline = GetMaterial(GlobalAssets,Material);
+
+    if (MeshGroup && MaterialPipeline.Pipeline.Success)
+    {
+        render_unit * Unit = Renderer->Units + Renderer->UnitsCount++;
+        Unit->ModelTransform = *ModelT;
+        Unit->MeshGroup = MeshGroup;
+        Unit->MaterialPipelineIndex = MaterialPipeline.Pipeline.Pipeline;
+        Unit->Color = V4(Color, 1.0f - Transparency);
+    }
+}
 
 
 void
@@ -279,23 +135,30 @@ PushDrawEntity(render_controller * Renderer,entity * Entity)
     PushDraw(Renderer, Entity->Material, &Entity->Transform.WorldT, Entity->MeshID, Entity->Color, Entity->Transparency);
 }
 
+#if DEBUG
+void
+PushDrawDebug(render_controller * Renderer,v3 LocalP)
+{
+    entity Entity= {};
+    PushDrawEntity(Renderer,&Entity);
+}
+#endif
+
 
 void
-PushDrawSimulation(game_memory * Memory, game_state * GameState, simulation * Sim)
+PushDrawSimulation(render_controller * Renderer,world * World, simulation * Sim)
 {
 
     v4 Color = V4(1.0f,0.5f,0.2f,1.0f);
 
-    simulation_iterator SimIter = BeginSimIterator(&GameState->World, Sim);
+    simulation_iterator SimIter = BeginSimIterator(World, Sim);
 
     for (entity * Entity = SimIter.Entity;
             Entity;
             Entity = AdvanceSimIterator(&SimIter))
     {
-        mesh_group * MeshGroup = 0;
-
-        MeshGroup = GetMesh(Memory,GameState,Entity->MeshID);
-
+        PushDrawEntity(Renderer,Entity);
+#if 0
         if (
                 IS_NOT_NULL(MeshGroup) && 
                 MeshGroup->Loaded
@@ -308,9 +171,10 @@ PushDrawSimulation(game_memory * Memory, game_state * GameState, simulation * Si
                     IS_NOT_NULL(MeshObjT);
                     MeshObjT = AdvanceSimMeshObjTransformIterator(&Iterator))
             {
-                PushDrawEntity(&GameState->Renderer,Entity);
+                PushDrawEntity(Renderer,Entity);
             }
         }
+#endif
     }
 
 }
@@ -459,48 +323,6 @@ GetYawFromRotationMatrix(m4 * R)
     r32 Yaw = atanf(R->Columns[0].y / R->Columns[0].x);
     return Yaw;
 }
-#if 0
-inline void
-UpdateEntityYaw(game_state * GameState, entity * Entity)
-{
-    m4 * R = &GameState->EntitiesTransform[Entity->ID].LocalR;
-    r32 Yaw = GetYawFromRotationMatrix(R); 
-    GameState->EntitiesTransform[Entity->ID].Yaw = Yaw;
-}
-
-void
-EntityLookAt(game_state * GameState,entity Entity, v3 P)
-{
-    v3 D = Normalize(P - GetEntityPos(GameState,Entity));
-    v3 WorldUp = GameState->WorldUp;
-    v3 Right = Normalize(Cross(D,WorldUp));
-    v3 Up = Cross(Right,D);
-
-    m4 R = {};
-    R[0].x = Right.x;
-    R[0].y = Up.x;
-    R[0].z = D.x;
-    R[0].w = 0;
-
-    R[1].x = Right.y;
-    R[1].y = Up.y;
-    R[1].z = D.y;
-    R[1].w = 0;
-
-    R[2].x = Right.z;
-    R[2].y = Up.z;
-    R[2].z = D.z;
-    R[2].w = 0;
-
-    R[3].x = 0;
-    R[3].y = 0;
-    R[3].z = 0;
-    R[3].w = 1;
-
-    GameState->EntitiesTransform[Entity.ID].LocalR = R;
-    UpdateEntityYaw(GameState,&Entity);
-}
-#endif
 
 m4
 ProjectionMatrix(r32 FOV,r32 AspectRatio, r32 n, r32 f)
@@ -528,97 +350,28 @@ ProjectionMatrix(r32 FOV,r32 AspectRatio, r32 n, r32 f)
     return m;
 } 
 
-i32
-LoadShader(game_memory * Memory,memory_arena * Arena,const char * Filepath)
+void
+BeginRender(render_controller * Renderer, v4 ClearColor)
 {
-    i32 Result = -1;
-    file_contents GetFileResult = GetFileContents(Memory, Arena,Filepath);
-    if (GetFileResult.Success)
-    {
-        Result = RenderCreateShaderModule((char *)GetFileResult.Base, (size_t)GetFileResult.Size);
-        // data lives on gpu side now
-        Arena->CurrentSize -= GetFileResult.Size;
-    }
-    return Result;
+    Renderer->UnitsCount = 0;
+
+    UpdateView(Renderer);
+
+    GPUSimulationData SimData = {};
+
+    SimData.AmbientLight      = V4(0,0,0,0.2f); // RECORD   AmbientLight;
+    SimData.SunlightDirection = V4(GetViewPos(Renderer) + V3(0,1,0),1.0f);
+    SimData.SunlightColor     = V4(1,1,1,1); // RECORD   SunlightColor;
+
+    GraphicsBeginRenderPass(Renderer, ClearColor,&SimData);
 }
 
 void
-GetTexture(game_state * GameState,game_memory * Memory,memory_arena * Arena, enum_textures TextureID)
+EndRender(game_assets * Assets, render_controller * Renderer)
 {
-    /*
-     *
-     * Reading a 2MB jpeg requires about 10 MB of temporary memory to do the entire process
-     * without cleaning up in between
-     */
-    Assert(TextureID >= 1);
-    const char * PathTextures[] = {
-        "..\\..\\assets\\ground_stone_01.jpg",
-        "..\\..\\assets\\ground_stone_02.jpg"
-    };
+    GraphicsRenderDraw(Assets, Renderer);
 
-    file_contents GetFileResult = GetFileContents(Memory, Arena,PathTextures[TextureID - 1]);
-    if (GetFileResult.Success)
-    {
-        i32 x,y,comp;
-        i32 DesiredChannels = 4;
-        stbi_uc * Data = 
-            stbi_load_from_memory(Arena,GetFileResult.Base, GetFileResult.Size, &x,&y, &comp, DesiredChannels);
-        u32 Size = x * y * DesiredChannels;
-        VulkanPushTexture(Data, x, y, 0,DesiredChannels);
-    }
-    else
-    {
-        Assert(0); // Expecting texture to be loaded
-    }
+    GraphicsEndRenderPass();
 }
 
-void
-DestroyPipelines(game_state * GameState,render_controller * Renderer)
-{
-    for (i32 i = 0; i < ArrayCount(Renderer->Pipelines); ++i)
-    {
-        Renderer->Pipelines[i] = -1;
-    }
-    RenderFreeShaders();
-    VulkanDestroyPipeline();
-}
 
-void
-CreateAllPipelines(game_state * GameState, game_memory * Memory)
-{
-    for (i32 i = 0; i < material_type_count; ++i)
-    {
-        pipeline_creation_result Result =  CreatePipeline(Memory,&GameState->TemporaryArena,&GameState->Renderer,(material_type)i);
-        GameState->Renderer.Pipelines[i] = Result.Pipeline;
-    }
-}
-
-pipeline_creation_result
-CreatePipeline(game_memory * Memory,memory_arena * TempArena,render_controller * Renderer,material_type Material)
-{
-    Assert((i32)Material < ArrayCount(Renderer->Pipelines));
-    const char * ShadersVertexFile[] = {
-        "shaders\\triangle.vert",
-        "shaders\\triangle_text.vert",
-    };
-    const char * ShadersFragmentFile[] = {
-        "shaders\\triangle.frag",
-        "shaders\\triangle_text.frag",
-    };
-
-    BeginTempArena(TempArena,1);
-
-    Renderer->VertexShaders[Material] = LoadShader(Memory,TempArena,ShadersVertexFile[Material]);
-    Renderer->FragmentShaders[Material] = LoadShader(Memory,TempArena,ShadersFragmentFile[Material]);
-
-    pipeline_creation_result PipelineResult = RenderCreatePipeline(Renderer->VertexShaders[Material], Renderer->FragmentShaders[Material]);
-
-    // TODO: destroy shaders after pipeline creation
-    Assert(PipelineResult.Success);
-
-    Renderer->Pipelines[Material] = PipelineResult.Pipeline;
-
-    EndTempArena(TempArena,1);
-
-    return PipelineResult;
-}

@@ -435,8 +435,8 @@ AddEntity(world * World, world_pos WorldP)
     Entity->ID = ID;
 
     // special flags
-    Entity->MeshID.ID                  = INVALID_MESHID;
-    Entity->MeshObjTransOcuppancyIndex = INVALID_MESHOBJ_TRANSFORM_INDEX;
+    Entity->MeshID = ASSETS_DEFAULT_MESH;
+    Entity->Material = ASSETS_DEFAULT_MATERIAL;
     
     return Entity;
 }
@@ -578,7 +578,7 @@ UpdateWorldLocation(world * World, simulation * Sim)
                 entity * Dest = GetPtrToFreeCellData(World, NewWorldP);
 
                 // This call modifies entity state call before copy
-                SimulationUnregisterEntity(Sim,Entity,EntityIndex);
+                //SimulationUnregisterEntity(Sim,Entity,EntityIndex);
 
                 MemCopy((u8 *)Dest, (u8 *)Entity,EntitySize);
                 ++EntitiesPacked;

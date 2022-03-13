@@ -34,8 +34,15 @@ struct memory_aligned_result
 #define EndTempArena(Arena,ID) --Arena->StackTemporaryMemory;\
                                Arena->CurrentSize = Arena##SizeBegin##ID;
 #define TempArenaSanityCheck(Arena) Assert(Arena->StackTemporaryMemory == 0)
+
 GAME_API inline u8 *
-_PushSize(memory_arena * Arena,u32 Size);
+_PushSize(memory_arena * Arena,u32 Size)
+{
+    Assert((Arena->CurrentSize + Size) <= Arena->MaxSize);
+    u8 * BaseAddr = Arena->Base + Arena->CurrentSize;
+    Arena->CurrentSize += Size;
+    return BaseAddr;
+}
 
 GAME_API memory_arena *
 ThreadBeginArena(thread_memory_arena * ThreadArena);
@@ -45,6 +52,9 @@ ThreadEndArena(thread_memory_arena * ThreadArena);
 
 GAME_API void
 InitializeArena(memory_arena * Arena,u8 * BaseAddr, u32 MaxSize);
+
+GAME_API void
+SubArena(memory_arena * ParentArena,memory_arena * Arena, u32 Size);
 
 /*
  *  ONLY MAIN THREAD CAN USE THIS METHOD
@@ -56,6 +66,9 @@ InitializeArena(memory_arena * Arena,u8 * BaseAddr, u32 MaxSize);
  */
 GAME_API thread_memory_arena *
 GetThreadArena(game_state * GameState);
+
+GAME_API thread_memory_arena *
+GetThreadArena(thread_memory_arena * ThreadArenaArray, u32 LimitThreadArenas);
 
 GAME_API void
 MemCopy(u8 * Dest,u8 * Src,u32 EntitySize);

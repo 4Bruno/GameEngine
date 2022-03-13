@@ -10,6 +10,7 @@
 #include "game_math.h"
 #include "game_mesh.h"
 #include <stddef.h>
+#include "game_assets.h"
 
 #define MAX_WORLD_ENTITY_COUNT (1 << 14)
 #define MAX_WORLD_ENTITY_COUNT_MINUS_ONE (MAX_WORLD_ENTITY_COUNT - 1)
@@ -91,11 +92,10 @@ struct entity
 
     u32 Height;
 
-    mesh_id MeshID;
-    u32 MeshObjCount;
+    game_asset_id MeshID;
     u32 MeshObjTransOcuppancyIndex;
 
-    material_type Material;
+    game_asset_id Material;
     v3 Color; // 36
     r32 Transparency;
 
@@ -172,6 +172,7 @@ struct simulation
     sparse_entry TransformEntries[MAX_WORLD_ENTITY_COUNT];
     u32 TransformCount;
 
+#if 0
     u32 MeshObjTransformCount;
     u32 MeshObjTransLastAvailableIndex;
     entity_transform MeshObjTransform[SIMULATION_TEMP_MESHOBJ_TRANSFORM*SIMULATION_AVG_MESH_OBJS];
@@ -181,6 +182,7 @@ struct simulation
     // buckets / array of 64bits
     // we signal them to 1 if in use, 0 otherwise
     uintptr_t MeshObjTransformOccupancy[(SIMULATION_TEMP_MESHOBJ_TRANSFORM / sizeof(uintptr_t))];
+#endif
 
     u32 SortingBuckets[MAX_WORLD_ENTITY_COUNT];
     

@@ -22,6 +22,7 @@ if not exist %OutputFolder% (
 pushd %OutputFolder%
 
 erase game_*.pdb
+erase graphics_*.pdb
 
 set WinLibs=kernel32.lib User32.lib Gdi32.lib shell32.lib vcruntime.lib winmm.lib
 set CompilationFlags=%BUILD_COMPILATION_FLAGS%
@@ -38,12 +39,16 @@ set IWUnusedParam=/wd4100
 set IWNamelessStructUnion=/wd4201
 set IgnoreWarnings=%IWPadding% %IWInitializedNotReferenced% %IWUnusedParam% %IWNamelessStructUnion%
 
-set VulkanLib=vulkan_initializer
-set dllname=%VulkanLib%
+set graphicsDllName=graphics_api
+set graphicsOutput=%graphicsDllName%%Dllreload%
+set GraphicsLib=graphics_api
+set dllname=%GraphicsLib%
 cl /nologo ^
- /LD %WarningLevel% %IgnoreWarnings% %GenerateCompleteDebuggingInfo% %CompilationFlags% %IncludePaths% ..\%dllname%.cpp /link ^
- /DLL ^
-  /incremental:no /opt:ref /PDB:%VulkanLib%.pdb ^
+ /LD %WarningLevel% %IgnoreWarnings% %GenerateCompleteDebuggingInfo% %CompilationFlags% %IncludePaths% ^
+ ..\%dllname%.cpp  ..\vulkan_helpers.cpp   ^
+ /Fe:%graphicsOutput%.dll ^
+ /link /DLL ^
+  /incremental:no /opt:ref /PDB:%graphicsOutput%_%random%.pdb ^
   %ExternalLibs%
 
 set dllname=win32_platform
@@ -53,7 +58,7 @@ cl /nologo ^
   /link ^
   /PDB:%dllname%.pdb ^
   /SUBSYSTEM:CONSOLE ^
-  %WinLibs% %VulkanLib%.lib
+  %WinLibs%
 
 set dllname=game
 set dllnameOutput=%dllname%%Dllreload%
@@ -61,12 +66,11 @@ rem ..\data_load.cpp ..\game_memory.cpp ..\game_entity.cpp ..\Quaternion.cpp ..\
 cl /nologo ^
   /LD /MTd ^
  /Fm%dllname%.map %WarningLevel% %IgnoreWarnings% %GenerateCompleteDebuggingInfo% %CompilationFlags% %IncludePaths% ..\%dllname%.cpp ^
-  ..\data_load.cpp ..\game_memory.cpp ..\game_entity.cpp ..\Quaternion.cpp ..\game_render.cpp ..\game_mesh.cpp ..\game_world.cpp ^
+  ..\game_memory.cpp ..\game_entity.cpp ..\Quaternion.cpp ..\game_render.cpp  ..\game_world.cpp  ..\game_assets.cpp ^
   /Fe:%dllnameOutput%.dll ^
   /link ^
   /DLL ^
-  /incremental:no /opt:ref /PDB:%dllnameOutput%_%random%.pdb ^
-  %VulkanLib%.lib
+  /incremental:no /opt:ref /PDB:%dllnameOutput%_%random%.pdb
 
 popd
 

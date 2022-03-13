@@ -40,7 +40,7 @@ GAME_API void
 UpdateTransform(entity * Entity);
 
 GAME_API void
-EntityAddMesh(entity * Entity, mesh_id MeshID, v3 Color = V3(1.0f,1.0f,1.0f), r32 Transparency = 0.0f);
+EntityAddMesh(entity * Entity, game_asset_id MeshID, v3 Color = V3(1.0f,1.0f,1.0f), r32 Transparency = 0.0f);
 
 GAME_API void
 EntityDelete(entity * Entity);

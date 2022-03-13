@@ -37,10 +37,6 @@ typedef double   r64;
 
 #define PI (r32)3.14159265358979323846
 
-#define VULKAN_CREATE_SURFACE(name) i32 name(void * SurfaceData, void * pfnOSSurface, VkInstance Instance, VkSurfaceKHR * Surface)
-typedef VULKAN_CREATE_SURFACE(vulkan_create_surface);
-
-
 #if DEBUG
 
 // power of 2
@@ -95,6 +91,22 @@ struct platform_open_file_result
     b32 Success;    
     void * Handle;
     u32 Size;
+};
+
+#define PLATFORM_OPEN_HANDLE(name) platform_open_file_result name(const char * Filepath)
+typedef PLATFORM_OPEN_HANDLE(platform_open_handle);
+
+#define PLATFORM_CLOSE_HANDLE(name) void name(platform_open_file_result OpenFileResult)
+typedef PLATFORM_CLOSE_HANDLE(platform_close_handle);
+
+#define PLATFORM_READ_HANDLE(name) b32 name(platform_open_file_result OpenFileResult, void * Buffer)
+typedef PLATFORM_READ_HANDLE(platform_read_handle);
+
+struct platform_api
+{
+    platform_open_handle  * OpenHandle;
+    platform_close_handle * CloseHandle;
+    platform_read_handle  * ReadHandle;
 };
 
 #define DEBUG_OPEN_FILE(name) platform_open_file_result name(const char * Filepath)
@@ -174,7 +186,8 @@ struct game_controller
 struct game_input
 {
     b32 ShaderHasChanged;
-    b32 Reloaded;
+    b32 GameDllReloaded;
+    b32 GraphicsDllReloaded;
     b32 CloseGame; // game -> platform
     r32 DtFrame;
     r32 TimeElapsed;
@@ -201,16 +214,31 @@ struct game_memory
     thread_work_queue * LowPriorityWorkQueue;
     thread_work_queue * RenderWorkQueue;
 
+    platform_api PlatformAPI;
+
 #if DEBUG
     debug_cycle * DebugCycle;
 #endif
 
 };
 
+struct file_contents
+{
+    u8 * Base;
+    u32 Size;
+    b32 Success;
+};
+
+#define VULKAN_CREATE_SURFACE(name) i32 name(void * SurfaceData, void * pfnOSSurface, VkInstance Instance, VkSurfaceKHR * Surface)
+typedef VULKAN_CREATE_SURFACE(vulkan_create_surface);
+
+
+
 // defined in game.h used across all headers
 struct game_state;
+struct graphics_api;
 
-#define GAME_UPDATE_AND_RENDER(name) void name(game_memory * Memory,game_input * Input, i32 ScreenWidth, i32 ScreenHeight)
+#define GAME_UPDATE_AND_RENDER(name) void name(game_memory * Memory,game_input * Input, graphics_api * GraphicsAPI, i32 ScreenWidth, i32 ScreenHeight)
 typedef GAME_UPDATE_AND_RENDER(game_update_and_render);
 
 #define GAME_PLATFORM_H

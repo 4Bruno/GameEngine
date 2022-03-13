@@ -224,16 +224,6 @@ ReadObjFileHeader(const char * Data, u32 StartAtByte, u32 Size)
     return Description;
 }
 
-struct parsed_obj_file_result
-{
-    vertex_point * Vertices;
-    u16 *          Indices;
-
-    u32 VertexSize;
-    u32 IndicesSize;
-
-    char Name[100];
-};
 
 parsed_obj_file_result
 CreateMeshFromObjHeader(memory_arena * Arena,obj_file_header Header, const char * Data, u32 Size,
@@ -349,12 +339,12 @@ CreateMeshFromObjHeader(memory_arena * Arena,obj_file_header Header, const char 
 
 
 u32
-PushMeshSize(memory_arena * Arena, u32 DataSize, u32 InstanceCount)
+PushMeshSize(memory_arena * Arena, u32 DataSize, u32 InstanceCount, u32 VertexMemAlign)
 {
     u32 OffsetBeforeUpdate = Arena->CurrentSize;
 
     u32 TotalSize = (DataSize * InstanceCount);
-    u32 Align = RenderGetVertexMemAlign() - 1;
+    u32 Align = VertexMemAlign - 1;
     TotalSize = (TotalSize + Align) &  ~Align;
 
     Assert((Arena->CurrentSize + TotalSize) < Arena->MaxSize);
@@ -365,9 +355,9 @@ PushMeshSize(memory_arena * Arena, u32 DataSize, u32 InstanceCount)
 }
 
 void
-PrepareArenaForGPUAlignment(memory_arena * Arena)
+PrepareArenaForGPUAlignment(memory_arena * Arena, u32 VertexMemAlign)
 {
-    u32 Align = RenderGetVertexMemAlign() - 1;
+    u32 Align = VertexMemAlign - 1;
     u8 * BaseAddr = ((u8 *)Arena->Base + Arena->CurrentSize);
     memory_aligned_result AlignedMem = AlignMemoryAddress((void *)BaseAddr,Align);
 
@@ -385,6 +375,7 @@ THREAD_WORK_HANDLER(LoadMesh)
 
     memory_arena * Arena = &WorkData->ThreadArena->Arena;
     Assert(!MeshGroup->Loaded);
+    u32 VertexMemAlign  = WorkData->VertexMemAlign;
 
     i32 Result = -1;
     file_contents GetFileResult = GetFileContents(WorkData->Memory, Arena,WorkData->Path);
@@ -400,7 +391,7 @@ THREAD_WORK_HANDLER(LoadMesh)
 
         BeginTempArena(Arena,1);
 
-        PrepareArenaForGPUAlignment(Arena);
+        PrepareArenaForGPUAlignment(Arena,VertexMemAlign);
 
         u8 * BeginBufferVertices = Arena->Base + Arena->CurrentSize;
         u8 * BufferVertices = BeginBufferVertices;
@@ -421,7 +412,7 @@ THREAD_WORK_HANDLER(LoadMesh)
                 CreateMeshFromObjHeader(Arena, Header, (const char  *)GetFileResult.Base, GetFileResult.Size,
                         OffsetVertexP,OffsetVertexN);
 
-            u32 Align = RenderGetVertexMemAlign() - 1;
+            u32 Align = VertexMemAlign - 1;
             // Align to gpu boundaries
             u32 MeshObjSizeAligned = (MeshObj.VertexSize + Align) &  ~Align;
 
@@ -455,7 +446,7 @@ THREAD_WORK_HANDLER(LoadMesh)
 
         //Logn("Actual mesh size %i", TotalMeshObjVerticesBytes);
         // TODO: GPU barrier sync
-        RenderPushVertexData(BeginBufferVertices, TotalMeshObjVerticesBytes, WorkData->BaseOffset);
+        GraphicsPushVertexData(BeginBufferVertices, TotalMeshObjVerticesBytes, WorkData->BaseOffset);
         //RenderPushVertexData(Mesh->Vertices,Mesh->VertexSize, 1);
         //RenderPushIndexData(&GameState->IndicesArena, Mesh->Indices,Mesh->IndicesSize, 1);
 
@@ -521,6 +512,7 @@ GetMeshInfo(mesh_id MeshID)
 mesh_group *
 GetMesh(game_memory * Memory, game_state * GameState,mesh_id MeshID)
 {
+    u32 VertexMemAlign = 256;
 
     Assert(IS_VALID_MESHID(MeshID.ID));
 
@@ -555,12 +547,12 @@ GetMesh(game_memory * Memory, game_state * GameState,mesh_id MeshID)
             u32 MeshSize = MeshSizes[MeshID.ID];
             u32 MeshObjs = MeshObjects[MeshID.ID];
             // worst case all boundaries falls in next alignment byte
-            MeshSize = MeshSize + (MeshObjs * (RenderGetVertexMemAlign() - 2));
+            MeshSize = MeshSize + (MeshObjs * (VertexMemAlign - 2));
 
             //Logn("Worst case scenario mesh size %i", MeshSize);
             // calculate vertex arena new size in worst case scenario
             // to avoid new any mesh overlapping
-            Data->BaseOffset = PushMeshSize(&GameState->Renderer.VertexArena, MeshSize, 1);
+            Data->BaseOffset = PushMeshSize(&GameState->Renderer.VertexArena, MeshSize, 1, VertexMemAlign);
 
             Memory->AddWorkToWorkQueue(Memory->RenderWorkQueue , LoadMesh,Data);
         }
