@@ -14,7 +14,6 @@ extern "C" debug_cycle * DebugCycles;
 #include "game_animation.h"
 #include "game_assets.h"
 
-#include "data_load.h"
 #include "collision.h"
 #include "Quaternion.h"
 
