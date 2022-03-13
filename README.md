@@ -3,20 +3,22 @@ Game engine using Vulkan and C with a subset of C++. Avoiding external libraries
 This is just for learning purposes.
 
 # Design
-* Limit use of external libraries
+* Limited use of external libraries
 * Explicit Vulkan instantiation/usage
 * Divide code between game/os/render
 * Focus on simple C and plain data
 * Game dll hot reload
+* Procedural game
 
 # Current status
 * I have a bare bones working vulkan interface
 * I can push meshes to GPU vertex buffer
+* I can load textures
 * I can load assets (.obj only, using triangles only) with multiple objects
 * I can reload game dll during debug with memory intact
 * I can generate entities and simulate multiple world areas
 * I can render 1 simulation with spatial query
-* I can generated complex 3D ground (GPU implementation of Nvidia 3D pearls ground generation)
+* I can generated complex 3D ground (low resolution 9 voxels per meter sqr)
 ![Visual sample of current status](game_engine_current_status_sample.gif)
 
 # QA
