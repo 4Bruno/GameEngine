@@ -3,3 +3,6 @@ release/
 *.vim
 .clangcomplete
 *~
+*temp*
+CMeta*
+*.py
