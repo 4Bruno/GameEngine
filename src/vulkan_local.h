@@ -9,8 +9,9 @@
 // TODO: memcpy. How can we avoid this?
 #include <memory.h>
 
+
 #define VK_FAILS(result) (result != VK_SUCCESS)
-#define VK_SUCCESS(result) (result == VK_SUCCESS)
+#define VK_PASSES(result) (result == VK_SUCCESS)
 #define VK_VALID_HANDLE(handle) ((handle) != VK_NULL_HANDLE)
 #define VK_INVALID_HANDLE(handle) ((handle) == VK_NULL_HANDLE)
 
@@ -24,8 +25,9 @@
 /*
  * Why vulkan version?
  * - 1.1.0+ you can pass negative height to surface to use bottom-left coord system
+ * - 1.3.+ query image requirements without creating images
  */
-#define VULKAN_API_VERSION  VK_MAKE_VERSION(1,1,0)
+#define VULKAN_API_VERSION  VK_MAKE_VERSION(1,3,0)
 
 #define VK_MEMORY_GPU                       (VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT)
 #define VK_MEMORY_CPU_TO_GPU_PREFERRED      (VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT)
@@ -171,8 +173,8 @@ enum vulkan_destructor_type
     vulkan_destructor_type_vkDestroyImage,
 
     // CUSTOM DESTRUCTORS
-    vulkan_destructor_type_vkDestroyBufferCustom,
-    vulkan_destructor_type_vkDestroyImageCustom
+    vulkan_destructor_type_vkDestroyArenaCustom,
+    vulkan_destructor_type_vkDestroyMemoryPoolCustom,
 };
 
 struct vulkan_destroy_queue_item
@@ -221,12 +223,53 @@ struct vulkan_image
     VkImage              Image;
     VkImageView          ImageView;
     VkFormat             Format;
-    VkDeviceMemory       DeviceMemory;
     VkMemoryRequirements MemoryRequirements;
-    VkDevice             AllocatorDevice;
 };
 
 typedef vulkan_image depth_buffer ;
+
+#if 0
+struct gpu_arena
+{
+    i32 MemoryIndexType;
+    u32 MaxSize;
+    u32 CurrentSize;
+    u32 Alignment;
+    VkDeviceMemory DeviceMemory;
+    VkDevice Device;
+};
+#else
+
+enum gpu_arena_type
+{
+    gpu_arena_type_buffer,
+    gpu_arena_type_image
+};
+
+struct gpu_arena
+{
+    i32 MemoryIndexType;
+    VkPhysicalDevice GPU;
+    VkDevice Device;
+
+    u32 MaxSize;
+    u32 CurrentSize;
+    u32 Alignment;
+
+    gpu_arena_type Type;
+    void * WriteToAddr;
+
+    VkBuffer Buffer;
+
+#define IMAGES_PER_ARENA 256
+    // this is only useful for images
+    // where we need to bind to the memory
+    // starting at the offset
+    u32 DeviceBindingOffsetBegin;
+    u32 ImageCount;
+    vulkan_image Images[256];
+};
+#endif
 
 struct frame_data 
 {
@@ -240,7 +283,7 @@ struct frame_data
     VkDescriptorSet GlobalDescriptor;
     VkDescriptorSet ObjectsDescriptor;
 
-    vulkan_buffer ObjectsBuffer;
+    gpu_arena ObjectsArena;
     u32 ObjectsCount;
 };
 
@@ -286,6 +329,14 @@ struct ground_info
 // number of frames  [0-2] we are looping
 #define FRAME_OVERLAP 2
 
+
+struct device_memory_pool
+{
+    VkDevice Device;
+    VkDeviceMemory DeviceMemory;
+    u32 Size;
+};
+
 struct vulkan
 {
     b32 Initialized;
@@ -296,7 +347,12 @@ struct vulkan
     VkPhysicalDevice PrimaryGPU;
     VkDevice         PrimaryDevice;
 
-    depth_buffer DepthBuffer;
+    device_memory_pool DeviceMemoryPools[VK_MAX_MEMORY_TYPES];
+
+    gpu_arena PrimaryDepthBufferArena;
+    depth_buffer * PrimaryDepthBuffer;
+
+    gpu_arena TextureArena;
 
     u32  GraphicsQueueFamilyIndex;
     VkQueue GraphicsQueue;
@@ -308,13 +364,12 @@ struct vulkan
     VkCommandPool   CommandPoolTransferBit;
     VkCommandBuffer TransferBitCommandBuffer;
 
-    vulkan_buffer TransferBitBuffer;
+    gpu_arena TransferBitArena;
 
-    vulkan_image  TextureImage;
     VkSampler     TextureSampler;
 
-    vulkan_buffer VertexBuffer;
-    vulkan_buffer IndexBuffer;
+    gpu_arena VertexArena;
+    gpu_arena IndexArena;
 
     VkRenderPass  RenderPass;
     VkFramebuffer Framebuffers[3];
@@ -325,9 +380,7 @@ struct vulkan
     VkDescriptorSet       _DebugTextureSet;
     VkDescriptorPool _DescriptorPool;
 
-    // Global buffer for simulation data to
-    // be passed to shaders
-    vulkan_buffer SimulationBuffer;
+    gpu_arena SimulationBuffer;
 
     frame_data FrameData[FRAME_OVERLAP];
     i32 _CurrentFrameData;
@@ -350,8 +403,8 @@ struct vulkan
     VkPipelineLayout CurrentPipelineLayout;
 
 
-    VkPipeline      Pipelines[2];
-    vulkan_pipeline PipelinesDefinition[2];
+    VkPipeline      Pipelines[ASSETS_TOTAL_MATERIALS];
+    vulkan_pipeline PipelinesDefinition[ASSETS_TOTAL_MATERIALS];
     u32          PipelinesCount;
 
     VkShaderModule ShaderModules[4];
@@ -366,6 +419,13 @@ struct mesh_push_constant
     v4 DebugColor;
 };
 
+
+struct gpu_memory_mapping_result
+{
+    void * BeginAddress;
+    u32 Instance;
+    b32 Success;
+};
 
 extern vulkan     GlobalVulkan;
 extern b32        GlobalWindowIsMinimized;
@@ -401,6 +461,8 @@ GetCurrentFrame()
 
 i32
 VH_FindSuitableMemoryIndex(VkPhysicalDevice PhysicalDevice, VkMemoryRequirements MemoryRequirements,VkMemoryPropertyFlags PropertyFlags);
+i32
+VH_FindSuitableMemoryIndex(VkPhysicalDevice PhysicalDevice, VkMemoryRequirements2 MemoryRequirements,VkMemoryPropertyFlags PropertyFlags);
 
 VkPipelineLayoutCreateInfo
 VH_CreatePipelineLayoutCreateInfo();
@@ -444,8 +506,14 @@ VH_CreateCommandBuffers(VkDevice Device,VkCommandPool CommandPool,u32 CommandBuf
 i32
 VH_CreateCommandPool(VkDevice Device, u32 QueueFamilyIndex, VkCommandPoolCreateFlags CommandPoolCreateFlags, VkCommandPool * CommandPool);
 
-i32
-VH_CreateDepthBuffer(VkPhysicalDevice PhysicalDevice,VkDevice Device, VkExtent3D Extent, depth_buffer * DepthBuffer);
+vulkan_image *
+VH_CreateDepthBuffer(gpu_arena * Arena, VkExtent3D Extent);
+
+VkImageCreateInfo
+VH_CreateImageCreateInfo2D(VkExtent3D Extent, VkFormat Format, VkImageUsageFlags Usage);
+
+VkImageCreateInfo
+VH_DepthBufferCreateInfo(VkExtent3D Extent);
 
 VkWriteDescriptorSet
 VH_WriteDescriptor(u32 BindingSlot,VkDescriptorSet Set,VkDescriptorType DescriptorType, VkDescriptorBufferInfo * BufferInfo);
@@ -463,10 +531,40 @@ i32
 VH_EndCommandBuffer(VkCommandBuffer CommandBuffer, VkQueue FamilyQueue);
 
 void
-VH_DestroyImage(vulkan_image * Image);
+VH_DestroyImage(VkDevice Device,vulkan_image * Image);
 
 i32
 VH_PushVertexData(void * Data, u32 DataSize, u32 BaseOffset);
 
+gpu_arena
+VH_AllocateMemory(VkPhysicalDevice PhysicalDevice, VkDevice Device, VkMemoryRequirements MemReq, VkMemoryPropertyFlags MemPropFlags);
+VkResult
+VH_BindBufferToArena(VkDevice Device,gpu_arena * Arena,vulkan_buffer * VulkanBuffer);
+VkResult
+VH_BindImageToArena(VkDevice Device,gpu_arena * Arena,VkImage Image);
+i32
+VH_CreateUnAllocArenaImage(VkPhysicalDevice PhysicalDevice,
+                           VkDevice Device, u32 Size,
+                           gpu_arena * Arena);
+
+i32
+VH_CreateUnAllocArenaBuffer(VkPhysicalDevice PhysicalDevice,
+                      VkDevice Device, VkDeviceSize Size, 
+                      VkSharingMode SharingMode, VkMemoryPropertyFlags PropertyFlags, VkBufferUsageFlags Usage,
+                      gpu_arena * Arena,
+                      u32 SharedBufferQueueFamilyIndexCount = 0,
+                      u32 * SharedBufferQueueFamilyIndexArray = 0);
+inline VkDeviceMemory
+GetDeviceMemory(i32 MemoryTypeIndex)
+{
+    Assert(MemoryTypeIndex >= 0 && MemoryTypeIndex <= VK_MAX_MEMORY_TYPES);
+    device_memory_pool * Pool = GlobalVulkan.DeviceMemoryPools + MemoryTypeIndex;
+    Assert(VK_VALID_HANDLE(Pool->DeviceMemory));
+    Assert(Pool->Size > 0);
+    VkDeviceMemory DeviceMemory = Pool->DeviceMemory; 
+
+
+    return DeviceMemory;
+};
 
 #endif

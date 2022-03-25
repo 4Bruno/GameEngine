@@ -696,6 +696,11 @@ VH_FindSuitableMemoryIndex(VkPhysicalDevice PhysicalDevice, VkMemoryRequirements
 
     return -1;
 }
+i32
+VH_FindSuitableMemoryIndex(VkPhysicalDevice PhysicalDevice, VkMemoryRequirements2 MemoryRequirements,VkMemoryPropertyFlags PropertyFlags)
+{
+    return VH_FindSuitableMemoryIndex(PhysicalDevice,MemoryRequirements.memoryRequirements,PropertyFlags);
+}
 
 VkPipelineLayoutCreateInfo
 VH_CreatePipelineLayoutCreateInfo()
@@ -846,6 +851,58 @@ VH_PaddedUniformBuffer(VkDeviceSize Size)
 }
 
 i32
+VH_CreateUnAllocArenaBuffer(VkPhysicalDevice PhysicalDevice,
+                      VkDevice Device, VkDeviceSize Size, 
+                      VkSharingMode SharingMode, VkMemoryPropertyFlags PropertyFlags, VkBufferUsageFlags Usage,
+                      gpu_arena * Arena,
+                      u32 SharedBufferQueueFamilyIndexCount,
+                      u32 * SharedBufferQueueFamilyIndexArray)
+{
+
+    VkBufferCreateInfo BufferCreateInfo;
+
+    BufferCreateInfo.sType                 = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO; // VkStructureType sType;
+    BufferCreateInfo.pNext                 = 0;           // Void * pNext;
+    BufferCreateInfo.flags                 = 0;           // VkBufferCreateFlags flags;
+    BufferCreateInfo.size                  = Size;        // VkDeviceSize size;
+    BufferCreateInfo.usage                 = Usage;       // VkBufferUsageFlags usage;
+    BufferCreateInfo.sharingMode           = SharingMode; // VkSharingMode sharingMode;
+
+    if ( SharingMode == VK_SHARING_MODE_CONCURRENT )
+    {
+        if ( SharedBufferQueueFamilyIndexCount == 0 )
+        {
+            Log("Error buffer creation. Shared buffer requires family queue indexes and count\n");
+            return 1;
+        }
+        BufferCreateInfo.queueFamilyIndexCount = SharedBufferQueueFamilyIndexCount; // u32_t queueFamilyIndexCount;
+        BufferCreateInfo.pQueueFamilyIndices   = SharedBufferQueueFamilyIndexArray; // Typedef * pQueueFamilyIndices;
+    }
+    else
+    {
+        BufferCreateInfo.queueFamilyIndexCount = 0;           // u32_t queueFamilyIndexCount;
+        BufferCreateInfo.pQueueFamilyIndices   = 0;           // Typedef * pQueueFamilyIndices;
+    }
+
+    VK_CHECK(vkCreateBuffer(Device, &BufferCreateInfo,0, &Arena->Buffer));
+
+    VkMemoryRequirements MemoryRequirements;
+    vkGetBufferMemoryRequirements(Device, Arena->Buffer, &MemoryRequirements);
+    i32 MemoryTypeIndex = VH_FindSuitableMemoryIndex(PhysicalDevice,MemoryRequirements,PropertyFlags);
+
+    Assert(MemoryRequirements.size == Size);
+    Arena->MemoryIndexType = MemoryTypeIndex;
+    Arena->MaxSize = (u32)MemoryRequirements.size;
+    Arena->Alignment = (u32)MemoryRequirements.alignment;
+    Arena->CurrentSize = 0;
+    Arena->Device = Device; 
+    Arena->Type = gpu_arena_type_buffer;
+
+    return 0;
+}
+
+#if 0
+i32
 VH_CreateBuffer(VkPhysicalDevice PhysicalDevice,VkDevice Device, 
                     VkDeviceSize Size, 
                     VkSharingMode SharingMode,
@@ -886,35 +943,12 @@ VH_CreateBuffer(VkPhysicalDevice PhysicalDevice,VkDevice Device,
 
     vkGetBufferMemoryRequirements(Device, Buffer->Buffer, &Buffer->MemoryRequirements);
 
-    u32 MemoryTypeIndex = VH_FindSuitableMemoryIndex(PhysicalDevice,Buffer->MemoryRequirements,PropertyFlags);
-    if (MemoryTypeIndex < 0)
-    {
-#if 0
-        PropertyFlags = VK_MEMORY_CPU_TO_GPU_NOTBAD;
-        MemoryTypeIndex = VH_FindSuitableMemoryIndex(PhysicalDevice,MemReq,PropertyFlags);
-        if (MemoryTypeIndex < 0)
-        {
-            Log("Couldn't find suitable CPU-GPU memory index\n");
-            return 1;
-        }
-#endif
-        Log("Couldn't find suitable CPU-GPU memory index\n");
-        return 1;
-    }
+    gpu_arena Arena = VH_AllocateMemory(PhysicalDevice,Device, Buffer->MemoryRequirements,PropertyFlags);
 
-    VkMemoryAllocateInfo AllocateInfo;
-
-    AllocateInfo.sType           = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO; // VkStructureType   sType;
-    AllocateInfo.pNext           = 0;                       // Void * pNext;
-    AllocateInfo.allocationSize  = Buffer->MemoryRequirements.size;             // VkDeviceSize allocationSize;
-    AllocateInfo.memoryTypeIndex = (u32)MemoryTypeIndex; // u32_t memoryTypeIndex;
-
-    VK_CHECK(vkAllocateMemory(Device, &AllocateInfo, 0, &Buffer->DeviceMemory));
-
-    vkBindBufferMemory(Device,Buffer->Buffer,Buffer->DeviceMemory,0);
 
     return 0;
 }
+#endif
 
 VkViewport
 VH_CreateDefaultViewport(VkExtent2D WindowExtent)
@@ -1022,15 +1056,10 @@ VH_CreateCommandBuffers(VkDevice Device,VkCommandPool CommandPool,u32 CommandBuf
     return 0;
 }
 
-i32
-VH_CreateDepthBuffer(VkPhysicalDevice PhysicalDevice,VkDevice Device, VkExtent3D Extent, depth_buffer * DepthBuffer)
+VkImageCreateInfo
+VH_CreateImageCreateInfo2D(VkExtent3D Extent, VkFormat Format, VkImageUsageFlags Usage)
 {
-    DepthBuffer->AllocatorDevice = Device;
-
-    VkFormat Format = VK_FORMAT_D32_SFLOAT;
-    VkImageUsageFlags Usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
-
-    VkImageCreateInfo ImageCreateInfo = {};
+    VkImageCreateInfo ImageCreateInfo;
 
     ImageCreateInfo.sType                 = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO; // VkStructureType   sType;
     ImageCreateInfo.pNext                 = 0;                         // Void * pNext;
@@ -1048,30 +1077,53 @@ VH_CreateDepthBuffer(VkPhysicalDevice PhysicalDevice,VkDevice Device, VkExtent3D
     ImageCreateInfo.pQueueFamilyIndices   = 0;                         // Typedef * pQueueFamilyIndices;
     ImageCreateInfo.initialLayout         = VK_IMAGE_LAYOUT_UNDEFINED; // VkImageLayout initialLayout;
 
-    VkImage Image;
-    VK_CHECK(vkCreateImage(Device,&ImageCreateInfo, 0, &Image));
+    return ImageCreateInfo;
+}
 
-    vkGetImageMemoryRequirements(Device, Image, &DepthBuffer->MemoryRequirements);
-    VkMemoryPropertyFlags PropertyFlags = VK_MEMORY_GPU;
+VkImageCreateInfo
+VH_DepthBufferCreateInfo(VkExtent3D Extent)
+{
+    VkFormat Format = VK_FORMAT_D32_SFLOAT;
+    VkImageUsageFlags Usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
 
-    u32 MemoryTypeIndex = VH_FindSuitableMemoryIndex(PhysicalDevice,DepthBuffer->MemoryRequirements,PropertyFlags);
-    if (MemoryTypeIndex < 0)
+    VkImageCreateInfo ImageCreateInfo = VH_CreateImageCreateInfo2D(Extent, Format, Usage);
+
+    return ImageCreateInfo;
+}
+
+
+vulkan_image *
+VH_CreateDepthBuffer(gpu_arena * Arena, VkExtent3D Extent)
+{
+
+    Assert(Arena->Type == gpu_arena_type_image);
+    Assert(Arena->ImageCount < ArrayCount(Arena->Images));
+
+    vulkan_image VulkanImage = {};
+
+    VkDeviceMemory DeviceMemory = GetDeviceMemory(Arena->MemoryIndexType);
+    VkImageCreateInfo ImageCreateInfo = VH_DepthBufferCreateInfo(Extent);
+    VulkanImage.Format = ImageCreateInfo.format;       // VkFormat Format;
+
+    if (VK_FAILS(vkCreateImage(Arena->Device,&ImageCreateInfo, 0, &VulkanImage.Image)))
     {
-        Log("Couldn't find suitable CPU-GPU memory index\n");
-        return 1;
+        Logn("Failed to create depth buffer image");
+        return 0;
     }
 
-    VkDeviceMemory DeviceMemory;
-    VkMemoryAllocateInfo AllocateInfo;
+    vkGetImageMemoryRequirements(Arena->Device, VulkanImage.Image, &VulkanImage.MemoryRequirements);
+    VkMemoryPropertyFlags PropertyFlags = VK_MEMORY_GPU;
 
-    AllocateInfo.sType           = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO; // VkStructureType   sType;
-    AllocateInfo.pNext           = 0;                       // Void * pNext;
-    AllocateInfo.allocationSize  = DepthBuffer->MemoryRequirements.size;             // VkDeviceSize allocationSize;
-    AllocateInfo.memoryTypeIndex = (u32)MemoryTypeIndex; // u32_t memoryTypeIndex;
+    i32 MemoryTypeIndex = VH_FindSuitableMemoryIndex(Arena->GPU,VulkanImage.MemoryRequirements,PropertyFlags);
+    Assert(MemoryTypeIndex == Arena->MemoryIndexType);
 
-    VK_CHECK(vkAllocateMemory(Device, &AllocateInfo, 0, &DeviceMemory));
+    VkDeviceSize BindMemoryOffset = Arena->DeviceBindingOffsetBegin + Arena->CurrentSize;
 
-    vkBindImageMemory(Device,Image,DeviceMemory,0);
+    if (VK_FAILS(vkBindImageMemory(Arena->Device, VulkanImage.Image,DeviceMemory, BindMemoryOffset)))
+    {
+        VH_DestroyImage(Arena->Device,&VulkanImage);
+        return 0;
+    }
 
     VkImageSubresourceRange SubresourceRange;
     SubresourceRange.aspectMask     = VK_IMAGE_ASPECT_DEPTH_BIT; // VkImageAspectFlags   aspectMask;
@@ -1082,22 +1134,54 @@ VH_CreateDepthBuffer(VkPhysicalDevice PhysicalDevice,VkDevice Device, VkExtent3D
 
     VkImageViewCreateInfo ImageViewCreateInfo = {}; 
 
-    ImageViewCreateInfo.sType            = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO; // VkStructureType   sType;
+    ImageViewCreateInfo.sType    = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO; // VkStructureType   sType;
     ImageViewCreateInfo.pNext    = 0;                     // Void * pNext;
     ImageViewCreateInfo.flags    = 0;                     // VkImageViewCreateFlags flags;
-    ImageViewCreateInfo.image    = Image;                 // VkImage image;
+    ImageViewCreateInfo.image    = VulkanImage.Image;                 // VkImage image;
     ImageViewCreateInfo.viewType = VK_IMAGE_VIEW_TYPE_2D; // VkImageViewType viewType;
-    ImageViewCreateInfo.format   = Format;                // VkFormat format;
+    ImageViewCreateInfo.format   = ImageCreateInfo.format;
     //ImageViewCreateInfo.components       = ; // VkComponentMapping   components;
     ImageViewCreateInfo.subresourceRange = SubresourceRange; // VkImageSubresourceRange   subresourceRange;
 
-    VkImageView ImageView;
-    VK_CHECK(vkCreateImageView( Device, &ImageViewCreateInfo, 0, &ImageView ));
+    if (VK_FAILS(vkCreateImageView( Arena->Device, &ImageViewCreateInfo, 0, &VulkanImage.ImageView )))
+    {
+        VH_DestroyImage(Arena->Device,&VulkanImage);
+        return 0;
+    }
 
-    DepthBuffer->Image        = Image;        // VkImage Buffer;
-    DepthBuffer->ImageView    = ImageView;    // VkImageView ImageView;
-    DepthBuffer->Format       = Format;       // VkFormat Format;
-    DepthBuffer->DeviceMemory = DeviceMemory; // VkFormat Format;
+    vulkan_image * ResultImage = Arena->Images + Arena->ImageCount++;
+    *ResultImage = VulkanImage;
+
+    Arena->CurrentSize += (u32)VulkanImage.MemoryRequirements.size;
+
+    return ResultImage;
+}
+
+i32
+VH_CreateUnAllocArenaImage(VkPhysicalDevice PhysicalDevice,
+                           VkDevice Device, u32 Size,
+                           gpu_arena * Arena)
+{
+    Arena->MemoryIndexType = -1; // MemoryIndexType   MemoryIndexType
+    Arena->GPU             = PhysicalDevice; // GPU   GPU
+    Arena->Device          = Device; // Device   Device
+    Arena->MaxSize         = Size; // MaxSize   MaxSize
+    Arena->CurrentSize     = 0; // CurrentSize   CurrentSize
+    Arena->Alignment       = 0; // Alignment   Alignment
+    Arena->Type            = gpu_arena_type_image; // ENUM   Type
+    Arena->WriteToAddr     = 0; // Void * WriteToAddr
+    Arena->Buffer          = VK_NULL_HANDLE; // Buffer   Buffer
+    Arena->ImageCount      = 0; // ImageCount   ImageCount
+    for (u32 ImageIndex = 0;
+                ImageIndex < ArrayCount(Arena->Images);
+                ++ImageIndex)
+    {
+        vulkan_image * Image = Arena->Images + ImageIndex;
+        Image->Image                 = VK_NULL_HANDLE; // Image   Image
+        Image->ImageView             = VK_NULL_HANDLE; // ImageView   ImageView
+        Image->Format                = {}; // Format   Format
+        Image->MemoryRequirements    = {}; // MemoryRequirements   MemoryRequirements
+    }
 
     return 0;
 }
@@ -1193,20 +1277,37 @@ VH_CopyBuffer(VkCommandBuffer CommandBuffer, VkBuffer Src, VkBuffer Dest, VkDevi
 }
 
 void
-VH_DestroyImage(vulkan_image * Image)
+VH_DestroyImage(VkDevice Device, vulkan_image * Image)
 {
     if ( VK_VALID_HANDLE(Image->Image) )
     {
-        Assert(VK_VALID_HANDLE(Image->AllocatorDevice));
-        vkDestroyImage(Image->AllocatorDevice,Image->Image,0);
+        vkDestroyImage(Device,Image->Image,0);
     }
     if ( VK_VALID_HANDLE(Image->ImageView) )
     {
-        vkDestroyImageView(Image->AllocatorDevice,Image->ImageView,0);
-    }
-    if ( VK_VALID_HANDLE(Image->DeviceMemory) )
-    {
-        vkFreeMemory(Image->AllocatorDevice,Image->DeviceMemory,0);
+        vkDestroyImageView(Device,Image->ImageView,0);
     }
 
+}
+
+void
+VH_FreeMemory()
+{
+    for (u32 MemoryArenaIndex = 0;
+                MemoryArenaIndex < ArrayCount(GlobalVulkan.DeviceMemoryPools);
+                ++MemoryArenaIndex)
+    {
+        device_memory_pool * DeviceMemoryPool = GlobalVulkan.DeviceMemoryPools + MemoryArenaIndex;
+                
+        if (DeviceMemoryPool->Size > 0)
+        {
+            if ( VK_VALID_HANDLE(DeviceMemoryPool->DeviceMemory) )
+            {
+                vkFreeMemory(DeviceMemoryPool->Device,DeviceMemoryPool->DeviceMemory,0);
+            }
+            DeviceMemoryPool->DeviceMemory = VK_NULL_HANDLE;
+            DeviceMemoryPool->Device       = VK_NULL_HANDLE;
+            DeviceMemoryPool->Size         = 0; // Size Size
+        }
+    }
 }
