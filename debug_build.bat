@@ -1,2 +1,2 @@
 @echo off
-call ..\build.bat debug
+call ..\build.bat debug %1
