@@ -1,5 +1,5 @@
 #include "vulkan_initializer.cpp"
-#include "vulkan_ground_generation.cpp"
+//#include "vulkan_ground_generation.cpp"
 
 #if DEBUG
 debug_cycle * DebugCycles = 0;
@@ -19,9 +19,15 @@ GRAPHICS_RENDER_DRAW(RenderDraw)
 {
     START_CYCLE_COUNT(render_entities);
 
-    u32 ObjectInstance,BeginObjectInstance;
-    GPUObjectData * ObjectData = VulkanBeginObjectDataMapping(&ObjectInstance);
-    BeginObjectInstance = ObjectInstance;
+    gpu_memory_mapping_result ObjectsMapResult = BeginObjectMapping(Renderer->UnitsCount);
+
+    if (!ObjectsMapResult.Success)
+    {
+        Assert(0);
+        return;
+    }
+
+    GPUObjectData * ObjectData = (GPUObjectData *)ObjectsMapResult.BeginAddress;
 
     for (u32 UnitIndex = 0;
             UnitIndex < Renderer->UnitsCount;
@@ -35,56 +41,15 @@ GRAPHICS_RENDER_DRAW(RenderDraw)
         ObjectData->MVP = MVP;
         ObjectData->Color = Unit->Color;
 
-        ++ObjectInstance;
         ++ObjectData;
     }
 
-    VulkanEndObjectDataMapping(ObjectInstance);
+    EndObjectsArena();
 
-    ObjectInstance = BeginObjectInstance;
-
-#if 0
-    for (u32 RenderPassIndex = 0;
-                RenderPassIndex < ArrayCount(Renderer->RenderPasses);
-                ++RenderPassIndex)
-    {
-        render_pass * RenderPass = Renderer->RenderPasses + RenderPassIndex;
-
-        RenderSetPipeline(Renderer->Pipelines[RenderPassIndex]);
-
-        mesh_group * LastMeshGroup = 0;
-
-        for (u32 UnitIndex = 0;
-                UnitIndex < RenderPass->Count;
-                ++UnitIndex)
-        {
-            render_unit * Unit = RenderPass->Units + UnitIndex;
-
-            mesh_group * MeshGroup = Unit->MeshGroup;
-
-            mesh * Mesh = MeshGroup->Meshes + 0;
-
-            u32 MeshSize = Mesh->VertexSize / sizeof(vertex_point);
-
-            if (LastMeshGroup != MeshGroup)
-            {
-                RenderBindMesh(MeshSize, Mesh->OffsetVertices);
-                LastMeshGroup = MeshGroup;
-            }
-#if 0
-            mesh_push_constant Constants;
-            Constants.RenderMatrix = MVP;
-            Constants.Model = Unit->ModelTransform;
-            Constants.DebugColor = Unit->Color;
-            RenderPushVertexConstant(sizeof(mesh_push_constant),(void *)&Constants);
-#endif
-            RenderDrawObject(MeshSize,ObjectInstance);
-            ++ObjectInstance;
-        }
-    }
-#else
     i32 LastMaterialPipelineIndex = -1;
     mesh_group * LastMeshGroup = 0;
+
+    u32 ObjectInstance = ObjectsMapResult.Instance;
 
     for (u32 UnitIndex = 0;
             UnitIndex < Renderer->UnitsCount;
@@ -97,8 +62,8 @@ GRAPHICS_RENDER_DRAW(RenderDraw)
 
         if (MaterialPipelineIndex != LastMaterialPipelineIndex)
         {
-            asset_material MaterialInfo = Assets->CachedMaterials[MaterialPipelineIndex];
-            RenderSetPipeline(MaterialInfo.Pipeline.Pipeline);
+            RenderSetPipeline(MaterialPipelineIndex);
+            LastMaterialPipelineIndex = MaterialPipelineIndex;
         }
 
         // hardcoded only first mesh
@@ -113,7 +78,6 @@ GRAPHICS_RENDER_DRAW(RenderDraw)
         RenderDrawObject(MeshSize,ObjectInstance);
         ++ObjectInstance;
     }
-#endif
 
     END_CYCLE_COUNT(render_entities);
 }

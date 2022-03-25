@@ -13,6 +13,42 @@ GetViewPos(render_controller * Renderer)
     return P;
 }
 
+m4
+OrthographicProjectionMatrix(r32 r, r32 l, r32 t, r32 b, r32 f, r32 n)
+{
+    m4 m = {};
+
+#if 0
+    m[0].x = 2.0f * (1.0f / (r - l));
+    m[1].y = 2.0f * (1.0f / (t - b));
+    m[2].z = -2.0f * (1.0f / (f - n));
+    m[0].w = -(r + l) / (r - l);
+    m[1].w = -(t + b) / (t - b);
+    m[2].w = -(f + n) / (f - n);
+    m[3].w = 1.0f;
+#else
+    m[0].x = 1.0f;
+    m[1].y = t;
+    m[2].z = 2.0f * (1.0f / (n - f));
+    m[0].w = 0;
+    m[1].w = 0;
+    m[2].w = (n + f) / (n - f);
+    m[3].w = 1.0f;
+#endif
+
+    return m;
+} 
+
+
+void
+UpdateRenderViewport(render_controller * Renderer,i32 ScreenWidth, i32 ScreenHeight)
+{
+    r32 AspectRatio = (r32)ScreenWidth / (r32)ScreenHeight;
+    Renderer->ScreenWidth = ScreenWidth;
+    Renderer->ScreenHeight = ScreenHeight;
+    Renderer->WidthOverHeight = AspectRatio;
+    Renderer->OneOverWidthOverHeight = 1.0f / AspectRatio;
+}
 
 render_controller
 NewRenderController(memory_arena * Arena,
@@ -21,7 +57,8 @@ NewRenderController(memory_arena * Arena,
                     r32 FOV,
                     i32 ScreenWidth, i32 ScreenHeight, 
                     r32 n, r32 f,
-                    v3 StartP)
+                    v3 StartP,
+                    projection_mode ProjectionMode)
 {
     render_controller Renderer;
 
@@ -32,7 +69,26 @@ NewRenderController(memory_arena * Arena,
     RotateFill(&Renderer.ViewRotationMatrix, 0, 0, 0);
     Renderer.ViewRotationMatrix = M4();
     Renderer.ViewTransform      = M4();
-    Renderer.Projection         = ProjectionMatrix(FOV,((r32)ScreenWidth / (r32)ScreenHeight), n,f);
+
+    UpdateRenderViewport(&Renderer,ScreenWidth, ScreenHeight);
+
+    switch (ProjectionMode)
+    {
+
+        case projection_perspective:
+        {
+            Renderer.Projection = ProjectionMatrix(FOV,Renderer.WidthOverHeight, n,f);
+        } break;
+        case projection_orthographic:
+        {
+            r32 r = 1.0f;
+            r32 l = 0.0f;
+            r32 t = r * Renderer.WidthOverHeight;
+            r32 b = 0.0f;
+            Renderer.Projection = OrthographicProjectionMatrix(r,l,t,b,100.0f,0.1f);
+        } break;
+    }
+
     Renderer.UnitsLimit = RenderUnitLimits;
     Renderer.Units = PushArray(Arena,RenderUnitLimits,render_unit);
 
@@ -324,6 +380,7 @@ GetYawFromRotationMatrix(m4 * R)
     return Yaw;
 }
 
+
 m4
 ProjectionMatrix(r32 FOV,r32 AspectRatio, r32 n, r32 f)
 {
@@ -351,26 +408,34 @@ ProjectionMatrix(r32 FOV,r32 AspectRatio, r32 n, r32 f)
 } 
 
 void
-BeginRender(render_controller * Renderer, v4 ClearColor)
+BeginRender(render_controller * Renderer,i32 ScreenWidth, i32 ScreenHeight)
 {
     Renderer->UnitsCount = 0;
-
+    UpdateRenderViewport(Renderer,ScreenWidth, ScreenHeight);
     UpdateView(Renderer);
-
-    GPUSimulationData SimData = {};
-
-    SimData.AmbientLight      = V4(0,0,0,0.2f); // RECORD   AmbientLight;
-    SimData.SunlightDirection = V4(GetViewPos(Renderer) + V3(0,1,0),1.0f);
-    SimData.SunlightColor     = V4(1,1,1,1); // RECORD   SunlightColor;
-
-    GraphicsBeginRenderPass(Renderer, ClearColor,&SimData);
 }
 
 void
-EndRender(game_assets * Assets, render_controller * Renderer)
+BeginRenderPass(v4 ClearColor, v4 AmbientLight, v4 SunlightDirection, v4 SunlightColor)
 {
-    GraphicsRenderDraw(Assets, Renderer);
+    GPUSimulationData SimData = {};
 
+    SimData.AmbientLight      = AmbientLight; // RECORD   AmbientLight;
+    SimData.SunlightDirection = SunlightDirection;
+    SimData.SunlightColor     = SunlightColor; // RECORD   SunlightColor;
+
+    GraphicsBeginRenderPass(ClearColor,&SimData);
+}
+
+void
+RenderDraw(render_controller * Renderer)
+{
+    GraphicsRenderDraw(Renderer);
+}
+
+void
+EndRender()
+{
     GraphicsEndRenderPass();
 }
 

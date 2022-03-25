@@ -205,11 +205,12 @@ THREAD_WORK_HANDLER(AsyncUpdateEntitiesModel)
 }
 
 void
-UpdateTransform(entity * Entity)
+UpdateTransform(entity * Entity, v3 WorldP)
 {
     entity_transform * T = &Entity->Transform;
 
-    Translate(T->WorldP,T->LocalP);
+    v3 LocalToWorldP = WorldP + T->LocalP;
+    Translate(T->WorldP,LocalToWorldP);
     T->WorldR = T->LocalR;
     T->WorldS = T->LocalS;
     m4 R = Quaternion_toMatrix(T->WorldR);
@@ -257,7 +258,7 @@ EntityAddTranslation(entity * Entity, entity * Parent, v3 P, v3 Scale, r32 Speed
     T->LocalP = P;
     T->LocalS = Scale;
     Quaternion_setIdentity(&T->LocalR);
-    Translate(T->WorldP,T->LocalP);
+    //Translate(T->WorldP,T->LocalP);
     T->WorldS = Scale;
     T->WorldR = T->LocalR;
     T->WorldT = {};

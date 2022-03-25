@@ -38,6 +38,11 @@ struct render_controller
     m4 ViewTransform;
     m4 Projection;
 
+    u32 ScreenWidth;
+    u32 ScreenHeight;
+    r32 WidthOverHeight;
+    r32 OneOverWidthOverHeight;
+
     render_unit  * Units;
     u32 UnitsLimit;
     u32 UnitsCount;
@@ -57,12 +62,12 @@ struct GPUObjectData
     v4 Color;
 };
 
-#define GRAPHICS_RENDER_DRAW(name) void name(game_assets * Assets, render_controller * Renderer)
+#define GRAPHICS_RENDER_DRAW(name) void name(render_controller * Renderer)
 typedef GRAPHICS_RENDER_DRAW(graphics_render_draw);
 RENDER_API
 GRAPHICS_RENDER_DRAW(RenderDraw);
 
-#define GRAPHICS_BEGIN_RENDER(name) void name(render_controller * Renderer, v4 ClearColor, GPUSimulationData * SimData)
+#define GRAPHICS_BEGIN_RENDER(name) void name(v4 ClearColor, GPUSimulationData * SimData)
 typedef GRAPHICS_BEGIN_RENDER(graphics_begin_render);
 RENDER_API 
 GRAPHICS_BEGIN_RENDER(BeginRenderPass);

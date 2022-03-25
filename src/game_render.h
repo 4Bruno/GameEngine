@@ -5,14 +5,26 @@
 #include "game_entity.h"
 #include "graphics_api.h"
 
+enum projection_mode
+{
+    projection_perspective,
+    projection_orthographic
+};
+
 GAME_API void
 PushDrawSimulation(render_controller * Renderer,world * World, simulation * Sim);
 
 GAME_API void
-BeginRender(render_controller * Renderer, v4 ClearColor = V4(0,0,0,0));
+BeginRenderPass(v4 ClearColor, v4 AmbientLight, v4 SunlightDirection, v4 SunlightColor);
 
 GAME_API void
-EndRender(game_assets * Assets,render_controller * Renderer);
+BeginRender(render_controller * Renderer,i32 ScreenWidth, i32 ScreenHeight);
+
+GAME_API void
+RenderDraw(render_controller * Renderer);
+
+GAME_API void
+EndRender();
 
 #if DEBUG
 GAME_API void
@@ -20,7 +32,7 @@ PushDrawDebug(render_controller * Renderer,entity * Entity);
 #endif
 
 GAME_API void
-PushDrawEntity(game_memory *Memory, game_state *GameState,render_controller * Renderer,entity * Entity);
+PushDrawEntity(render_controller * Renderer,entity * Entity);
 
 GAME_API render_controller
 NewRenderController(memory_arena * Arena, u32 RenderUnitLimits,
@@ -28,7 +40,8 @@ NewRenderController(memory_arena * Arena, u32 RenderUnitLimits,
                     r32 FOV,
                     i32 ScreenWidth, i32 ScreenHeight, 
                     r32 n, r32 f,
-                    v3 StartP);
+                    v3 StartP,
+                    projection_mode ProjectionMode);
 
 GAME_API void 
 RotateFill(m4 * M, r32 AngleX, r32 AngleY, r32 AngleZ);

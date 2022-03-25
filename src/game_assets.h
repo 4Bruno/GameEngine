@@ -36,11 +36,12 @@ struct asset_slot
 
 
 #define ASSETS_DEFAULT_MESH (game_asset_id)(game_asset_mesh_begin + 1)
-#define ASSETS_DEFAULT_MATERIAL (game_asset_id)(game_asset_material_begin + 1)
-#define ASSETS_TOTAL_MESHES     (game_asset_mesh_end - game_asset_mesh_begin)
-#define ASSETS_TOTAL_MATERIALS  (game_asset_material_end - game_asset_material_begin)
-#define ASSETS_TOTAL_SHADERS    (game_asset_shader_end - game_asset_shader_begin)
-#define ASSETS_TOTAL_COUNT (ASSETS_TOTAL_MESHES + ASSETS_TOTAL_MATERIALS + ASSETS_TOTAL_SHADERS)
+#define ASSETS_DEFAULT_MATERIAL (game_asset_id)(game_asset_material_begin + 2)
+#define ASSETS_TOTAL_MESHES     (game_asset_mesh_end - game_asset_mesh_begin - 1)
+#define ASSETS_TOTAL_MATERIALS  (game_asset_material_end - game_asset_material_begin - 1)
+#define ASSETS_TOTAL_SHADERS    (game_asset_shader_end - game_asset_shader_begin - 1)
+#define ASSETS_TOTAL_TEXTURES   (game_asset_texture_end - game_asset_texture_begin - 1)
+#define ASSETS_TOTAL_COUNT (ASSETS_TOTAL_MESHES + ASSETS_TOTAL_MATERIALS + ASSETS_TOTAL_SHADERS + ASSETS_TOTAL_TEXTURES)
 
 enum game_asset_id
 {
@@ -48,13 +49,15 @@ enum game_asset_id
     game_asset_mesh_begin,
 
     game_asset_mesh_cube,
+    game_asset_mesh_quad,
 
     game_asset_mesh_end,
 
     /* SHADERS */
     game_asset_shader_begin,
 
-    game_asset_shader_vertex_default,
+    game_asset_shader_vertex_default_no_light,
+    game_asset_shader_vertex_default_light,
     game_asset_shader_fragment_default,
     game_asset_shader_fragment_texture,
 
@@ -63,10 +66,16 @@ enum game_asset_id
     /* MATERIALS */
     game_asset_material_begin,
 
-    game_asset_material_default,
+    game_asset_material_default_no_light,
+    game_asset_material_default_light,
     game_asset_material_texture,
 
     game_asset_material_end,
+
+    /* TEXTURES */
+    game_asset_texture_begin,
+    game_asset_texture_test,
+    game_asset_texture_end,
 
 };
 
@@ -134,6 +143,9 @@ struct game_assets
 
     mesh_group CachedMeshGroups[256];
     u32 CachedMeshGroupIndex;
+
+    mesh_group CachedTextures[256];
+    u32 CachedTexturesIndex;
 
     asset_material CachedMaterials[16];
     u32 CachedMaterialIndex;

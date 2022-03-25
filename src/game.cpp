@@ -258,6 +258,58 @@ ReloadGraphicsAPI(graphics_api * GraphicsAPI)
     }
 
 #endif
+enum ui_position
+{
+    ui_position_anchored_top,
+    ui_position_anchored_bottom
+};
+
+
+void
+UI_PushRect(render_controller * Renderer, 
+            menu_overlay * Overlay,
+            ui_position Position,
+            r32 Width, r32 Height,
+            v3 Color)
+{
+    entity E = {};
+    //r32 x = (sinf(Input->TimeElapsed) + 1.0f) * 0.5f;
+    //r32 x = sinf(Input->TimeElapsed);
+    r32 OneOverWidthOverHeight = Renderer->OneOverWidthOverHeight;
+
+    r32 y = 0.0f;
+    r32 x = -1.0f;
+    r32 Padding = OneOverWidthOverHeight * 0.05f;
+
+    Height = Height * OneOverWidthOverHeight;
+
+    if (Position == ui_position_anchored_top)
+    {
+        y = OneOverWidthOverHeight - Height;
+    }
+    else
+    {
+        y = -OneOverWidthOverHeight;
+    }
+    //v3 P = V3(-1.0f,-OneOverWidthOverHeight,0);
+    v3 P      = V3(x,y,0);
+    v3 Scale  = V3(Width,Height,0);
+    v3 LocalP = V3(Scale.x, Scale.y, 0);
+
+    EntityAddTranslation(&E,0, LocalP, Scale,0);
+    EntityAddMesh(&E, game_asset_mesh_quad, Color);
+    E.Material = game_asset_material_default_no_light;
+#if 0
+    r32 Rotate = ToRadians(90.0f);
+    Quaternion qua;
+    Quaternion_fromYRotation(Rotate, &qua);
+    Quaternion_multiply(&qua,&E.Transform.LocalR,&E.Transform.LocalR);
+#endif
+    UpdateTransform(&E,P);
+
+    PushDrawEntity(Renderer,&E);
+}
+
 
 extern "C"
 GAME_API
@@ -287,7 +339,7 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
         InitializeArena(&GameState->PermanentArena,Base, AvailablePermanentMemory);
 
         u32 MaxRenderUnits = 4096;
-        u32 RenderMemorySize = MaxRenderUnits * sizeof(render_unit);
+        u32 RenderMemorySize = 2 * MaxRenderUnits * sizeof(render_unit);
         Base = PushSize(&GameState->PermanentArena,RenderMemorySize);
         InitializeArena(&GameState->RenderArena, Base, RenderMemorySize);
 
@@ -362,7 +414,13 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
         v3 WorldUp = V3(0,1,0);
         GameState->Renderer = 
             NewRenderController(&GameState->RenderArena,MaxRenderUnits,
-                                WorldUp, ToRadians(70.0f), ScreenWidth,ScreenHeight, 0.1f, FarView, WorldCenterV3);
+                                WorldUp, ToRadians(70.0f), ScreenWidth,ScreenHeight, 0.1f, FarView, WorldCenterV3,
+                                projection_perspective);
+
+        GameState->RendererUI = 
+            NewRenderController(&GameState->RenderArena,MaxRenderUnits,
+                                WorldUp, ToRadians(70.0f), ScreenWidth,ScreenHeight, 0.1f, FarView, WorldCenterV3,
+                                projection_orthographic);
 
         GameState->CameraMode = true;
         GameState->CameraWorldP = WorldCenter;
@@ -385,6 +443,8 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
 
     if (Input->GameDllReloaded)
     {
+        ReloadGraphicsAPI(GraphicsAPI);
+        GlobalAssets = &GameState->Assets;
     }
 
     if (Input->GraphicsDllReloaded)
@@ -454,8 +514,14 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
     /* ------------------------- GAME BEGIN RENDER ------------------------- */
 
     v4 ClearColor = V4(0,0,0,1);
+    v4 AmbientLight = V4(0,0,0,0.2f);
+    v4 SunlightDirection = V4(GetViewPos(Renderer) + V3(0,1,0),1.0f);
+    v4 SunlightColor = V4(1,1,1,1);
 
-    BeginRender(Renderer, ClearColor);
+    BeginRender(Renderer,ScreenWidth, ScreenHeight);
+    BeginRender(&GameState->RendererUI,ScreenWidth, ScreenHeight);
+
+    BeginRenderPass(ClearColor, AmbientLight, SunlightDirection, SunlightColor);
 
     /* ----------------------- GAME SYSTEMS UPDATE ---------------------------- */
     // Move camera and set simulation in new center
@@ -591,8 +657,17 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
 #if 1
     PushDrawSimulation(Renderer,&GameState->World, GameState->Simulation);
 
+    v3 Color = V3(1.0f,1.0f,0.0f);
+    r32 BarHeight = 0.1f;
+    UI_PushRect(&GameState->RendererUI,&GameState->DebugOverlay,ui_position_anchored_top,0.5f,BarHeight,Color);
+    Color = V3(1.0f,0.0f,0.0f);
+    UI_PushRect(&GameState->RendererUI,&GameState->DebugOverlay,ui_position_anchored_top,0.25f,BarHeight,Color);
+
+    RenderDraw(Renderer);
+    RenderDraw(&GameState->RendererUI);
+
     //RenderDrawGround(GameState,Renderer, GameState->Simulation);
-    EndRender(&GameState->Assets, Renderer);
+    EndRender();
 #else
     /*UpdateView*/Renderer->ViewTransform = Renderer->ViewRotationMatrix * Renderer->ViewMoveMatrix;
     entity E = {};

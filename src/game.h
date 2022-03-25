@@ -84,6 +84,12 @@ struct bucket_world_pos
     bucket_world_pos * Next;
 };
 
+struct menu_overlay
+{
+    u32 CountAnchoredTop;
+    u32 CountAnchoredBottom;
+};
+
 struct game_state
 {
     b32 IsInitialized;
@@ -112,6 +118,8 @@ struct game_state
 
     game_assets Assets;
     render_controller Renderer;
+    render_controller RendererUI;
+    menu_overlay DebugOverlay;
 
     world_pos CameraWorldP;
     b32 CameraMode;

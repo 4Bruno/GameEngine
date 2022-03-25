@@ -265,7 +265,8 @@ GetShader(game_assets * Assets, game_asset_id ID)
     u32 LocalArrayIndex = ID - game_asset_shader_begin - 1;
 
     const char * ShaderPaths[game_asset_shader_end - game_asset_shader_begin - 1] = {
-        "shaders\\triangle.vert",
+        "shaders\\default_no_lighting.vert",
+        "shaders\\default_lighting.vert",
         "shaders\\triangle.frag",
         "shaders\\triangle_text.frag"
     };
@@ -330,6 +331,14 @@ GetShader(game_assets * Assets, game_asset_id ID)
             AssetSlot->State = asset_loaded;
 
         } break;
+        case asset_load_inprogress:
+        {
+            //pass
+        } break;
+        case asset_loaded_locked:
+        {
+            // pass;
+        } break;
         default:
         {
             Assert(0); // INVALID_PATH_CODE
@@ -338,6 +347,136 @@ GetShader(game_assets * Assets, game_asset_id ID)
 
     return AssetSlot;
 }
+
+#if 0
+void
+GetTexture(game_assets * Assets, game_asset_id ID)
+{
+    Assert(ID > game_asset_texture_begin && ID < game_asset_texture_end);
+
+    asset_slot * AssetSlot = Assets->AssetSlots + ID;
+    asset_state CurrentState = AssetSlot->State;
+
+    u32 LocalArrayIndex = ID - game_asset_texture_begin - 1;
+
+    const char * Paths[ASSETS_TOTAL_MESHES] = {
+        "assets\\vehicles_001.jpg"
+    };
+
+    switch (CurrentState)
+    {
+        case asset_loaded:
+        {
+            for (i32 CachedMeshIndex = 0;
+                    CachedMeshIndex < ArrayCount(Assets->CachedMeshGroups);
+                    ++CachedMeshIndex)
+            {
+                MeshGroup = Assets->CachedMeshGroups + CachedMeshIndex;
+                if (MeshGroup->AssetID == ID)
+                {
+                    break;
+                }
+            }
+            Assert(MeshGroup); // not found?
+        } break;
+        case asset_unloaded:
+        {
+            u32 MeshSize = MeshSizes[LocalArrayIndex];
+            u32 ArenaCurrentSize = Assets->MeshArena.CurrentSize;
+            u32 ArenaSizeAfterMesh = ArenaCurrentSize + MeshSize;
+            if (ArenaSizeAfterMesh < Assets->MeshArena.MaxSize)
+            {
+                thread_memory_arena * ThreadArena =
+                    GetThreadArena(&Assets->ThreadArena[0], (u32)ArrayCount(Assets->ThreadArena));
+
+                if (ThreadArena)
+                {
+                    if (
+                            AtomicCompareExchangeU32((volatile u32 *)&Assets->MeshArena.CurrentSize, 
+                                ArenaSizeAfterMesh, 
+                                ArenaCurrentSize) == ArenaCurrentSize
+                       )
+                    {
+                        Assets->MeshLoadInProgress += 1;
+                        u32 Index  = (Assets->CachedMeshGroupIndex++) & (ArrayCount(Assets->CachedMeshGroups) - 1);
+
+                        mesh_group * CachedMeshGroup = Assets->CachedMeshGroups + Index;
+                        CachedMeshGroup->TotalMeshObjects        = 1; // TotalMeshObjects   TotalMeshObjects
+                        CachedMeshGroup->AssetID                 = ID; // ENUM   AssetID
+                        void * VertexBuffer = Assets->MeshArena.Base + ArenaCurrentSize;
+                        AssetSlot->Data = VertexBuffer;
+                        AssetSlot->Size = MeshSize;
+
+                        const char * Path = MeshPaths[LocalArrayIndex];
+                        async_load_mesh * AssetLoadData = PushStruct(&ThreadArena->Arena,async_load_mesh);
+                        AssetLoadData->Path         = Path;                                                      
+                        AssetLoadData->MeshGroup    = CachedMeshGroup;                                           
+                        AssetLoadData->ThreadArena  = ThreadArena;                                               
+                        AssetLoadData->VertexBuffer = (vertex_point *)VertexBuffer; 
+                        AssetLoadData->AssetSlot    = AssetSlot;                                                 
+
+#if ASSETS_MULTITHREAD_ENABLED
+                        GlobalPlatformMemory->AddWorkToWorkQueue(
+                                GlobalPlatformMemory->HighPriorityWorkQueue , LoadMesh ,AssetLoadData);
+#else
+                        LoadMesh(0,(void *)AssetLoadData);
+#endif
+
+                    }
+                    else
+                    {
+                        ThreadEndArena(ThreadArena);
+                    }
+                }
+            }
+        } break;
+        case asset_loaded_on_cpu:
+        {
+            // find placeholder
+            for (i32 CachedMeshIndex = 0;
+                    CachedMeshIndex < ArrayCount(Assets->CachedMeshGroups);
+                    ++CachedMeshIndex)
+            {
+                MeshGroup = Assets->CachedMeshGroups + CachedMeshIndex;
+                if (MeshGroup->AssetID == ID)
+                {
+                    break;
+                }
+            }
+
+            Assert(MeshGroup);
+
+            CurrentState = asset_transfer_to_gpu_inprogress;
+            void * Data = AssetSlot->Data;
+            u32 Size = (u32)AssetSlot->Size;
+            i32 ErrorCode = GraphicsPushVertexData(Data, Size, &MeshGroup->GPUVertexBufferBeginOffset);
+            if (!ErrorCode)
+            {
+                CurrentState = asset_loaded_on_gpu;
+                Assets->MeshLoadInProgress -= 1;
+
+                if (Assets->MeshLoadInProgress <= 0)
+                {
+                    Assets->MeshArena.CurrentSize = 
+                        Assets->MeshArenaPermanentSize;
+                }
+
+                AssetSlot->State = asset_loaded;
+            }
+
+        } break;
+        case asset_load_inprogress:
+        {
+            //pass
+        } break;
+        default:
+        {
+            Assert(0); // INVALID_PATH_CODE
+        };
+    };
+
+}
+#endif
 
 asset_material
 GetMaterial(game_assets * Assets, game_asset_id MaterialID)
@@ -349,8 +488,9 @@ GetMaterial(game_assets * Assets, game_asset_id MaterialID)
 
     // TODO: Dynamic material creation?
     const game_asset_id MappingMaterialShaders[game_asset_material_end - game_asset_material_begin - 1][2] = {
-        {game_asset_shader_vertex_default, game_asset_shader_fragment_default},
-        {game_asset_shader_vertex_default, game_asset_shader_fragment_texture},
+        {game_asset_shader_vertex_default_no_light, game_asset_shader_fragment_default},
+        {game_asset_shader_vertex_default_light, game_asset_shader_fragment_default},
+        {game_asset_shader_vertex_default_light, game_asset_shader_fragment_texture}
     };
 
     asset_slot * MaterialSlot = Assets->AssetSlots + MaterialID;
@@ -417,6 +557,8 @@ GetMaterial(game_assets * Assets, game_asset_id MaterialID)
                     break;
                 }
             };
+
+            Assets->CachedMaterialIndex = CachedIndex;
 
             Assert(CachedMaterial);
 
@@ -864,13 +1006,18 @@ GetMesh(game_assets * Assets, game_asset_id ID)
     asset_state CurrentState = AssetSlot->State;
 
     u32 LocalArrayIndex = ID - game_asset_mesh_begin - 1;
-    const char * MeshPaths[game_asset_mesh_end - game_asset_mesh_begin - 1] = 
-    {
-        "assets\\cube_triangles.obj"
-    };
 
-    const u32 MeshSizes[3] = {
-        36 * sizeof(vertex_point)
+    const char * MeshPaths[ASSETS_TOTAL_MESHES] = {
+        "assets\\cube_triangles.obj",
+        "assets\\quad.obj"
+    };
+    const u32 MeshSizes[ASSETS_TOTAL_MESHES] = {
+        36 * sizeof(vertex_point),
+        6 * sizeof(vertex_point)
+    };
+    const u32 MeshObjects[ASSETS_TOTAL_MESHES] = {
+        1,
+        1
     };
 
     switch (CurrentState)
