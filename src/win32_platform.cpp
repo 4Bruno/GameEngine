@@ -267,6 +267,7 @@ LoadGraphicsLib(graphics_handler * Graphics)
         API->GraphicsBeginRenderPass= (graphics_begin_render *)     GetProcAddress(Graphics->InitializerLib,"BeginRenderPass");
         API->GraphicsEndRenderPass  = (graphics_end_render *)       GetProcAddress(Graphics->InitializerLib,"EndRenderPass");
         API->GraphicsPushVertexData = (graphics_push_vertex_data *) GetProcAddress(Graphics->InitializerLib,"PushVertexData");
+        API->GraphicsPushTextureData = (graphics_push_texture_data *) GetProcAddress(Graphics->InitializerLib,"PushTextureData");
         API->GraphicsInitializeApi  = (graphics_initialize_api *)   GetProcAddress(Graphics->InitializerLib,"InitializeAPI");
         API->GraphicsShutdownAPI    = (graphics_close_api *)        GetProcAddress(Graphics->InitializerLib,"ShutdownAPI");
         API->GraphicsWaitForRender  = (graphics_wait_for_render *)  GetProcAddress(Graphics->InitializerLib,"WaitForRender");
@@ -279,17 +280,18 @@ LoadGraphicsLib(graphics_handler * Graphics)
         GraphicsOnWindowResize = API->GraphicsOnWindowResize;
 
         b32 APILoaded =
-            Graphics->API.GraphicsRenderDraw      &&
-            Graphics->API.GraphicsBeginRenderPass &&
-            Graphics->API.GraphicsEndRenderPass   &&
-            Graphics->API.GraphicsPushVertexData  &&
-            Graphics->API.GraphicsInitializeApi   &&
-            Graphics->API.GraphicsShutdownAPI     &&
-            Graphics->API.GraphicsWaitForRender   &&
-            Graphics->API.GraphicsOnWindowResize  &&
-            Graphics->API.GraphicsCreateShaderModule &&
-            Graphics->API.GraphicsDeleteShaderModule &&
-            Graphics->API.GraphicsCreateMaterialPipeline &&
+            Graphics->API.GraphicsRenderDraw                &&
+            Graphics->API.GraphicsBeginRenderPass           &&
+            Graphics->API.GraphicsEndRenderPass             &&
+            Graphics->API.GraphicsPushVertexData            &&
+            Graphics->API.GraphicsPushTextureData           &&
+            Graphics->API.GraphicsInitializeApi             &&
+            Graphics->API.GraphicsShutdownAPI               &&
+            Graphics->API.GraphicsWaitForRender             &&
+            Graphics->API.GraphicsOnWindowResize            &&
+            Graphics->API.GraphicsCreateShaderModule        &&
+            Graphics->API.GraphicsDeleteShaderModule        &&
+            Graphics->API.GraphicsCreateMaterialPipeline    &&
             Graphics->API.GraphicsDestroyMaterialPipeline
             ;
 
