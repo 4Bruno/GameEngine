@@ -1294,10 +1294,10 @@ void
 VH_FreeMemory()
 {
     for (u32 MemoryArenaIndex = 0;
-                MemoryArenaIndex < ArrayCount(GlobalVulkan.DeviceMemoryPools);
+                MemoryArenaIndex < GlobalVulkan.DeviceMemoryPools.Count;
                 ++MemoryArenaIndex)
     {
-        device_memory_pool * DeviceMemoryPool = GlobalVulkan.DeviceMemoryPools + MemoryArenaIndex;
+        device_memory_pool * DeviceMemoryPool = GlobalVulkan.DeviceMemoryPools.DeviceMemoryPool + MemoryArenaIndex;
                 
         if (DeviceMemoryPool->Size > 0)
         {

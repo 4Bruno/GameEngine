@@ -26,6 +26,7 @@ struct render_unit
 {
     m4 ModelTransform;
     v4 Color;
+    i32 TextureID;
     u32 MaterialPipelineIndex;
     mesh_group * MeshGroup;
 };
@@ -82,6 +83,11 @@ typedef GRAPHICS_PUSH_VERTEX_DATA(graphics_push_vertex_data);
 RENDER_API
 GRAPHICS_PUSH_VERTEX_DATA(PushVertexData);
 
+#define GRAPHICS_PUSH_TEXTURE_DATA(name) i32 name(void * Data, u32 Width, u32 Height, u32 Channels)
+typedef GRAPHICS_PUSH_TEXTURE_DATA(graphics_push_texture_data);
+RENDER_API
+GRAPHICS_PUSH_TEXTURE_DATA(PushTextureData);
+
 #define GRAPHICS_CREATE_SHADER_MODULE(name) i32 name(void * Buffer, size_t Size)
 typedef GRAPHICS_CREATE_SHADER_MODULE(graphics_create_shader_module);
 RENDER_API
@@ -129,16 +135,17 @@ GRAPHICS_DESTROY_MATERIAL_PIPELINE(FreeMaterialPipeline);
 
 struct graphics_api
 {
-    graphics_render_draw      * GraphicsRenderDraw;
-    graphics_begin_render     * GraphicsBeginRenderPass;
-    graphics_end_render       * GraphicsEndRenderPass;
-    graphics_push_vertex_data * GraphicsPushVertexData;
-    graphics_initialize_api   * GraphicsInitializeApi;
-    graphics_close_api        * GraphicsShutdownAPI;
-    graphics_wait_for_render  * GraphicsWaitForRender;
-    graphics_on_window_resize * GraphicsOnWindowResize;
-    graphics_create_shader_module * GraphicsCreateShaderModule;
-    graphics_delete_shader_module * GraphicsDeleteShaderModule;
+    graphics_render_draw              * GraphicsRenderDraw;
+    graphics_begin_render             * GraphicsBeginRenderPass;
+    graphics_end_render               * GraphicsEndRenderPass;
+    graphics_push_vertex_data         * GraphicsPushVertexData;
+    graphics_push_texture_data        * GraphicsPushTextureData;
+    graphics_initialize_api           * GraphicsInitializeApi;
+    graphics_close_api                * GraphicsShutdownAPI;
+    graphics_wait_for_render          * GraphicsWaitForRender;
+    graphics_on_window_resize         * GraphicsOnWindowResize;
+    graphics_create_shader_module     * GraphicsCreateShaderModule;
+    graphics_delete_shader_module     * GraphicsDeleteShaderModule;
     graphics_create_material_pipeline * GraphicsCreateMaterialPipeline;
     graphics_destroy_material_pipeline * GraphicsDestroyMaterialPipeline;
 };

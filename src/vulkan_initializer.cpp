@@ -54,6 +54,7 @@ PFN_vkEnumeratePhysicalDevices                vkEnumeratePhysicalDevices        
 PFN_vkEnumerateDeviceExtensionProperties      vkEnumerateDeviceExtensionProperties      = 0;
 PFN_vkGetPhysicalDeviceProperties             vkGetPhysicalDeviceProperties             = 0;
 PFN_vkGetPhysicalDeviceFeatures               vkGetPhysicalDeviceFeatures               = 0;
+PFN_vkGetPhysicalDeviceFeatures2              vkGetPhysicalDeviceFeatures2              = 0;
 PFN_vkGetPhysicalDeviceQueueFamilyProperties  vkGetPhysicalDeviceQueueFamilyProperties  = 0;
 PFN_vkCreateDevice                            vkCreateDevice                            = 0;
 PFN_vkGetDeviceProcAddr                       vkGetDeviceProcAddr                       = 0;
@@ -132,8 +133,6 @@ PFN_vkBindImageMemory                         vkBindImageMemory                 
 vulkan                GlobalVulkan                = {};
 b32                   GlobalWindowIsMinimized     = false;
 vulkan_destroy_queue  PrimaryVulkanDestroyQueue   = {};
-global_variable memory_arena GlobalGPUVertexArena;
-global_variable memory_arena GlobalGPUTextureArena;
 
 
 #define QUEUE_DELETE(queue,func_name, CountParams,Param1,Param2,Param3, Param4, Param5) queue_delete_(queue,vulkan_destructor_type_##func_name,CountParams, (void *)Param1, (void *)Param2,(void *)Param3, (void *)Param4,(void *)Param5)
@@ -187,7 +186,21 @@ VH_CreateImage(VkPhysicalDevice PhysicalDevice,VkDevice Device, u32 Width, u32 H
 
     VkExtent3D MaxExtent3D = { Width, Height, 1};
     VkImageUsageFlags UsageFlags = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
-    VkFormat Format = VK_FORMAT_R8G8B8A8_SRGB; // VkFormat   format;
+    VkFormat Format = VK_FORMAT_UNDEFINED;
+
+    if (Channels == 3)
+    {
+        Format = VK_FORMAT_R8G8B8_SRGB; // VkFormat   format;
+    }
+    else if (Channels == 4)
+    {
+        Format = VK_FORMAT_R8G8B8A8_SRGB;
+    }
+    else
+    {
+        Assert(0);//INVALID_PATH_CODE;
+    }
+
     VkImageCreateInfo ImageCreateInfo = 
         VH_CreateImageCreateInfo2D(MaxExtent3D, Format, UsageFlags);
 
@@ -198,7 +211,10 @@ VH_CreateImage(VkPhysicalDevice PhysicalDevice,VkDevice Device, u32 Width, u32 H
     i32 MemoryTypeIndex = VH_FindSuitableMemoryIndex(GlobalVulkan.PrimaryGPU, Image->MemoryRequirements, PropertyFlags);
 
     // only 1 type for now
-    Assert(MemoryTypeIndex == GlobalVulkan.TextureArena.MemoryIndexType);
+    Assert(MemoryTypeIndex == GlobalVulkan.TextureArena->MemoryIndexType);
+
+    Image->Format = Format;
+    Image->UsageFlags = UsageFlags;
 
     return 0;
 }
@@ -222,6 +238,7 @@ RenderGetVertexInputsDescription()
 
     Binding.binding   = 0;                           // u32_t binding;
     Binding.stride    = sizeof(vertex_point);        // u32_t stride;
+    //Binding.inputRate = VK_VERTEX_INPUT_RATE_INSTANCE; // VkVertexInputRate inputRate;
     Binding.inputRate = VK_VERTEX_INPUT_RATE_VERTEX; // VkVertexInputRate inputRate;
 
     VkVertexInputAttributeDescription * Attribute = (InputsDescription.Attributes + 0);
@@ -494,7 +511,7 @@ BeginObjectMapping(u32 Units)
 {
     gpu_memory_mapping_result Result = {};
 
-    gpu_arena * Arena = &GetCurrentFrame()->ObjectsArena;
+    gpu_arena * Arena = GetCurrentFrame()->ObjectsArena;
     u32 BeginOffsetUnits = Arena->CurrentSize / sizeof(GPUObjectData);
     u32 TotalUnitsSize = Units * sizeof(GPUObjectData);
     Assert((Arena->CurrentSize + TotalUnitsSize) <= Arena->MaxSize);
@@ -514,8 +531,7 @@ BeginObjectMapping(u32 Units)
 void
 EndObjectsArena()
 {
-    gpu_arena * Arena = &GetCurrentFrame()->ObjectsArena;
-    Arena->CurrentSize = 0;
+    gpu_arena * Arena = GetCurrentFrame()->ObjectsArena;
     VulkanUnmapArena(Arena);
 }
 
@@ -1036,21 +1052,22 @@ VulkanWriteDataToArena(gpu_arena * Arena, void * Data, u32 Size)
     return Error;
 }
 
-i32
-VulkanPushTexture(void * Data, u32 Width, u32 Height, u32 Channels)
+GRAPHICS_PUSH_TEXTURE_DATA(PushTextureData)
 {
+
+    i32 ResultImageIndex = -1;
 
     VkDeviceSize Offset = 0;
 
-    gpu_arena * Arena = &GlobalVulkan.TextureArena;
+    gpu_arena * Arena = GlobalVulkan.TextureArena;
     Assert(Arena->ImageCount < ArrayCount(Arena->Images));
-    vulkan_image * VulkanImage = Arena->Images + Arena->ImageCount++;
+    vulkan_image * VulkanImage = Arena->Images + Arena->ImageCount;
 
     // https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VkMemoryMapFlags.html
     VkMemoryMapFlags Flags = 0; // RESERVED FUTURE USE
 
     if (VH_CreateImage(GlobalVulkan.PrimaryGPU,GlobalVulkan.PrimaryDevice, Width,Height,Channels, VulkanImage)) 
-        return 1;
+        return ResultImageIndex;
 
     VkDeviceMemory DeviceMemory = GetDeviceMemory(Arena->MemoryIndexType);
     VkDeviceSize BindMemoryOffset = Arena->DeviceBindingOffsetBegin + Arena->CurrentSize;
@@ -1058,7 +1075,7 @@ VulkanPushTexture(void * Data, u32 Width, u32 Height, u32 Channels)
     if (VK_FAILS(vkBindImageMemory(GlobalVulkan.PrimaryDevice, VulkanImage->Image,DeviceMemory, BindMemoryOffset)))
     {
         VH_DestroyImage(Arena->Device,VulkanImage);
-        return 1;
+        return ResultImageIndex;
     }
             
     VkDeviceSize DeviceSize = Width * Height * Channels;
@@ -1069,7 +1086,7 @@ VulkanPushTexture(void * Data, u32 Width, u32 Height, u32 Channels)
      * 3) Copy GPU temp memory to Image
      * 4) Transition Image to readable by shaders
      */
-    VulkanWriteDataToArena(&GlobalVulkan.TransferBitArena, Data, (u32)DeviceSize);
+    VulkanWriteDataToArena(GlobalVulkan.TransferBitArena, Data, (u32)DeviceSize);
 
     /* TRANSITION LAYOUT */
 
@@ -1132,7 +1149,7 @@ VulkanPushTexture(void * Data, u32 Width, u32 Height, u32 Channels)
 
 
 	vkCmdCopyBufferToImage(GlobalVulkan.TransferBitCommandBuffer, 
-                           GlobalVulkan.TransferBitArena.Buffer, 
+                           GlobalVulkan.TransferBitArena->Buffer, 
                            VulkanImage->Image, 
                            VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &Copy);
 
@@ -1166,7 +1183,7 @@ VulkanPushTexture(void * Data, u32 Width, u32 Height, u32 Channels)
     ImageViewCreateInfo.flags            = 0; // VkImageViewCreateFlags   flags;
     ImageViewCreateInfo.image            = VulkanImage->Image; // VkImage   image;
     ImageViewCreateInfo.viewType         = VK_IMAGE_VIEW_TYPE_2D; // VkImageViewType   viewType;
-    ImageViewCreateInfo.format           = VK_FORMAT_R8G8B8A8_SRGB; // VkFormat   format;
+    ImageViewCreateInfo.format           = VulkanImage->Format; // VkFormat   format;
 
     VkComponentMapping   components;
     components.r = VK_COMPONENT_SWIZZLE_IDENTITY; // VkComponentSwizzle   r;
@@ -1186,33 +1203,57 @@ VulkanPushTexture(void * Data, u32 Width, u32 Height, u32 Channels)
 
     VK_CHECK(vkCreateImageView( GlobalVulkan.PrimaryDevice, &ImageViewCreateInfo, 0, &VulkanImage->ImageView));
 
-    VH_AllocateDescriptor(&GlobalVulkan._DebugTextureSetLayout,GlobalVulkan._DescriptorPool,&GlobalVulkan._DebugTextureSet);
-
-    VkDescriptorImageInfo ImageInfo;
-    ImageInfo.sampler     = GlobalVulkan.TextureSampler; // VkSampler   sampler;
-    ImageInfo.imageView   = VulkanImage->ImageView; // VkImageView   imageView;
-    ImageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL; // VkImageLayout   imageLayout;
-
-    VkWriteDescriptorSet ImageWriteSet = VH_WriteDescriptorImage(0, GlobalVulkan._DebugTextureSet, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, &ImageInfo);
-
-    vkUpdateDescriptorSets(GlobalVulkan.PrimaryDevice,1, &ImageWriteSet,  0, nullptr);
+    // TODO: figure out how to manage descriptor set 
+    // for multiple images
+    // I think having big textures with all data
+    // and setting them once at the beginning of the frame
+    // but you will need to cover all texture requirements
+    // for the frame
+    if (!VK_VALID_HANDLE(GlobalVulkan._DebugTextureSet))
+    {
+        VH_AllocateDescriptor(&GlobalVulkan._DebugTextureSetLayout,GlobalVulkan._DescriptorPool,&GlobalVulkan._DebugTextureSet);
+    }
 
     Arena->CurrentSize += (u32)VulkanImage->MemoryRequirements.size;
 
-    return 0;
+    // commit
+    ResultImageIndex = Arena->ImageCount++;
+
+    return ResultImageIndex;
 }
 
 i32
-RenderBindMaterial(u32 PipelineIndex)
+RenderBindTexture(u32 ImageIndex)
 {
     u32 TextureBindingSlot = 2;
     
     VkPipelineLayout PipelineLayout = 
-        GlobalVulkan.PipelinesDefinition[PipelineIndex].PipelineLayout;
+        GlobalVulkan.CurrentPipelineLayout;
+
+    Assert(VK_VALID_HANDLE(PipelineLayout));
+
+    vulkan_image * Image = GlobalVulkan.TextureArena->Images + ImageIndex;
+
+    VkDescriptorImageInfo ImageInfo;
+    ImageInfo.sampler     = GlobalVulkan.TextureSampler; // VkSampler   sampler;
+    ImageInfo.imageView   = Image->ImageView; // VkImageView   imageView;
+    ImageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL; // VkImageLayout   imageLayout;
+
+    VkWriteDescriptorSet ImageWriteSet = 
+        VH_WriteDescriptorImage(0, 
+                                GlobalVulkan._DebugTextureSet, 
+                                VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 
+                                &ImageInfo);
+
+    vkUpdateDescriptorSets(GlobalVulkan.PrimaryDevice,1, &ImageWriteSet,  0, nullptr);
 
     vkCmdBindDescriptorSets(GetCurrentFrame()->PrimaryCommandBuffer, 
                             VK_PIPELINE_BIND_POINT_GRAPHICS, 
-                            PipelineLayout, TextureBindingSlot, 1, &GlobalVulkan._DebugTextureSet, 0, nullptr);
+                            PipelineLayout, 
+                            TextureBindingSlot, 
+                            1, 
+                            &GlobalVulkan._DebugTextureSet, 
+                            0, nullptr);
 
     return 0;
 }
@@ -1221,7 +1262,7 @@ RenderBindMaterial(u32 PipelineIndex)
 GRAPHICS_PUSH_VERTEX_DATA(PushVertexData)
 {
 
-    gpu_arena * VertexArena = &GlobalVulkan.VertexArena;
+    gpu_arena * VertexArena = GlobalVulkan.VertexArena;
     VkDeviceSize Offset = VertexArena->CurrentSize;
 
     u32 Align = VertexArena->Alignment - 1;
@@ -1229,10 +1270,10 @@ GRAPHICS_PUSH_VERTEX_DATA(PushVertexData)
 
     Assert((VertexArena->CurrentSize + DataSizeAligned) < VertexArena->MaxSize);
 
-    VulkanWriteDataToArena(&GlobalVulkan.TransferBitArena,Data, DataSize);
+    VulkanWriteDataToArena(GlobalVulkan.TransferBitArena,Data, DataSize);
 
     if (VH_CopyBuffer(GlobalVulkan.TransferBitCommandBuffer, 
-                     GlobalVulkan.TransferBitArena.Buffer,VertexArena->Buffer, DataSize, Offset))
+                     GlobalVulkan.TransferBitArena->Buffer,VertexArena->Buffer, DataSize, Offset))
     {
         Log("Failed to copy data from buffer to gpu\n");
         return 1;
@@ -1249,7 +1290,7 @@ GRAPHICS_PUSH_VERTEX_DATA(PushVertexData)
 i32
 RenderPushIndexData(void * Data,u32 DataSize, u32 BaseOffset)
 {
-    gpu_arena * IndexArena = &GlobalVulkan.IndexArena;
+    gpu_arena * IndexArena = GlobalVulkan.IndexArena;
     VkDeviceSize Offset = IndexArena->CurrentSize;
 
     u32 Align = IndexArena->Alignment - 1;
@@ -1261,10 +1302,10 @@ RenderPushIndexData(void * Data,u32 DataSize, u32 BaseOffset)
 
     VkDeviceSize DeviceSize = DataSize;
 
-    VulkanWriteDataToArena(&GlobalVulkan.TransferBitArena,Data, DataSize);
+    VulkanWriteDataToArena(GlobalVulkan.TransferBitArena,Data, DataSize);
 
     if (VH_CopyBuffer(GlobalVulkan.TransferBitCommandBuffer, 
-                     GlobalVulkan.TransferBitArena.Buffer,IndexArena->Buffer, DataSize, Offset))
+                     GlobalVulkan.TransferBitArena->Buffer,IndexArena->Buffer, DataSize, Offset))
     {
         Log("Failed to copy data from buffer to gpu\n");
         return 1;
@@ -1470,6 +1511,15 @@ RenderDrawObject(u32 VertexSize,u32 FirstInstance)
 
     return 0;
 }
+i32
+RenderDrawObjectNTimes(u32 VertexSize, u32 NTimes, u32 FirstInstance)
+{
+    VkCommandBuffer cmd = GetCurrentFrame()->PrimaryCommandBuffer;
+
+    vkCmdDraw(cmd,VertexSize, NTimes, 0 , FirstInstance);
+
+    return 0;
+}
 
 i32
 RenderBindMesh(u32 VertexSize, u32 Offset)
@@ -1477,7 +1527,7 @@ RenderBindMesh(u32 VertexSize, u32 Offset)
     VkCommandBuffer cmd = GetCurrentFrame()->PrimaryCommandBuffer;
 
     VkDeviceSize OffsetVertex = Offset;
-    vkCmdBindVertexBuffers(cmd, 0, 1, &GlobalVulkan.VertexArena.Buffer, &OffsetVertex);
+    vkCmdBindVertexBuffers(cmd, 0, 1, &GlobalVulkan.VertexArena->Buffer, &OffsetVertex);
 
     return 0;
 }
@@ -1495,7 +1545,7 @@ RenderPushSimulationData(GPUSimulationData * SimData)
 
     VkMemoryMapFlags Flags = 0; // RESERVED FUTURE USE
 
-    gpu_arena * Arena = &GlobalVulkan.SimulationBuffer;
+    gpu_arena * Arena = GlobalVulkan.SimulationArena;
     //VulkanWriteDataToArena(Arena, (void *)SimData, sizeof(GPUSimulationData));
     VkDeviceMemory DeviceMemory = GetDeviceMemory(Arena->MemoryIndexType);
 
@@ -1614,12 +1664,12 @@ GRAPHICS_ON_WINDOW_RESIZE(OnWindowResize)
 
         if (VulkanInitDefaultRenderPass()) return 1;
 
-        VH_DestroyImage(GlobalVulkan.PrimaryDepthBufferArena.Device,GlobalVulkan.PrimaryDepthBuffer);
-        --GlobalVulkan.PrimaryDepthBufferArena.ImageCount;
-        Assert(GlobalVulkan.PrimaryDepthBufferArena.ImageCount == 0);
+        VH_DestroyImage(GlobalVulkan.PrimaryDepthBufferArena->Device,GlobalVulkan.PrimaryDepthBuffer);
+        --GlobalVulkan.PrimaryDepthBufferArena->ImageCount;
+        Assert(GlobalVulkan.PrimaryDepthBufferArena->ImageCount == 0);
 
         VkExtent3D Extent3D = { GlobalVulkan.WindowExtension.width, GlobalVulkan.WindowExtension.height, 1};
-        GlobalVulkan.PrimaryDepthBuffer = VH_CreateDepthBuffer(&GlobalVulkan.PrimaryDepthBufferArena,Extent3D);
+        GlobalVulkan.PrimaryDepthBuffer = VH_CreateDepthBuffer(GlobalVulkan.PrimaryDepthBufferArena,Extent3D);
         if (IS_NULL(GlobalVulkan.PrimaryDepthBuffer))
         {
             Logn("Failed to create depth buffer");
@@ -1681,9 +1731,13 @@ VulkanCreateLogicaDevice()
         ++QueuesRequired;
     }
 
+#if 0
+    /* IM PASSING physicaldevicefeatures2 struct with all data requires */
     VkPhysicalDeviceFeatures EnabledFeatures = {};
     EnabledFeatures.geometryShader = VK_TRUE;
     EnabledFeatures.samplerAnisotropy = VK_TRUE;
+    EnabledFeatures
+#endif
 
     /*
      * VULKAN 1.3 gl_BaseInstance requires extension DrawParameters in shaders
@@ -1709,6 +1763,22 @@ VulkanCreateLogicaDevice()
 #endif
     PhysicalDevice11Features.shaderDrawParameters               = VK_TRUE; // shaderDrawParameters   shaderDrawParameters
 
+    // Request binding descriptor set AFTER command begin
+    VkPhysicalDeviceFeatures2    PhysicalDeviceFeatures2 = {};
+    PhysicalDeviceFeatures2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
+
+    VkPhysicalDeviceDescriptorIndexingFeatures IndexingFeatures = {};
+    IndexingFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_FEATURES;
+
+    PhysicalDeviceFeatures2.pNext = &IndexingFeatures;
+
+    /* ---------------------- ADDITIONAL FEATURES HERE ---------------------- */
+    IndexingFeatures.descriptorBindingUpdateUnusedWhilePending = VK_TRUE;
+    PhysicalDeviceFeatures2.features.geometryShader = VK_TRUE;
+    PhysicalDeviceFeatures2.features.samplerAnisotropy = VK_TRUE;
+
+    PhysicalDevice11Features.pNext = &PhysicalDeviceFeatures2;
+
     VkDeviceCreateInfo DeviceCreateInfo = {};
     DeviceCreateInfo.sType                       = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO; // VkStructureType   sType;
     DeviceCreateInfo.pNext                       = &PhysicalDevice11Features;                                    // Void * pNext;
@@ -1721,7 +1791,7 @@ VulkanCreateLogicaDevice()
     DeviceCreateInfo.ppEnabledLayerNames         = 0;                                    // Pointer * ppEnabledLayerNames;
     DeviceCreateInfo.enabledExtensionCount       = TotalDeviceExtReq; // u32_t   enabledExtensionCount;
     DeviceCreateInfo.ppEnabledExtensionNames     = &DeviceExtensionsRequired[0];         // Pointer * ppEnabledExtensionNames;
-    DeviceCreateInfo.pEnabledFeatures            = &EnabledFeatures;                                    // Typedef * pEnabledFeatures;
+    DeviceCreateInfo.pEnabledFeatures            = 0;//&EnabledFeatures;                                    // Typedef * pEnabledFeatures;
 
     VK_CHECK(vkCreateDevice(GlobalVulkan.PrimaryGPU,&DeviceCreateInfo,0,&GlobalVulkan.PrimaryDevice));
 
@@ -1836,11 +1906,26 @@ VulkanGetPhysicalDevice()
         VkPhysicalDeviceFeatures    PhysicalDeviceFeatures;
         vkGetPhysicalDeviceFeatures(PhysicalDevices[i],   &PhysicalDeviceFeatures);
 
+        /* BEGIN Additional device features query */
+        VkPhysicalDeviceFeatures2    PhysicalDeviceFeatures2 = {};
+        PhysicalDeviceFeatures2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
+
+        VkPhysicalDeviceDescriptorIndexingFeatures IndexingFeatures = {};
+        IndexingFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_FEATURES;
+
+        PhysicalDeviceFeatures2.pNext = &IndexingFeatures;
+
+        vkGetPhysicalDeviceFeatures2(PhysicalDevices[i],   &PhysicalDeviceFeatures2);
+        /* END Additional device features query */
+
+        b32 SupportsBindingDescriptorDuringCommand = IndexingFeatures.descriptorBindingSampledImageUpdateAfterBind;
+
         b32 SupportsAnisotropyFilter = (PhysicalDeviceFeatures.samplerAnisotropy == VK_TRUE);
         b32 SupportsGeometryShaders = (PhysicalDeviceFeatures.geometryShader == VK_TRUE);
 
         b32 AllFeaturesSupported = SupportsAnisotropyFilter &&
-                                   SupportsGeometryShaders
+                                   SupportsGeometryShaders  &&
+                                   SupportsBindingDescriptorDuringCommand
                                    ;
 
         vk_version Version = GetVkVersionFromu32(PhysicalDeviceProperties.apiVersion);
@@ -2131,6 +2216,7 @@ VulkanGetInstance(b32 EnableValidationLayer,
     VK_INSTANCE_LEVEL_FN(Instance,vkEnumerateDeviceExtensionProperties);
     VK_INSTANCE_LEVEL_FN(Instance,vkGetPhysicalDeviceProperties);
     VK_INSTANCE_LEVEL_FN(Instance,vkGetPhysicalDeviceFeatures);
+    VK_INSTANCE_LEVEL_FN(Instance,vkGetPhysicalDeviceFeatures2);
     VK_INSTANCE_LEVEL_FN(Instance,vkGetPhysicalDeviceQueueFamilyProperties);
     VK_INSTANCE_LEVEL_FN(Instance,vkCreateDevice);
     VK_INSTANCE_LEVEL_FN(Instance,vkGetDeviceProcAddr);
@@ -2224,9 +2310,22 @@ CreateDescriptorSetTextures()
         LayoutBinding
     };
 
+
+    // TODO: how can we avoid allowing rebinding
+    // thsi will be solved asap I figure out how to deal
+    // with image descriptor at the beginning of the frame
+    // before initializing command buffer
+    VkDescriptorBindingFlags BindingFlags = VK_DESCRIPTOR_BINDING_UPDATE_UNUSED_WHILE_PENDING_BIT;
+
+    VkDescriptorSetLayoutBindingFlagsCreateInfo  BindingFlagsCreateInfo;
+    BindingFlagsCreateInfo.sType         = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO; // sType   sType
+    BindingFlagsCreateInfo.pNext         = 0; // Void * pNext
+    BindingFlagsCreateInfo.bindingCount  = 1; // bindingCount   bindingCount
+    BindingFlagsCreateInfo.pBindingFlags = &BindingFlags; // VkDescriptorBindingFlags * pBindingFlags
+
     VkDescriptorSetLayoutCreateInfo SetInfo;
     SetInfo.sType        = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO; // VkStructureType   sType;
-    SetInfo.pNext        = 0; // Void * pNext;
+    SetInfo.pNext        = &BindingFlagsCreateInfo; // Void * pNext;
     SetInfo.flags        = 0; // VkDescriptorSetLayoutCreateFlags   flags;
     SetInfo.bindingCount = ArrayCount(DescriptorSetLayoutBindings); // uint32_t   bindingCount;
     SetInfo.pBindings    = &DescriptorSetLayoutBindings[0]; // Typedef * pBindings;
@@ -2269,14 +2368,14 @@ CreatePipelineLayoutTexture(VkPipelineLayout * PipelineLayout)
 }
 
 i32
-CreateMemoryArenasAndAllocate()
+CreateUnallocatedMemoryArenas(gpu_arena * Arenas, i32 MaxArenas, u32 * ArenasCreatedCount)
 {
+    i32 ArenaCount = 0;
 
-    u32 ArenaUnAllocatedCount = 0;
-    gpu_arena * ArenaUnAllocated[20] = {};
-    
     // Single uniform buffer shared by each FRAME_OVERLAP
     VkDeviceSize SimulationBufferPaddedSize = FRAME_OVERLAP * VH_PaddedUniformBuffer(sizeof(GPUSimulationData));
+    Assert(ArenaCount < MaxArenas);
+    gpu_arena * SimulationArena = Arenas + ArenaCount++;
     if (VH_CreateUnAllocArenaBuffer(
                 GlobalVulkan.PrimaryGPU,
                 GlobalVulkan.PrimaryDevice,
@@ -2284,13 +2383,12 @@ CreateMemoryArenasAndAllocate()
                 VK_SHARING_MODE_EXCLUSIVE,
                 VK_MEMORY_CPU_TO_GPU_PREFERRED,
                 VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
-                &GlobalVulkan.SimulationBuffer)
+                SimulationArena)
         )
     {
         return 1;
     }
-    QUEUE_DELETE_ARENA(&PrimaryVulkanDestroyQueue,&GlobalVulkan.SimulationBuffer);
-    ArenaUnAllocated[ArenaUnAllocatedCount++] = &GlobalVulkan.SimulationBuffer;
+    GlobalVulkan.SimulationArena = SimulationArena;
 
     // Maximum number of entities rendered
     u32 TotalFrameObjects = 10000;
@@ -2301,6 +2399,8 @@ CreateMemoryArenasAndAllocate()
             ++FrameIndex)
     {
         frame_data * FrameData = GlobalVulkan.FrameData + FrameIndex;
+        Assert(ArenaCount < MaxArenas);
+        gpu_arena * FrameArena = Arenas + ArenaCount++;
         if (VH_CreateUnAllocArenaBuffer(
                     GlobalVulkan.PrimaryGPU,
                     GlobalVulkan.PrimaryDevice,
@@ -2308,14 +2408,12 @@ CreateMemoryArenasAndAllocate()
                     VK_SHARING_MODE_EXCLUSIVE,
                     VK_MEMORY_CPU_TO_GPU_PREFERRED,
                     VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
-                    &FrameData->ObjectsArena)
+                    FrameArena)
            )
         {
             return 1;
         }
-
-        QUEUE_DELETE_ARENA(&PrimaryVulkanDestroyQueue,&FrameData->ObjectsArena);
-        ArenaUnAllocated[ArenaUnAllocatedCount++] = &FrameData->ObjectsArena;
+        FrameData->ObjectsArena = FrameArena;
     }
 
     VkMemoryRequirements2 TempMemReq = {};
@@ -2339,18 +2437,19 @@ CreateMemoryArenasAndAllocate()
     VkMemoryPropertyFlags DepthBufferMemoryFlags = VK_MEMORY_GPU;
     TempMemoryTypeIndex = VH_FindSuitableMemoryIndex(GlobalVulkan.PrimaryGPU,TempMemReq,DepthBufferMemoryFlags);
 
+    Assert(ArenaCount < MaxArenas);
+    gpu_arena * PrimDepthBufArena = Arenas + ArenaCount++;
     u32 MaxDepthBufferSize = (u32)TempMemReq.memoryRequirements.size;
     if (VH_CreateUnAllocArenaImage(GlobalVulkan.PrimaryGPU,GlobalVulkan.PrimaryDevice,
                                    MaxDepthBufferSize,
-                                   &GlobalVulkan.PrimaryDepthBufferArena)
+                                   PrimDepthBufArena)
        )
     {
         return 1;
     };
-    QUEUE_DELETE_ARENA(&PrimaryVulkanDestroyQueue,&GlobalVulkan.PrimaryDepthBufferArena);
-    ArenaUnAllocated[ArenaUnAllocatedCount++] = &GlobalVulkan.PrimaryDepthBufferArena;
-    GlobalVulkan.PrimaryDepthBufferArena.MemoryIndexType = TempMemoryTypeIndex;
-    GlobalVulkan.PrimaryDepthBufferArena.Alignment = (u32)TempMemReq.memoryRequirements.alignment;
+    PrimDepthBufArena->MemoryIndexType = TempMemoryTypeIndex;
+    PrimDepthBufArena->Alignment = (u32)TempMemReq.memoryRequirements.alignment;
+    GlobalVulkan.PrimaryDepthBufferArena = PrimDepthBufArena;
 
 
     // Query default image required memory and allocate
@@ -2370,17 +2469,18 @@ CreateMemoryArenasAndAllocate()
     TempMemoryTypeIndex = VH_FindSuitableMemoryIndex(GlobalVulkan.PrimaryGPU,TempMemReq,ImageMemoryPropertyFlags);
 
     u32 TextureArenaSize = Megabytes(128);
+    Assert(ArenaCount < MaxArenas);
+    gpu_arena * TextureArena = Arenas + ArenaCount++;
     if (VH_CreateUnAllocArenaImage(GlobalVulkan.PrimaryGPU,GlobalVulkan.PrimaryDevice,
                                    TextureArenaSize,
-                                   &GlobalVulkan.TextureArena)
+                                   TextureArena)
        )
     {
         return 1;
     };
-    QUEUE_DELETE_ARENA(&PrimaryVulkanDestroyQueue,&GlobalVulkan.TextureArena);
-    ArenaUnAllocated[ArenaUnAllocatedCount++] = &GlobalVulkan.TextureArena;
-    GlobalVulkan.TextureArena.MemoryIndexType = TempMemoryTypeIndex;
-    GlobalVulkan.TextureArena.Alignment = (u32)TempMemReq.memoryRequirements.alignment;
+    TextureArena->MemoryIndexType = TempMemoryTypeIndex;
+    TextureArena->Alignment = (u32)TempMemReq.memoryRequirements.alignment;
+    GlobalVulkan.TextureArena = TextureArena;
 
 
     VkDeviceSize TransferbitBufferSize = Megabytes(16);
@@ -2389,6 +2489,8 @@ CreateMemoryArenasAndAllocate()
         GlobalVulkan.TransferOnlyQueueFamilyIndex
     };
 
+    Assert(ArenaCount < MaxArenas);
+    gpu_arena * TransferBitArena = Arenas + ArenaCount++;
     if (VH_CreateUnAllocArenaBuffer(
                 GlobalVulkan.PrimaryGPU,
                 GlobalVulkan.PrimaryDevice, 
@@ -2396,21 +2498,18 @@ CreateMemoryArenasAndAllocate()
                 VK_SHARING_MODE_CONCURRENT,
                 VK_MEMORY_CPU_TO_GPU_HOST_VISIBLE,
                 VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-                &GlobalVulkan.TransferBitArena,
+                TransferBitArena,
                 2,&SharedBufferFamilyIndexArray[0])
         )
     {
         return 1;
     }
-    QUEUE_DELETE_ARENA(&PrimaryVulkanDestroyQueue,&GlobalVulkan.TransferBitArena);
-    ArenaUnAllocated[ArenaUnAllocatedCount++] = &GlobalVulkan.TransferBitArena;
+    GlobalVulkan.TransferBitArena = TransferBitArena;
 
     VkDeviceSize VertexBufferSize = Megabytes(50);
-    GlobalGPUVertexArena.Base                 = 0; // u8 * Base
-    GlobalGPUVertexArena.MaxSize              = (u32)VertexBufferSize; // MaxSize   MaxSize
-    GlobalGPUVertexArena.CurrentSize          = 0; // CurrentSize   CurrentSize
-    GlobalGPUVertexArena.StackTemporaryMemory = 0; // StackTemporaryMemory   StackTemporaryMemory
 
+    Assert(ArenaCount < MaxArenas);
+    gpu_arena * VertexArena = Arenas + ArenaCount++;
     if (VH_CreateUnAllocArenaBuffer(
                 GlobalVulkan.PrimaryGPU,
                 GlobalVulkan.PrimaryDevice, 
@@ -2418,15 +2517,16 @@ CreateMemoryArenasAndAllocate()
                 VK_SHARING_MODE_EXCLUSIVE,
                 VK_MEMORY_GPU,
                 VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
-                &GlobalVulkan.VertexArena)
+                VertexArena)
         )
     {
         return 1;
     }
-    QUEUE_DELETE_ARENA(&PrimaryVulkanDestroyQueue,&GlobalVulkan.VertexArena);
-    ArenaUnAllocated[ArenaUnAllocatedCount++] = &GlobalVulkan.VertexArena;
+    GlobalVulkan.VertexArena = VertexArena;
 
     VkDeviceSize IndexBufferSize = Megabytes(16);
+    Assert(ArenaCount < MaxArenas);
+    gpu_arena * IndexArena = Arenas + ArenaCount++;
     if (VH_CreateUnAllocArenaBuffer(
                 GlobalVulkan.PrimaryGPU,
                 GlobalVulkan.PrimaryDevice, 
@@ -2434,19 +2534,25 @@ CreateMemoryArenasAndAllocate()
                 VK_SHARING_MODE_EXCLUSIVE,
                 VK_MEMORY_GPU,
                 VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
-                &GlobalVulkan.IndexArena)) 
+                IndexArena)) 
     {
         return 1;
     }
-    QUEUE_DELETE_ARENA(&PrimaryVulkanDestroyQueue,&GlobalVulkan.IndexArena);
-    ArenaUnAllocated[ArenaUnAllocatedCount++] = &GlobalVulkan.IndexArena;
+    GlobalVulkan.IndexArena =  IndexArena;
 
-    /* --------------------- COMMIT ALLOCATIONS -------------------------------- */
+    *ArenasCreatedCount = (u32)ArenaCount;
+
+    return 0;
+}
+
+i32
+CommitArenasToMemory(gpu_arena * Arenas, u32 ArenaCount, device_memory_pools * DeviceMemoryPools)
+{
     for (u32 ArenaUnallocIndex = 0;
-                ArenaUnallocIndex < ArenaUnAllocatedCount;
+                ArenaUnallocIndex < ArenaCount;
                 ++ArenaUnallocIndex)
     {
-        gpu_arena * Arena = ArenaUnAllocated[ArenaUnallocIndex];
+        gpu_arena * Arena = Arenas + ArenaUnallocIndex;
         Assert(VK_VALID_HANDLE(Arena->Device));
         Assert(Arena->MaxSize > 0);
         Assert(Arena->MemoryIndexType >= 0 && Arena->MemoryIndexType <= VK_MAX_MEMORY_TYPES);
@@ -2457,7 +2563,7 @@ CreateMemoryArenasAndAllocate()
         Logn("GPU Arena required (%i): %d (Type: %i, Alignment: %i)",ArenaUnallocIndex,Arena->MaxSize, Arena->MemoryIndexType,Arena->Alignment);
         
         i32 MemoryTypeIndex = Arena->MemoryIndexType;
-        device_memory_pool * DeviceMemoryPool = GlobalVulkan.DeviceMemoryPools + MemoryTypeIndex;
+        device_memory_pool * DeviceMemoryPool = DeviceMemoryPools->DeviceMemoryPool + MemoryTypeIndex;
         DeviceMemoryPool->Device                      = Arena->Device; // Device   Device
         DeviceMemoryPool->DeviceMemory                = VK_NULL_HANDLE; // DeviceMemory   DeviceMemory
         DeviceMemoryPool->Size                        += Arena->MaxSize; // Size   Size
@@ -2467,7 +2573,7 @@ CreateMemoryArenasAndAllocate()
                 MemoryTypeIndex < VK_MAX_MEMORY_TYPES;
                 ++MemoryTypeIndex)
     {
-        device_memory_pool * DeviceMemoryPool = GlobalVulkan.DeviceMemoryPools + MemoryTypeIndex;
+        device_memory_pool * DeviceMemoryPool = DeviceMemoryPools->DeviceMemoryPool + MemoryTypeIndex;
         if (DeviceMemoryPool->Size > 0)
         {
             Logn("Allocating memory pool index %i with size %i",MemoryTypeIndex, DeviceMemoryPool->Size);
@@ -2485,10 +2591,10 @@ CreateMemoryArenasAndAllocate()
 
             u32 SizeAllocated = 0;
             for (u32 ArenaUnallocIndex = 0;
-                    ArenaUnallocIndex < ArenaUnAllocatedCount;
+                    ArenaUnallocIndex < ArenaCount;
                     ++ArenaUnallocIndex)
             {
-                gpu_arena * Arena = ArenaUnAllocated[ArenaUnallocIndex];
+                gpu_arena * Arena = Arenas + ArenaUnallocIndex;
                 if (Arena->MemoryIndexType == MemoryTypeIndex)
                 {
                     // buffer can be bind from start
@@ -2547,7 +2653,19 @@ InitializeVulkan(i32 Width, i32 Height,
     if (VulkanCreateSwapChain(Width, Height)) return 1;
     QUEUE_DELETE_SWAPCHAINKHR(&PrimaryVulkanDestroyQueue,GlobalVulkan.PrimaryDevice,&GlobalVulkan.Swapchain);
 
-    CreateMemoryArenasAndAllocate();
+    CreateUnallocatedMemoryArenas(GlobalVulkan.MemoryArenas,
+                                  ArrayCount(GlobalVulkan.MemoryArenas),
+                                  &GlobalVulkan.MemoryArenaCount);
+
+    for (u32 i = 0; i < GlobalVulkan.MemoryArenaCount;++i)
+    {
+        gpu_arena * Arena = GlobalVulkan.MemoryArenas + i;
+        QUEUE_DELETE_ARENA(&PrimaryVulkanDestroyQueue,Arena);
+    }
+
+    CommitArenasToMemory(&GlobalVulkan.MemoryArenas[0],
+                         GlobalVulkan.MemoryArenaCount,
+                         &GlobalVulkan.DeviceMemoryPools);
 
     /* INIT DESCRIPTOR SETS */
     /* Level 1 */ CreateDescriptorSetLayoutGlobal();
@@ -2558,11 +2676,6 @@ InitializeVulkan(i32 Width, i32 Height,
     QUEUE_DELETE_DESCRIPTORSETLAYOUT(&PrimaryVulkanDestroyQueue,GlobalVulkan.PrimaryDevice,&GlobalVulkan._DebugTextureSetLayout);
 
     VkDeviceSize TextureBufferSize = Megabytes(15);
-    GlobalGPUTextureArena.Base                 = 0; // u8 * Base
-    GlobalGPUTextureArena.MaxSize              = (u32)TextureBufferSize; // MaxSize   MaxSize
-    GlobalGPUTextureArena.CurrentSize          = 0; // CurrentSize   CurrentSize
-    GlobalGPUTextureArena.StackTemporaryMemory = 0; // StackTemporaryMemory   StackTemporaryMemory
-
     VkDescriptorPoolSize DescriptorPoolSizes[] =
 	{
         { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 10 },
@@ -2623,7 +2736,7 @@ InitializeVulkan(i32 Width, i32 Height,
         VH_AllocateDescriptor(&GlobalVulkan._GlobalSetLayout, GlobalVulkan._DescriptorPool, &FrameData->GlobalDescriptor);
 
         VkDescriptorBufferInfo BufferInfo;
-        BufferInfo.buffer = GlobalVulkan.SimulationBuffer.Buffer; // VkBuffer   buffer;
+        BufferInfo.buffer = GlobalVulkan.SimulationArena->Buffer; // VkBuffer   buffer;
         BufferInfo.offset = 0;
         BufferInfo.range  = sizeof(GPUSimulationData); // VkDeviceSize   range;
 
@@ -2633,9 +2746,9 @@ InitializeVulkan(i32 Width, i32 Height,
         VH_AllocateDescriptor(&GlobalVulkan._ObjectsSetLayout, GlobalVulkan._DescriptorPool, &FrameData->ObjectsDescriptor);
 
         VkDescriptorBufferInfo BufferInfoObjects;
-        BufferInfoObjects.buffer = FrameData->ObjectsArena.Buffer; // VkBuffer   buffer;
+        BufferInfoObjects.buffer = FrameData->ObjectsArena->Buffer; // VkBuffer   buffer;
         BufferInfoObjects.offset = 0;
-        BufferInfoObjects.range  = FrameData->ObjectsArena.MaxSize; // VkDeviceSize   range;
+        BufferInfoObjects.range  = FrameData->ObjectsArena->MaxSize; // VkDeviceSize   range;
 
         VkWriteDescriptorSet ObjectsWriteSet =
             VH_WriteDescriptor(0,FrameData->ObjectsDescriptor, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &BufferInfoObjects);
@@ -2682,7 +2795,7 @@ InitializeVulkan(i32 Width, i32 Height,
 
 
     VkExtent3D Extent3D = { GlobalVulkan.WindowExtension.width, GlobalVulkan.WindowExtension.height, 1};
-    GlobalVulkan.PrimaryDepthBuffer = VH_CreateDepthBuffer(&GlobalVulkan.PrimaryDepthBufferArena,Extent3D);
+    GlobalVulkan.PrimaryDepthBuffer = VH_CreateDepthBuffer(GlobalVulkan.PrimaryDepthBufferArena,Extent3D);
     if (IS_NULL(GlobalVulkan.PrimaryDepthBuffer))
     {
         Logn("Failed to create depth buffer");

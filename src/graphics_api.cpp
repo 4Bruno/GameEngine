@@ -48,6 +48,9 @@ GRAPHICS_RENDER_DRAW(RenderDraw)
 
     i32 LastMaterialPipelineIndex = -1;
     mesh_group * LastMeshGroup = 0;
+    i32 CountMeshInstances = 0;
+    u32 MeshSize = 0;
+    i32 LastTextureID = -1;
 
     u32 ObjectInstance = ObjectsMapResult.Instance;
 
@@ -58,6 +61,27 @@ GRAPHICS_RENDER_DRAW(RenderDraw)
         render_unit * Unit = Renderer->Units + UnitIndex;
 
         mesh_group * MeshGroup = Unit->MeshGroup;
+
+        if (LastMeshGroup != MeshGroup)
+        {
+            if (CountMeshInstances > 0)
+            {
+                RenderDrawObjectNTimes(MeshSize,CountMeshInstances,ObjectInstance);
+                ObjectInstance += CountMeshInstances;
+            }
+            // hardcoded only first mesh
+            MeshSize = MeshGroup->Meshes[0].VertexSize / sizeof(vertex_point);
+            RenderBindMesh(MeshSize, MeshGroup->GPUVertexBufferBeginOffset);
+            LastMeshGroup = MeshGroup;
+            CountMeshInstances = 0;
+        }
+
+        if (LastTextureID != Unit->TextureID && Unit->TextureID >= 0)
+        {
+            RenderBindTexture(Unit->TextureID);
+            LastTextureID = Unit->TextureID;
+        }
+
         i32 MaterialPipelineIndex = Unit->MaterialPipelineIndex;
 
         if (MaterialPipelineIndex != LastMaterialPipelineIndex)
@@ -66,18 +90,14 @@ GRAPHICS_RENDER_DRAW(RenderDraw)
             LastMaterialPipelineIndex = MaterialPipelineIndex;
         }
 
-        // hardcoded only first mesh
-        u32 MeshSize = MeshGroup->Meshes[0].VertexSize / sizeof(vertex_point);
-
-        if (LastMeshGroup != MeshGroup)
-        {
-            RenderBindMesh(MeshSize, MeshGroup->GPUVertexBufferBeginOffset);
-            LastMeshGroup = MeshGroup;
-        }
-
-        RenderDrawObject(MeshSize,ObjectInstance);
-        ++ObjectInstance;
+        ++CountMeshInstances;
     }
+
+    if (CountMeshInstances > 0)
+    {
+        RenderDrawObjectNTimes(MeshSize,CountMeshInstances,ObjectInstance);
+    }
+
 
     END_CYCLE_COUNT(render_entities);
 }
@@ -89,6 +109,10 @@ GRAPHICS_BEGIN_RENDER(BeginRenderPass)
     RenderBeginPass(ClearColor);
 
     RenderPushSimulationData(SimData);
+
+    gpu_arena * Arena = GetCurrentFrame()->ObjectsArena;
+    Arena->CurrentSize = 0;
+
 }
 
 GRAPHICS_END_RENDER(EndRenderPass)

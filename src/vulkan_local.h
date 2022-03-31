@@ -223,6 +223,7 @@ struct vulkan_image
     VkImage              Image;
     VkImageView          ImageView;
     VkFormat             Format;
+    VkImageUsageFlags    UsageFlags;
     VkMemoryRequirements MemoryRequirements;
 };
 
@@ -283,7 +284,7 @@ struct frame_data
     VkDescriptorSet GlobalDescriptor;
     VkDescriptorSet ObjectsDescriptor;
 
-    gpu_arena ObjectsArena;
+    gpu_arena * ObjectsArena;
     u32 ObjectsCount;
 };
 
@@ -336,6 +337,11 @@ struct device_memory_pool
     VkDeviceMemory DeviceMemory;
     u32 Size;
 };
+struct device_memory_pools
+{
+    device_memory_pool DeviceMemoryPool[VK_MAX_MEMORY_TYPES];
+    u32 Count = VK_MAX_MEMORY_TYPES;
+};
 
 struct vulkan
 {
@@ -347,12 +353,15 @@ struct vulkan
     VkPhysicalDevice PrimaryGPU;
     VkDevice         PrimaryDevice;
 
-    device_memory_pool DeviceMemoryPools[VK_MAX_MEMORY_TYPES];
+    device_memory_pools DeviceMemoryPools;
 
-    gpu_arena PrimaryDepthBufferArena;
+    gpu_arena MemoryArenas[10];
+    u32 MemoryArenaCount;
+
+    gpu_arena * PrimaryDepthBufferArena;
     depth_buffer * PrimaryDepthBuffer;
 
-    gpu_arena TextureArena;
+    gpu_arena * TextureArena;
 
     u32  GraphicsQueueFamilyIndex;
     VkQueue GraphicsQueue;
@@ -364,12 +373,12 @@ struct vulkan
     VkCommandPool   CommandPoolTransferBit;
     VkCommandBuffer TransferBitCommandBuffer;
 
-    gpu_arena TransferBitArena;
+    gpu_arena * TransferBitArena;
 
     VkSampler     TextureSampler;
 
-    gpu_arena VertexArena;
-    gpu_arena IndexArena;
+    gpu_arena * VertexArena;
+    gpu_arena * IndexArena;
 
     VkRenderPass  RenderPass;
     VkFramebuffer Framebuffers[3];
@@ -380,7 +389,7 @@ struct vulkan
     VkDescriptorSet       _DebugTextureSet;
     VkDescriptorPool _DescriptorPool;
 
-    gpu_arena SimulationBuffer;
+    gpu_arena * SimulationArena;
 
     frame_data FrameData[FRAME_OVERLAP];
     i32 _CurrentFrameData;
@@ -558,7 +567,7 @@ inline VkDeviceMemory
 GetDeviceMemory(i32 MemoryTypeIndex)
 {
     Assert(MemoryTypeIndex >= 0 && MemoryTypeIndex <= VK_MAX_MEMORY_TYPES);
-    device_memory_pool * Pool = GlobalVulkan.DeviceMemoryPools + MemoryTypeIndex;
+    device_memory_pool * Pool = GlobalVulkan.DeviceMemoryPools.DeviceMemoryPool + MemoryTypeIndex;
     Assert(VK_VALID_HANDLE(Pool->DeviceMemory));
     Assert(Pool->Size > 0);
     VkDeviceMemory DeviceMemory = Pool->DeviceMemory; 
