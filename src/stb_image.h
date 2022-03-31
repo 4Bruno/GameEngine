@@ -1432,6 +1432,8 @@ STBIDEF stbi_us *stbi_load_16_from_callbacks(stbi_io_callbacks const *clbk, void
    return stbi__load_and_postprocess_16bit(&s,x,y,channels_in_file,desired_channels);
 }
 
+// req_comp will force loading it with the value passed (unless bogus parameter)
+// *comp will return the original value regardless of your desired channels
 STBIDEF stbi_uc *stbi_load_from_memory(memory_arena * Arena, stbi_uc const *buffer, int len, int *x, int *y, int *comp, int req_comp)
 {
    stbi__context s;
