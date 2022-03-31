@@ -5,6 +5,7 @@
 extern "C" debug_cycle * DebugCycles;
 #endif
 
+#include "game_random.h"
 #include "game_memory.h"
 #include "game_entity.h"
 #include "game_world.h"
@@ -90,6 +91,13 @@ struct menu_overlay
     u32 CountAnchoredBottom;
 };
 
+struct particle
+{
+    entity_transform T;
+    v3 dP;
+    v3 Color;
+};
+
 struct game_state
 {
     b32 IsInitialized;
@@ -127,12 +135,18 @@ struct game_state
 
     animation DebugAnimate;
     v3 DebugSourceLightP;
+
+    particle Particles[64];
+    u32 NextParticle;
+
+    random_series RandomSeed;
 };
 
 extern graphics_render_draw * GraphicsRenderDraw ;
 extern graphics_begin_render * GraphicsBeginRenderPass ;
 extern graphics_end_render * GraphicsEndRenderPass ;
 extern graphics_push_vertex_data * GraphicsPushVertexData ;
+extern graphics_push_texture_data * GraphicsPushTextureData ;
 extern graphics_initialize_api * GraphicsInitializeApi ;
 extern graphics_close_api * GraphicsShutdownAPI ;
 extern graphics_wait_for_render * GraphicsWaitForRender ;

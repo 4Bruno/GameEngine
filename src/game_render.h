@@ -33,6 +33,8 @@ PushDrawDebug(render_controller * Renderer,entity * Entity);
 
 GAME_API void
 PushDrawEntity(render_controller * Renderer,entity * Entity);
+GAME_API void
+PushDraw(render_controller * Renderer, game_asset_id Material, m4 * ModelT, game_asset_id MeshID, game_asset_id TextureID, v3 Color, r32 Transparency);
 
 GAME_API render_controller
 NewRenderController(memory_arena * Arena, u32 RenderUnitLimits,
@@ -74,7 +76,6 @@ EntityLookAt(render_controller * Renderer,entity Entity, v3 P);
 m4
 ProjectionMatrix(r32 FOV,r32 AspectRatio, r32 n, r32 f);
 
-//GAME_API void GetTexture(game_state * GameState,game_memory * Memory,memory_arena * Arena, enum_textures TextureID);
 //GAME_API void TestGroundGPU(game_memory * Memory,memory_arena * TempArena);
 
 #define GAME_RENDER_H

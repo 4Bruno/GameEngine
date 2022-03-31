@@ -37,6 +37,7 @@ struct asset_slot
 
 #define ASSETS_DEFAULT_MESH (game_asset_id)(game_asset_mesh_begin + 1)
 #define ASSETS_DEFAULT_MATERIAL (game_asset_id)(game_asset_material_begin + 2)
+#define ASSETS_NULL_TEXTURE ((game_asset_id)-1)
 #define ASSETS_TOTAL_MESHES     (game_asset_mesh_end - game_asset_mesh_begin - 1)
 #define ASSETS_TOTAL_MATERIALS  (game_asset_material_end - game_asset_material_begin - 1)
 #define ASSETS_TOTAL_SHADERS    (game_asset_shader_end - game_asset_shader_begin - 1)
@@ -120,6 +121,13 @@ struct asset_shader
     game_asset_id AssetID;
 };
 
+struct asset_texture
+{
+    i32 GPUID;    
+    i32 Width, Height, Channels;
+    game_asset_id AssetID;
+};
+
 struct asset_material
 {
     pipeline_creation_result Pipeline;
@@ -144,13 +152,14 @@ struct game_assets
     mesh_group CachedMeshGroups[256];
     u32 CachedMeshGroupIndex;
 
-    mesh_group CachedTextures[256];
+    asset_texture CachedTextures[256];
     u32 CachedTexturesIndex;
 
     asset_material CachedMaterials[16];
     u32 CachedMaterialIndex;
 
-    thread_memory_arena ThreadArena[4];
+    thread_memory_arena * ThreadArena;
+    i32 LimitThreadArenas;
 
     asset_slot * AssetSlots;   
 };
@@ -162,8 +171,11 @@ GetMaterial(game_assets * Assets, game_asset_id MaterialID);
 mesh_group *
 GetMesh(game_assets * Assets, game_asset_id ID);
 
+asset_texture *
+GetTexture(game_assets * Assets, game_asset_id ID);
+
 game_assets
-NewGameAssets(memory_arena * Arena);
+NewGameAssets(memory_arena * Arena, thread_memory_arena * ThreadArenas, i32 LimitThreadArenas);
 
 
 #endif

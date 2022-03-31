@@ -450,6 +450,15 @@ Clamp(r32 a, r32 min, r32 max)
     return Result;
 }
 
+inline v3
+Clamp(v3 a, r32 min, r32 max)
+{
+    v3 Result = V3(Clamp(a.x,min,max), Clamp(a.y,min,max), Clamp(a.z,min,max));
+
+    return Result;
+}
+
+
 inline i32
 R32Toi32(r32 r)
 {

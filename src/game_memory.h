@@ -65,10 +65,10 @@ SubArena(memory_arena * ParentArena,memory_arena * Arena, u32 Size);
  *  in the current frame must be done using CompleteQueue 
  */
 GAME_API thread_memory_arena *
-GetThreadArena(game_state * GameState);
+GetThreadArena(game_state * GameState, u32 MinDesiredSize = 0);
 
 GAME_API thread_memory_arena *
-GetThreadArena(thread_memory_arena * ThreadArenaArray, u32 LimitThreadArenas);
+GetThreadArena(thread_memory_arena * ThreadArenaArray, u32 LimitThreadArenas, u32 MinDesiredSize = 0);
 
 GAME_API void
 MemCopy(u8 * Dest,u8 * Src,u32 EntitySize);

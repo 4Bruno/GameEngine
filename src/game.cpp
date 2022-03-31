@@ -117,14 +117,13 @@ CreateWorld(world * World)
     EntityAddTranslation(Entity,0,V3(0), V3(1.0f),3.0f);
     EntityAddMesh(Entity,game_asset_mesh_cube,V3(0.0f,1.0f,0.0f));
 
-#if 0
-    WC = WorldPosition(0,0,0);
+    WC = WorldPosition(-5,0,0);
     Entity = AddEntity(World, WC);
-    EntityAddTranslation(Entity,0,V3(0), V3(20.0f,0.2f,20.0f),3.0f);
+    EntityAddTranslation(Entity,0,V3(0), V3(2.0f),3.0f);
     Entity->Color = V3(0.0f,0.0f,0.5f);
-    Entity->WorldP._Offset.y += 1.5f;
-    EntityAddMesh(Entity,Mesh(0));
-#endif
+    EntityAddMesh(Entity,game_asset_mesh_quad);
+    Entity->TextureID = game_asset_texture_test;
+    Entity->Material = game_asset_material_texture;
 }
 
 void
@@ -182,6 +181,7 @@ graphics_render_draw      * GraphicsRenderDraw = 0;
 graphics_begin_render     * GraphicsBeginRenderPass = 0;
 graphics_end_render       * GraphicsEndRenderPass = 0;
 graphics_push_vertex_data * GraphicsPushVertexData = 0;
+graphics_push_texture_data * GraphicsPushTextureData = 0;
 graphics_initialize_api   * GraphicsInitializeApi = 0;
 graphics_close_api        * GraphicsShutdownAPI = 0;
 graphics_wait_for_render  * GraphicsWaitForRender = 0;
@@ -194,18 +194,19 @@ graphics_destroy_material_pipeline * GraphicsDestroyMaterialPipeline = 0;
 void
 ReloadGraphicsAPI(graphics_api * GraphicsAPI)
 {
-    GraphicsRenderDraw      = GraphicsAPI->GraphicsRenderDraw      ; // 
-    GraphicsBeginRenderPass = GraphicsAPI->GraphicsBeginRenderPass ; // 
-    GraphicsEndRenderPass   = GraphicsAPI->GraphicsEndRenderPass   ; // 
-    GraphicsPushVertexData  = GraphicsAPI->GraphicsPushVertexData  ; // 
-    GraphicsInitializeApi   = GraphicsAPI->GraphicsInitializeApi   ; // 
-    GraphicsShutdownAPI     = GraphicsAPI->GraphicsShutdownAPI     ; // 
-    GraphicsWaitForRender   = GraphicsAPI->GraphicsWaitForRender   ; // 
-    GraphicsOnWindowResize  = GraphicsAPI->GraphicsOnWindowResize  ; // 
-    GraphicsCreateShaderModule = GraphicsAPI->GraphicsCreateShaderModule;
-    GraphicsDeleteShaderModule = GraphicsAPI->GraphicsDeleteShaderModule;
-    GraphicsCreateMaterialPipeline = GraphicsAPI->GraphicsCreateMaterialPipeline;
-    GraphicsDestroyMaterialPipeline = GraphicsAPI->GraphicsDestroyMaterialPipeline;
+    GraphicsRenderDraw                = GraphicsAPI->GraphicsRenderDraw      ; // 
+    GraphicsBeginRenderPass           = GraphicsAPI->GraphicsBeginRenderPass ; // 
+    GraphicsEndRenderPass             = GraphicsAPI->GraphicsEndRenderPass   ; // 
+    GraphicsPushVertexData            = GraphicsAPI->GraphicsPushVertexData  ; // 
+    GraphicsPushTextureData           = GraphicsAPI->GraphicsPushTextureData  ; // 
+    GraphicsInitializeApi             = GraphicsAPI->GraphicsInitializeApi   ; // 
+    GraphicsShutdownAPI               = GraphicsAPI->GraphicsShutdownAPI     ; // 
+    GraphicsWaitForRender             = GraphicsAPI->GraphicsWaitForRender   ; // 
+    GraphicsOnWindowResize            = GraphicsAPI->GraphicsOnWindowResize  ; // 
+    GraphicsCreateShaderModule        = GraphicsAPI->GraphicsCreateShaderModule;
+    GraphicsDeleteShaderModule        = GraphicsAPI->GraphicsDeleteShaderModule;
+    GraphicsCreateMaterialPipeline    = GraphicsAPI->GraphicsCreateMaterialPipeline;
+    GraphicsDestroyMaterialPipeline   = GraphicsAPI->GraphicsDestroyMaterialPipeline;
 }
 
 // rotate example
@@ -270,7 +271,8 @@ UI_PushRect(render_controller * Renderer,
             menu_overlay * Overlay,
             ui_position Position,
             r32 Width, r32 Height,
-            v3 Color)
+            v3 Color,
+            game_asset_id TextureID = (game_asset_id)-1)
 {
     entity E = {};
     //r32 x = (sinf(Input->TimeElapsed) + 1.0f) * 0.5f;
@@ -298,14 +300,23 @@ UI_PushRect(render_controller * Renderer,
 
     EntityAddTranslation(&E,0, LocalP, Scale,0);
     EntityAddMesh(&E, game_asset_mesh_quad, Color);
-    E.Material = game_asset_material_default_no_light;
+    if (TextureID >= game_asset_texture_test)
+    {
+        E.TextureID = TextureID;
+        E.Material = game_asset_material_texture;
+    }
+    else
+    {
+        E.Material = game_asset_material_default_no_light;
+    }
+
 #if 0
     r32 Rotate = ToRadians(90.0f);
     Quaternion qua;
     Quaternion_fromYRotation(Rotate, &qua);
     Quaternion_multiply(&qua,&E.Transform.LocalR,&E.Transform.LocalR);
 #endif
-    UpdateTransform(&E,P);
+    UpdateTransform(&E.Transform,P);
 
     PushDrawEntity(Renderer,&E);
 }
@@ -354,20 +365,25 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
         GameState->ThreadArena = 
             PushArray(&GameState->TemporaryArena, GameState->LimitThreadArenas, thread_memory_arena);
 
-        for (u32 ThreadBucketIndex = 0;
-                    ThreadBucketIndex < GameState->LimitThreadArenas;
+        u32 TempThreadArenaSize = Megabytes(2);
+        // base 1, modulo op to double size
+        for (u32 ThreadBucketIndex = 1;
+                    ThreadBucketIndex <= GameState->LimitThreadArenas;
                     ++ThreadBucketIndex)
         {
-            // TODO: is this too much? should I create multiple size arenas buckets?
-            // Do I need so many buckets?
-            thread_memory_arena * ThreadArena = GameState->ThreadArena + ThreadBucketIndex;
+            thread_memory_arena * ThreadArena = 
+                GameState->ThreadArena + ThreadBucketIndex - 1;
 
-            u32 ArenaSize = Megabytes(6);
-            Base = PushSize(&GameState->TemporaryArena,ArenaSize);
+            Base = PushSize(&GameState->TemporaryArena,TempThreadArenaSize);
             memory_arena * Arena = &ThreadArena->Arena;
-            InitializeArena(Arena,Base, ArenaSize);
+            InitializeArena(Arena,Base, TempThreadArenaSize);
 
             ThreadArena->InUse = false;
+
+            if ((ThreadBucketIndex % 2) == 0)
+            {
+                TempThreadArenaSize *= 2;
+            }
         }
 
         u32 WorldArenaSize = Megabytes(10);
@@ -434,9 +450,24 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
         EndTempArena(TempArena,2);
 #endif
 
-        GameState->Assets = NewGameAssets(&GameState->TemporaryArena);
+        GameState->Assets = NewGameAssets(
+                &GameState->TemporaryArena,
+                GameState->ThreadArena,
+                GameState->LimitThreadArenas);
 
         GlobalAssets = &GameState->Assets;
+
+        for (u32 ParticleIndex = 0;
+                ParticleIndex < ArrayCount(GameState->Particles);
+                ++ParticleIndex)
+        {
+            particle * Particle = GameState->Particles + ParticleIndex;
+            InitializeTransform(&Particle->T, V3(0), V3(0.1f));
+            Particle->dP = V3(0.0f);
+        }
+
+
+        GameState->RandomSeed = RandomSeed();
 
         GameState->IsInitialized = true;
     }
@@ -561,29 +592,6 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
     /* -------------- GROUND ------------------------ */
     world_pos BeginWorldP = GameState->CameraWorldP;
 
-#if 0
-    for (u32 i = 0; i < 10;++i)
-    {
-        v3 LocalP = V3(5,(r32)i * World->GridCellDimInMeters.y,0);
-        v3 Scale = World->GridCellDimInMeters * 0.5f;
-        entity E = {};
-        EntityAddTranslation(&E,0, LocalP, Scale,0);
-        UpdateTransform(&E);
-        E.Color = V3((i % 3) == 0,((i + 1) % 3) == 0,((i + 2) % 3) == 0);
-        E.Transparency = 0.0f;
-        PushDrawDebug(Renderer,&E);
-    }
-#endif
-
-#if 0
-    if (GameState->DebugBox)
-    {
-        world_pos P = MapIntoCell(World,GameState->Simulation->Origin,-GameState->DebugBox->Transform.LocalP);
-        GenerateGround(Memory,GameState,World,P);
-    }
-#else
-    //GenerateGround(Memory,GameState,World,BeginWorldP);
-#endif
 
     /* -------------- SIMULATION ------------------------ */
     BeginSimulation(World, GameState->Simulation);
@@ -659,12 +667,52 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
 
     v3 Color = V3(1.0f,1.0f,0.0f);
     r32 BarHeight = 0.1f;
-    UI_PushRect(&GameState->RendererUI,&GameState->DebugOverlay,ui_position_anchored_top,0.5f,BarHeight,Color);
+    //UI_PushRect(&GameState->RendererUI,&GameState->DebugOverlay,ui_position_anchored_top,0.5f,BarHeight,Color);
     Color = V3(1.0f,0.0f,0.0f);
-    UI_PushRect(&GameState->RendererUI,&GameState->DebugOverlay,ui_position_anchored_top,0.25f,BarHeight,Color);
+    //UI_PushRect(&GameState->RendererUI,&GameState->DebugOverlay,ui_position_anchored_top,0.25f,BarHeight,Color);
+    Color = V3(1.0f,0.0f,0.0f);
+    //UI_PushRect(&GameState->RendererUI,&GameState->DebugOverlay, ui_position_anchored_bottom,1.0f,1.0f,Color,game_asset_texture_test);
+
+    for (u32 ParticleIndex = 0;
+                ParticleIndex < 1; // number of particles spawn per frame
+                ++ParticleIndex)
+    {
+
+        particle * Particle = GameState->Particles + GameState->NextParticle++;
+        if (GameState->NextParticle >= ArrayCount(GameState->Particles))
+        {
+            GameState->NextParticle = 0;
+        }
+        v3 Size = V3(RandomBetween(&GameState->RandomSeed,0.1f,0.3f));
+        v3 P = V3(RandomBetween(&GameState->RandomSeed,0.0f,0.3f),0,0);
+        r32 dP = RandomBetween(&GameState->RandomSeed,0.5f,1.5f);
+
+        InitializeTransform(&Particle->T, P, Size);
+        Particle->dP = V3(0,1.0f,0);
+        Particle->Color = V3(1.0f,0.3f,0);
+    }
+
+    for (u32 ParticleIndex = 0;
+                ParticleIndex < ArrayCount(GameState->Particles);
+                ++ParticleIndex)
+    {
+        particle * Particle = GameState->Particles + ParticleIndex;
+        //Particle->T.LocalP.y = (sinf(Input->TimeElapsed) + 1.0f) * 0.5f * 10.0f;
+        Particle->T.LocalP += Input->DtFrame * Particle->dP;
+        UpdateTransform(&Particle->T,V3(0,0,-3.0f));
+        Particle->Color = Clamp(Particle->Color + (Input->DtFrame * V3(-0.5f)),0.0f,1.0f);
+#if 0
+        if (ParticleIndex == 0)
+        {
+            Logn("Color: %f %f %f",Particle->Color.x,Particle->Color.y,Particle->Color.z);
+        }
+#endif
+        PushDraw(Renderer, game_asset_material_default_no_light, &Particle->T.WorldT, game_asset_mesh_quad,ASSETS_NULL_TEXTURE, Particle->Color,0);
+    }
 
     RenderDraw(Renderer);
     RenderDraw(&GameState->RendererUI);
+
 
     //RenderDrawGround(GameState,Renderer, GameState->Simulation);
     EndRender();

@@ -205,10 +205,8 @@ THREAD_WORK_HANDLER(AsyncUpdateEntitiesModel)
 }
 
 void
-UpdateTransform(entity * Entity, v3 WorldP)
+UpdateTransform(entity_transform * T, v3 WorldP)
 {
-    entity_transform * T = &Entity->Transform;
-
     v3 LocalToWorldP = WorldP + T->LocalP;
     Translate(T->WorldP,LocalToWorldP);
     T->WorldR = T->LocalR;
@@ -248,6 +246,18 @@ void
 EntityAddFlag(entity * Entity, component_flags Flag)
 {
     Entity->Flags = (component_flags)(Entity->Flags | Flag);
+}
+
+void
+InitializeTransform(entity_transform * T, v3 P, v3 Scale)
+{
+    T->LocalP = P;
+    T->LocalS = Scale;
+    Quaternion_setIdentity(&T->LocalR);
+    //Translate(T->WorldP,T->LocalP);
+    T->WorldS = Scale;
+    T->WorldR = T->LocalR;
+    T->WorldT = {};
 }
 
 void

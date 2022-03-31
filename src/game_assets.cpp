@@ -3,9 +3,13 @@
 #include "game.h"
 #include <inttypes.h>
 
+#define STB_IMAGE_IMPLEMENTATION
+#include "stb_image.h"
+
+
 #define ASSETS_MULTITHREAD_ENABLED 0
 game_assets
-NewGameAssets(memory_arena * Arena)
+NewGameAssets(memory_arena * Arena, thread_memory_arena * ThreadArenas, i32 LimitThreadArenas)
 {
 
     game_assets Assets;
@@ -22,14 +26,22 @@ NewGameAssets(memory_arena * Arena)
 
     SubArena(Arena,&Assets.SoundArena,Megabytes(3));
     SubArena(Arena,&Assets.ShaderArena,Megabytes(3));
-    SubArena(Arena,&Assets.MeshArena,Megabytes(3));
+    SubArena(Arena,&Assets.MeshArena,Megabytes(15));
 
     Assets.ShaderLoadInProgress = 0; // ShaderLoadInProgress   ShaderLoadInProgress
     Assets.MeshLoadInProgress   = 0; // MeshLoadInProgress   MeshLoadInProgress
     Assets.CachedShadersIndex   = ArrayCount(Assets.CachedShaders); // CachedShadersIndex   CachedShadersIndex
     Assets.CachedMeshGroupIndex = ArrayCount(Assets.CachedMeshGroups); // CachedMeshGroupIndex   CachedMeshGroupIndex
     Assets.CachedMaterialIndex  = ArrayCount(Assets.CachedMaterials); // CachedMaterialIndex   CachedMaterialIndex
+    Assets.CachedTexturesIndex  = ArrayCount(Assets.CachedTextures); // CachedMaterialIndex   CachedMaterialIndex
 
+    for (u32 ShaderIndex = 0;
+            ShaderIndex < ArrayCount(Assets.CachedShaders);
+            ++ShaderIndex)
+    {
+        Assets.CachedShaders[ShaderIndex].GPUID = 0;
+        Assets.CachedShaders[ShaderIndex].AssetID = (game_asset_id)0;
+    }
     for (u32 MaterialIndex = 0;
             MaterialIndex < ArrayCount(Assets.CachedMaterials);
             ++MaterialIndex)
@@ -38,28 +50,35 @@ NewGameAssets(memory_arena * Arena)
         Assets.CachedMaterials[MaterialIndex].AssetID = (game_asset_id)0;
     }
 
+    for (u32 TextureIndex = 0;
+            TextureIndex < ArrayCount(Assets.CachedTextures);
+            ++TextureIndex)
+    {
+        Assets.CachedTextures[TextureIndex].Width = 0;
+        Assets.CachedTextures[TextureIndex].Height = 0;
+        Assets.CachedTextures[TextureIndex].Channels = 0;
+        Assets.CachedTextures[TextureIndex].AssetID = (game_asset_id)0;
+        Assets.CachedTextures[TextureIndex].GPUID = -1;
+    }
+
     for (u32 MeshIndex = 0;
             MeshIndex < ArrayCount(Assets.CachedMeshGroups);
             ++MeshIndex)
     {
         Assets.CachedMeshGroups[MeshIndex].Meshes = PushStruct(&Assets.MeshArena,mesh);
+        Assets.CachedMeshGroups[MeshIndex].AssetID = (game_asset_id)0;
+        Assets.CachedMeshGroups[MeshIndex].TotalMeshObjects = 0;
+        Assets.CachedMeshGroups[MeshIndex].GPUVertexBufferBeginOffset = 0;
     }
+
     Assets.MeshArenaPermanentSize = 
                     ArrayCount(Assets.CachedMeshGroups) * sizeof(mesh);
 
-    u32 ArenaThreadSize = Megabytes(1);
-    u32 TotalThreadsArenaSize = (ArrayCount(Assets.ThreadArena) * ArenaThreadSize);
+    Assets.ThreadArena = ThreadArenas;
+    Assets.LimitThreadArenas = LimitThreadArenas;
 
-    for (u32 ThreadArenaIndex = 0;
-                ThreadArenaIndex < ArrayCount(Assets.ThreadArena);
-                ++ThreadArenaIndex)
-    {
-        memory_arena * ThreadArena = &Assets.ThreadArena[ThreadArenaIndex].Arena;
-        
-        ThreadArena->Base = PushSize(Arena, ArenaThreadSize);
-        ThreadArena->CurrentSize = 0;
-        ThreadArena->MaxSize = ArenaThreadSize;
-    }
+    // TODO : I don't know where else to put
+    stbi_set_flip_vertically_on_load(1);
 
     return Assets;
 }
@@ -165,7 +184,7 @@ LoadAsset(game_assets * Assets, game_asset_id ID)
 
     asset_slot * AssetSlot = Assets->AssetSlots + ID;
     thread_memory_arena * ThreadArena =
-        GetThreadArena(&Assets->ThreadArena[0], (u32)ArrayCount(Assets->ThreadArena));
+        GetThreadArena(Assets->ThreadArena, Assets->LimitThreadArenas);
 
     if (ThreadArena)
     {
@@ -348,8 +367,8 @@ GetShader(game_assets * Assets, game_asset_id ID)
     return AssetSlot;
 }
 
-#if 0
-void
+#if 1
+asset_texture *
 GetTexture(game_assets * Assets, game_asset_id ID)
 {
     Assert(ID > game_asset_texture_begin && ID < game_asset_texture_end);
@@ -359,35 +378,48 @@ GetTexture(game_assets * Assets, game_asset_id ID)
 
     u32 LocalArrayIndex = ID - game_asset_texture_begin - 1;
 
-    const char * Paths[ASSETS_TOTAL_MESHES] = {
+    const char * Paths[ASSETS_TOTAL_TEXTURES] = {
         "assets\\vehicles_001.jpg"
     };
+
+    struct texture_size
+    {
+        i32 Width, Height;
+    };
+
+    const texture_size TextureSizes[ASSETS_TOTAL_TEXTURES] = {
+        {1224, 1632}
+    };
+    
+
+    asset_texture * Texture = 0;
 
     switch (CurrentState)
     {
         case asset_loaded:
         {
-            for (i32 CachedMeshIndex = 0;
-                    CachedMeshIndex < ArrayCount(Assets->CachedMeshGroups);
-                    ++CachedMeshIndex)
+            for (i32 CachedTextureIndex = 0;
+                    CachedTextureIndex < ArrayCount(Assets->CachedTextures);
+                    ++CachedTextureIndex)
             {
-                MeshGroup = Assets->CachedMeshGroups + CachedMeshIndex;
-                if (MeshGroup->AssetID == ID)
+                Texture = Assets->CachedTextures + CachedTextureIndex;
+                if (Texture->AssetID == ID)
                 {
                     break;
                 }
             }
-            Assert(MeshGroup); // not found?
+            Assert(Texture); // not found?
         } break;
         case asset_unloaded:
         {
-            u32 MeshSize = MeshSizes[LocalArrayIndex];
+            texture_size TextureSize = TextureSizes[LocalArrayIndex];
+            u32 TextureSizeBytes = TextureSize.Width * TextureSize.Height * 4;
             u32 ArenaCurrentSize = Assets->MeshArena.CurrentSize;
-            u32 ArenaSizeAfterMesh = ArenaCurrentSize + MeshSize;
+            u32 ArenaSizeAfterMesh = ArenaCurrentSize + TextureSizeBytes;
             if (ArenaSizeAfterMesh < Assets->MeshArena.MaxSize)
             {
                 thread_memory_arena * ThreadArena =
-                    GetThreadArena(&Assets->ThreadArena[0], (u32)ArrayCount(Assets->ThreadArena));
+                    GetThreadArena(Assets->ThreadArena, Assets->LimitThreadArenas);
 
                 if (ThreadArena)
                 {
@@ -397,30 +429,15 @@ GetTexture(game_assets * Assets, game_asset_id ID)
                                 ArenaCurrentSize) == ArenaCurrentSize
                        )
                     {
-                        Assets->MeshLoadInProgress += 1;
-                        u32 Index  = (Assets->CachedMeshGroupIndex++) & (ArrayCount(Assets->CachedMeshGroups) - 1);
+                        u32 Index  = (Assets->CachedTexturesIndex++) & (ArrayCount(Assets->CachedTextures) - 1);
 
-                        mesh_group * CachedMeshGroup = Assets->CachedMeshGroups + Index;
-                        CachedMeshGroup->TotalMeshObjects        = 1; // TotalMeshObjects   TotalMeshObjects
-                        CachedMeshGroup->AssetID                 = ID; // ENUM   AssetID
-                        void * VertexBuffer = Assets->MeshArena.Base + ArenaCurrentSize;
-                        AssetSlot->Data = VertexBuffer;
-                        AssetSlot->Size = MeshSize;
+                        asset_texture * CachedTexture = Assets->CachedTextures + Index;
+                        CachedTexture->AssetID                 = ID; // ENUM   AssetID
 
-                        const char * Path = MeshPaths[LocalArrayIndex];
-                        async_load_mesh * AssetLoadData = PushStruct(&ThreadArena->Arena,async_load_mesh);
-                        AssetLoadData->Path         = Path;                                                      
-                        AssetLoadData->MeshGroup    = CachedMeshGroup;                                           
-                        AssetLoadData->ThreadArena  = ThreadArena;                                               
-                        AssetLoadData->VertexBuffer = (vertex_point *)VertexBuffer; 
-                        AssetLoadData->AssetSlot    = AssetSlot;                                                 
-
-#if ASSETS_MULTITHREAD_ENABLED
-                        GlobalPlatformMemory->AddWorkToWorkQueue(
-                                GlobalPlatformMemory->HighPriorityWorkQueue , LoadMesh ,AssetLoadData);
-#else
-                        LoadMesh(0,(void *)AssetLoadData);
-#endif
+                        if (LoadAssetMultipass(Assets,&Assets->MeshArena, ID, Paths[LocalArrayIndex]))
+                        {
+                            Assets->MeshLoadInProgress += 1;
+                        }
 
                     }
                     else
@@ -432,37 +449,66 @@ GetTexture(game_assets * Assets, game_asset_id ID)
         } break;
         case asset_loaded_on_cpu:
         {
-            // find placeholder
-            for (i32 CachedMeshIndex = 0;
-                    CachedMeshIndex < ArrayCount(Assets->CachedMeshGroups);
-                    ++CachedMeshIndex)
+            for (i32 CachedTextureIndex = 0;
+                    CachedTextureIndex < ArrayCount(Assets->CachedTextures);
+                    ++CachedTextureIndex)
             {
-                MeshGroup = Assets->CachedMeshGroups + CachedMeshIndex;
-                if (MeshGroup->AssetID == ID)
+                Texture = Assets->CachedTextures + CachedTextureIndex;
+                if (Texture->AssetID == ID)
                 {
                     break;
                 }
             }
 
-            Assert(MeshGroup);
+            Assert(Texture); // not found?
 
-            CurrentState = asset_transfer_to_gpu_inprogress;
-            void * Data = AssetSlot->Data;
-            u32 Size = (u32)AssetSlot->Size;
-            i32 ErrorCode = GraphicsPushVertexData(Data, Size, &MeshGroup->GPUVertexBufferBeginOffset);
-            if (!ErrorCode)
+            u32 MinThreadArenaSize = Megabytes(16);
+            thread_memory_arena * ThreadArena =
+                    GetThreadArena(Assets->ThreadArena, Assets->LimitThreadArenas, MinThreadArenaSize);
+
+
+            if (ThreadArena)
             {
-                CurrentState = asset_loaded_on_gpu;
-                Assets->MeshLoadInProgress -= 1;
+                CurrentState = asset_transfer_to_gpu_inprogress;
+                void * Data = AssetSlot->Data;
+                i32 compressed_size = (u32)AssetSlot->Size;
+                texture_size TextureSize = TextureSizes[LocalArrayIndex];
+                i32 comp = 0;
+                i32 DesiredComp = 4;
+                i32 x,y;
+                stbi_uc * texture_uncompressed = 
+                    stbi_load_from_memory(&ThreadArena->Arena,
+                                          (const stbi_uc *)AssetSlot->Data, 
+                                          compressed_size, 
+                                          &x,&y, &comp, DesiredComp);
 
-                if (Assets->MeshLoadInProgress <= 0)
+                i32 GPUTextureIndex = 
+                    GraphicsPushTextureData(
+                            texture_uncompressed,
+                            TextureSize.Width,TextureSize.Height, 
+                            DesiredComp);
+
+                if (GPUTextureIndex >= 0)
                 {
-                    Assets->MeshArena.CurrentSize = 
-                        Assets->MeshArenaPermanentSize;
-                }
+                    CurrentState = asset_loaded_on_gpu;
+                    Assets->MeshLoadInProgress -= 1;
 
-                AssetSlot->State = asset_loaded;
-            }
+                    if (Assets->MeshLoadInProgress <= 0)
+                    {
+                        Assets->MeshArena.CurrentSize = 
+                            Assets->MeshArenaPermanentSize;
+                    }
+
+                    AssetSlot->State = asset_loaded;
+                    Texture->GPUID = GPUTextureIndex;
+                    Texture->Width    = x; // Width   Width
+                    Texture->Height   = y; // Height   Height
+                    Texture->Channels = DesiredComp; // Channels   Channels
+                    Texture->AssetID  = ID; // ENUM   AssetID
+
+                } // texture generated
+
+            } // thread arena available
 
         } break;
         case asset_load_inprogress:
@@ -474,6 +520,8 @@ GetTexture(game_assets * Assets, game_asset_id ID)
             Assert(0); // INVALID_PATH_CODE
         };
     };
+
+    return Texture;
 
 }
 #endif
@@ -570,6 +618,7 @@ GetMaterial(game_assets * Assets, game_asset_id MaterialID)
                 MaterialSlot->State = asset_loaded;
                 CachedMaterial->AssetID = MaterialID;
                 Material = *CachedMaterial;
+                Logn("Loaded material %i (pipeline %i)", MaterialID, CachedMaterial->Pipeline.Pipeline);
             }
             else
             {
@@ -687,6 +736,21 @@ CreateMeshFromObjHeader(obj_file_header Header,
             AdvanceAfterWs(Data,Size,&ci);
         }
     }
+
+    u32 SizeUniqueUV = Header.TextureCoordCount * sizeof(v2);
+    v2 * UniqueTextureArray = (v2 *)PushSize(Arena,SizeUniqueUV);
+    Line = 0;
+
+    for (u32 ci = (Header.TextureCoordStart); 
+            (Line < Header.TextureCoordCount); 
+            ++Line)
+    {
+        ci += 3; // fixed
+        UniqueTextureArray[Line]._V[0] = (r32)atof(Data + ci);
+        AdvanceAfterWs(Data,Size,&ci);
+        UniqueTextureArray[Line]._V[1] = (r32)atof(Data + ci);
+        AdvanceAfterWs(Data,Size,&ci);
+    }
     
     u32 SizeUniqueNormals = Header.VertexNormalCount * sizeof(v3);
     v3 * UniqueNormalArray = (v3 *)PushSize(Arena,SizeUniqueNormals);
@@ -735,7 +799,7 @@ CreateMeshFromObjHeader(obj_file_header Header,
             // P
             VertexBuffer[Indice].P = UniqueVertexArray[IndexVertexP];
             // TextCoord
-            // TODO
+            VertexBuffer[Indice].UV = UniqueTextureArray[IndexVertexP];
             // N
             VertexBuffer[Indice].N = UniqueNormalArray[IndexVertexN];
 
@@ -1044,7 +1108,7 @@ GetMesh(game_assets * Assets, game_asset_id ID)
             if (ArenaSizeAfterMesh < Assets->MeshArena.MaxSize)
             {
                 thread_memory_arena * ThreadArena =
-                    GetThreadArena(&Assets->ThreadArena[0], (u32)ArrayCount(Assets->ThreadArena));
+                    GetThreadArena(Assets->ThreadArena, Assets->LimitThreadArenas);
 
                 if (ThreadArena)
                 {

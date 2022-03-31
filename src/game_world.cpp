@@ -437,6 +437,7 @@ AddEntity(world * World, world_pos WorldP)
     // special flags
     Entity->MeshID = ASSETS_DEFAULT_MESH;
     Entity->Material = ASSETS_DEFAULT_MATERIAL;
+    Entity->TextureID = (game_asset_id)-1;
     
     return Entity;
 }

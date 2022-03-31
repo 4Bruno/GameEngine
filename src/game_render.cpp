@@ -1,9 +1,5 @@
 #include "game.h"
 
-
-#define STB_IMAGE_IMPLEMENTATION
-#include "stb_image.h"
-
 inline v3
 GetViewPos(render_controller * Renderer)
 {
@@ -166,21 +162,27 @@ RenderDrawGround(game_state * GameState,render_controller * Renderer, simulation
 #endif
 
 void
-PushDraw(render_controller * Renderer, game_asset_id Material, m4 * ModelT, game_asset_id MeshID, v3 Color, r32 Transparency)
+PushDraw(render_controller * Renderer, game_asset_id Material, m4 * ModelT, game_asset_id MeshID, game_asset_id TextureID, v3 Color, r32 Transparency)
 {
 
     Assert(Renderer->UnitsCount <= Renderer->UnitsLimit);
 
     mesh_group * MeshGroup = GetMesh(GlobalAssets,MeshID);
     asset_material MaterialPipeline = GetMaterial(GlobalAssets,Material);
+    asset_texture * Texture = 0;
+    if (TextureID > game_asset_texture_begin && TextureID < game_asset_texture_end)
+    {
+        Texture = GetTexture(GlobalAssets,TextureID);
+    }
 
-    if (MeshGroup && MaterialPipeline.Pipeline.Success)
+    if (MeshGroup && MaterialPipeline.Pipeline.Success && (Texture || TextureID == ASSETS_NULL_TEXTURE))
     {
         render_unit * Unit = Renderer->Units + Renderer->UnitsCount++;
         Unit->ModelTransform = *ModelT;
         Unit->MeshGroup = MeshGroup;
         Unit->MaterialPipelineIndex = MaterialPipeline.Pipeline.Pipeline;
         Unit->Color = V4(Color, 1.0f - Transparency);
+        Unit->TextureID = Texture ? Texture->GPUID : -1;
     }
 }
 
@@ -188,7 +190,7 @@ PushDraw(render_controller * Renderer, game_asset_id Material, m4 * ModelT, game
 void
 PushDrawEntity(render_controller * Renderer,entity * Entity)
 {
-    PushDraw(Renderer, Entity->Material, &Entity->Transform.WorldT, Entity->MeshID, Entity->Color, Entity->Transparency);
+    PushDraw(Renderer, Entity->Material, &Entity->Transform.WorldT, Entity->MeshID, Entity->TextureID ,Entity->Color, Entity->Transparency);
 }
 
 #if DEBUG

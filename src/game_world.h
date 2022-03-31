@@ -98,6 +98,7 @@ struct entity
     game_asset_id Material;
     v3 Color; // 36
     r32 Transparency;
+    game_asset_id TextureID;
 
     entity_transform Transform; // 170 + 36 = 206
 

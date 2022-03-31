@@ -43,7 +43,7 @@ SubArena(memory_arena * ParentArena,memory_arena * Arena, u32 Size)
  *  in the current frame must be done using CompleteQueue 
  */
 thread_memory_arena *
-GetThreadArena(game_state * GameState)
+GetThreadArena(game_state * GameState, u32 MinDesiredSize)
 {
     thread_memory_arena * ThreadArena = 0;
 
@@ -52,7 +52,10 @@ GetThreadArena(game_state * GameState)
                 ++ThreadArenaIndex)
     {
         thread_memory_arena * TestThreadArena = GameState->ThreadArena + ThreadArenaIndex;
-        if (!TestThreadArena->InUse)
+        if (
+                !TestThreadArena->InUse && 
+                (MinDesiredSize == 0 || TestThreadArena->Arena.MaxSize >= MinDesiredSize)
+            )
         {
             TestThreadArena->InUse = true;
             ThreadArena = TestThreadArena;
@@ -64,7 +67,7 @@ GetThreadArena(game_state * GameState)
 }
 
 thread_memory_arena *
-GetThreadArena(thread_memory_arena * ThreadArenaArray, u32 LimitThreadArenas)
+GetThreadArena(thread_memory_arena * ThreadArenaArray, u32 LimitThreadArenas, u32 MinDesiredSize)
 {
     thread_memory_arena * ThreadArena = 0;
 
@@ -73,7 +76,10 @@ GetThreadArena(thread_memory_arena * ThreadArenaArray, u32 LimitThreadArenas)
                 ++ThreadArenaIndex)
     {
         thread_memory_arena * TestThreadArena = ThreadArenaArray + ThreadArenaIndex;
-        if (!TestThreadArena->InUse)
+        if (
+                !TestThreadArena->InUse && 
+                (MinDesiredSize == 0 || TestThreadArena->Arena.MaxSize >= MinDesiredSize)
+            )
         {
             TestThreadArena->InUse = true;
             ThreadArena = TestThreadArena;
