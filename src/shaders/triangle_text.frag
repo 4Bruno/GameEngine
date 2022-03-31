@@ -2,8 +2,8 @@
 
 layout (location = 0) in vec4 inColor;
 layout (location = 1) in vec2 inTextCoord;
-layout (location = 2) in vec3 inNormal;
-layout (location = 3) in vec3 inPosition;
+//layout (location = 2) in vec3 inNormal;
+//layout (location = 3) in vec3 inPosition;
 
 layout (location = 0) out vec4 outFragColor;
 
@@ -21,6 +21,7 @@ void main()
 {
     vec3 Color = texture(text1,inTextCoord).xyz;
     outFragColor = vec4(Color,1.0f);
+#if 0
     //outFragColor = inColor;
 
     // Determine the blend weights for the 3 planar projections. 
@@ -76,5 +77,6 @@ void main()
     //vec3 N_for_lighting = normalize(inNormal + blended_bump);
 
     outFragColor= blended_color;
+#endif
 
 }

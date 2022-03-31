@@ -52,9 +52,10 @@ CalculateSpecularLight(mat4 ModelMatrix)
 
 void main()
 {
-    mat4 ModelMatrix = ObjectsArray.Objects[gl_BaseInstance].ModelMatrix;
-    mat4 MVP = ObjectsArray.Objects[gl_BaseInstance].MVP;
-    vec4 Color = ObjectsArray.Objects[gl_BaseInstance].Color;
+    mat4 ModelMatrix = ObjectsArray.Objects[gl_InstanceIndex].ModelMatrix;
+    mat4 MVP = ObjectsArray.Objects[gl_InstanceIndex].MVP;
+    vec4 Color = ObjectsArray.Objects[gl_InstanceIndex].Color;
+
     float AmbientLight = SimulationData.AmbientLight.w;
 
     float SpecularLight = CalculateSpecularLight(ModelMatrix);

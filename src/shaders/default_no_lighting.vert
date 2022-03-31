@@ -39,9 +39,10 @@ layout (std140, set = 1, binding = 0) readonly buffer objects_buffer
 
 void main()
 {
-    mat4 ModelMatrix = ObjectsArray.Objects[gl_BaseInstance].ModelMatrix;
-    mat4 MVP = ObjectsArray.Objects[gl_BaseInstance].MVP;
-    vec4 Color = ObjectsArray.Objects[gl_BaseInstance].Color;
+    mat4 ModelMatrix = ObjectsArray.Objects[gl_InstanceIndex].ModelMatrix;
+    mat4 MVP = ObjectsArray.Objects[gl_InstanceIndex].MVP;
+    vec4 Color = ObjectsArray.Objects[gl_InstanceIndex].Color;
+
     outColor = Color;
 
     gl_Position = MVP * vec4(Position, 1.0f);
