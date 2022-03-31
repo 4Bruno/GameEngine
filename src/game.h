@@ -91,10 +91,17 @@ struct menu_overlay
     u32 CountAnchoredBottom;
 };
 
+struct particle_cell
+{
+    r32 Density;
+    v3 VelocityTimesDensity;
+};
+
 struct particle
 {
     entity_transform T;
     v3 dP;
+    v3 ddP;
     v3 Color;
 };
 
@@ -136,7 +143,11 @@ struct game_state
     animation DebugAnimate;
     v3 DebugSourceLightP;
 
-    particle Particles[64];
+#define PARTICLE_CELL_DIM 16 
+#define PARTICLE_CELL_DIM_MINUS_ONE (PARTICLE_CELL_DIM - 1)
+#define PARTICLE_CELL_DIM_MINUS_TWO (PARTICLE_CELL_DIM - 2)
+    particle Particles[256];
+    particle_cell ParticleCells[PARTICLE_CELL_DIM][PARTICLE_CELL_DIM][PARTICLE_CELL_DIM];
     u32 NextParticle;
 
     random_series RandomSeed;

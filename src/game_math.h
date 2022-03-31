@@ -3,6 +3,8 @@
 #include "game_platform.h"
 #include <math.h>
 
+#define SQR(A) (A * A)
+
 struct v2
 {
     union
@@ -459,6 +461,7 @@ Clamp(v3 a, r32 min, r32 max)
 }
 
 
+
 inline i32
 R32Toi32(r32 r)
 {
@@ -486,6 +489,13 @@ SignBit(i32 x)
      * if x == 0 then 0 - 0 = 0
      */
     i32 Result = (x > 0) - (x < 0);
+    return Result;
+}
+inline i32
+TruncateReal32ToInt32(r32 A)
+{
+    i32 Result = (i32)A;
+
     return Result;
 }
 

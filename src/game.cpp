@@ -349,7 +349,7 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
         i32 AvailablePermanentMemory = Memory->PermanentMemorySize - sizeof(game_state);
         InitializeArena(&GameState->PermanentArena,Base, AvailablePermanentMemory);
 
-        u32 MaxRenderUnits = 4096;
+        u32 MaxRenderUnits = 8192;
         u32 RenderMemorySize = 2 * MaxRenderUnits * sizeof(render_unit);
         Base = PushSize(&GameState->PermanentArena,RenderMemorySize);
         InitializeArena(&GameState->RenderArena, Base, RenderMemorySize);
@@ -665,13 +665,15 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
 #if 1
     PushDrawSimulation(Renderer,&GameState->World, GameState->Simulation);
 
-    v3 Color = V3(1.0f,1.0f,0.0f);
-    r32 BarHeight = 0.1f;
-    //UI_PushRect(&GameState->RendererUI,&GameState->DebugOverlay,ui_position_anchored_top,0.5f,BarHeight,Color);
-    Color = V3(1.0f,0.0f,0.0f);
-    //UI_PushRect(&GameState->RendererUI,&GameState->DebugOverlay,ui_position_anchored_top,0.25f,BarHeight,Color);
-    Color = V3(1.0f,0.0f,0.0f);
-    //UI_PushRect(&GameState->RendererUI,&GameState->DebugOverlay, ui_position_anchored_bottom,1.0f,1.0f,Color,game_asset_texture_test);
+    {
+        v3 Color = V3(1.0f,1.0f,0.0f);
+        r32 BarHeight = 0.1f;
+        //UI_PushRect(&GameState->RendererUI,&GameState->DebugOverlay,ui_position_anchored_top,0.5f,BarHeight,Color);
+        Color = V3(1.0f,0.0f,0.0f);
+        //UI_PushRect(&GameState->RendererUI,&GameState->DebugOverlay,ui_position_anchored_top,0.25f,BarHeight,Color);
+        Color = V3(1.0f,0.0f,0.0f);
+        //UI_PushRect(&GameState->RendererUI,&GameState->DebugOverlay, ui_position_anchored_bottom,1.0f,1.0f,Color,game_asset_texture_test);
+    }
 
     for (u32 ParticleIndex = 0;
                 ParticleIndex < 1; // number of particles spawn per frame
@@ -685,29 +687,153 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
         }
         v3 Size = V3(RandomBetween(&GameState->RandomSeed,0.1f,0.3f));
         v3 P = V3(RandomBetween(&GameState->RandomSeed,0.0f,0.3f),0,0);
-        r32 dP = RandomBetween(&GameState->RandomSeed,0.5f,1.5f);
+        r32 dPy = RandomBetween(&GameState->RandomSeed,5.0f,9.5f);
+        r32 dPx = RandomBetween(&GameState->RandomSeed,-0.5f,0.5f);
+        r32 dPz = RandomBetween(&GameState->RandomSeed,-0.5f,0.5f);
 
         InitializeTransform(&Particle->T, P, Size);
-        Particle->dP = V3(0,1.0f,0);
+        Particle->dP = V3(dPx,dPy, dPz);
+        Particle->ddP = V3(0,-9.8f,0);
         Particle->Color = V3(1.0f,0.3f,0);
     }
+
+    Memset((u8 *)&GameState->ParticleCells[0], 0, sizeof(GameState->ParticleCells));
+    v3 GridOrigin = {-0.5f * PARTICLE_CELL_DIM, 0, -0.5f * PARTICLE_CELL_DIM};
+    r32 MaxDensityCell = 0;
+    for (u32 ParticleIndex = 0;
+                ParticleIndex < ArrayCount(GameState->Particles);
+                ++ParticleIndex)
+    {
+        particle * Particle = GameState->Particles + ParticleIndex;
+        v3 P = Particle->T.LocalP - GridOrigin;
+
+        i32 X = TruncateReal32ToInt32(P.x);
+        i32 Y = TruncateReal32ToInt32(P.y);
+        i32 Z = TruncateReal32ToInt32(P.z);
+
+        if (X < 0) X = 0;
+        if (X > PARTICLE_CELL_DIM_MINUS_ONE) X = PARTICLE_CELL_DIM_MINUS_ONE;
+        if (Y < 0) Y = 0;
+        if (Y > PARTICLE_CELL_DIM_MINUS_ONE) Y = PARTICLE_CELL_DIM_MINUS_ONE;
+        if (Z < 0) Z = 0;
+        if (Z > PARTICLE_CELL_DIM_MINUS_ONE) Z = PARTICLE_CELL_DIM_MINUS_ONE;
+
+        particle_cell * Cell = &GameState->ParticleCells[X][Y][Z];
+        r32 Density = 1.0f;
+        Cell->Density += Density;
+        MaxDensityCell = MaxDensityCell > Cell->Density ? MaxDensityCell : Cell->Density;
+        Cell->VelocityTimesDensity += Density * Particle->dP;
+    }
+
+#if 1
+    r32 OneOverMaxCellDensity = 1.0f / MaxDensityCell;
+    for (u32 X = 0;
+                X < PARTICLE_CELL_DIM;
+                ++X)
+    {
+        for (u32 Y = 0;
+                Y < PARTICLE_CELL_DIM;
+                ++Y)
+        {
+            for (u32 Z = 0;
+                    Z < PARTICLE_CELL_DIM;
+                    ++Z)
+            {
+                particle_cell * Cell = &GameState->ParticleCells[X][Y][Z];
+                if (Cell->Density > 0.0f)
+                {
+                    entity_transform T;
+                    v3 P = V3((r32)X - 0.5f*(r32)PARTICLE_CELL_DIM_MINUS_ONE,
+                            (r32)Y,
+                            (r32)Z - 0.5f*(r32)PARTICLE_CELL_DIM_MINUS_ONE);
+                    InitializeTransform(&T, P, V3(0.5f));
+                    UpdateTransform(&T, V3(0));
+                    r32 DensityOverMax =  Cell->Density * OneOverMaxCellDensity; 
+                    v3 Color = V3(DensityOverMax,DensityOverMax,0);
+                    PushDraw(Renderer, 
+                            game_asset_material_default_no_light, 
+                            &T.WorldT, 
+                            game_asset_mesh_cube,
+                            ASSETS_NULL_TEXTURE, 
+                            Color,0);
+                }
+            }
+        }
+    }
+#endif
+
+    i32 NeighborOffsets[27][3] = {
+        -1, -1, -1,	 0, -1, -1,	 1, -1, -1,
+        -1,  0, -1,	 0,  0, -1,	 1,  0, -1,
+        -1,  1, -1,	 0,  1, -1,	 1,  1, -1,
+        -1, -1,  0,	 0, -1,  0,	 1, -1,  0,
+        -1,  0,  0,	 0,  0,  0,	 1,  0,  0,
+        -1,  1,  0,	 0,  1,  0,	 1,  1,  0,
+        -1, -1,  1,	 0, -1,  1,	 1, -1,  1,
+        -1,  0,  1,	 0,  0,  1,	 1,  0,  1,
+        -1,  1,  1,	 0,  1,  1,	 1,  1,  1
+    };
 
     for (u32 ParticleIndex = 0;
                 ParticleIndex < ArrayCount(GameState->Particles);
                 ++ParticleIndex)
     {
         particle * Particle = GameState->Particles + ParticleIndex;
-        //Particle->T.LocalP.y = (sinf(Input->TimeElapsed) + 1.0f) * 0.5f * 10.0f;
-        Particle->T.LocalP += Input->DtFrame * Particle->dP;
+
+        v3 P = Particle->T.LocalP - GridOrigin;
+
+        i32 X = TruncateReal32ToInt32(P.x);
+        i32 Y = TruncateReal32ToInt32(P.y);
+        i32 Z = TruncateReal32ToInt32(P.z);
+
+        if (X < 1) X = 1;
+        if (X > PARTICLE_CELL_DIM_MINUS_TWO) X = PARTICLE_CELL_DIM_MINUS_TWO;
+        if (Y < 1) Y = 1;
+        if (Y > PARTICLE_CELL_DIM_MINUS_TWO) Y = PARTICLE_CELL_DIM_MINUS_TWO;
+        if (Z < 1) Z = 1;
+        if (Z > PARTICLE_CELL_DIM_MINUS_TWO) Z = PARTICLE_CELL_DIM_MINUS_TWO;
+
+        particle_cell * CellCenter = &GameState->ParticleCells[X][Y][Z];
+        v3 Dispersion = V3(0);
+        r32 DispersionCoefficient = 1.0f;
+        for (i32 CellX = -1; CellX <= 1; ++CellX)
+        {
+            for (i32 CellY = -1; CellY <= 1; ++CellY)
+            {
+                for (i32 CellZ = -1; CellZ <= 1; ++CellZ)
+                {
+                    particle_cell * NeighborCell = &GameState->ParticleCells[X + CellX][Y + CellY][Z + CellZ];
+                    Dispersion += DispersionCoefficient *
+                                  (CellCenter->Density - NeighborCell->Density) *
+                                  V3((r32)CellX,(r32)CellY,(r32)CellZ);
+                }
+            }
+        }
+
+        v3 ddP = Particle->ddP + Dispersion;
+
+        Particle->T.LocalP += 
+                0.5f*SQR(Input->DtFrame) *Input->DtFrame * ddP
+            +   Input->DtFrame * Particle->dP; 
+
+        Particle->dP += Input->DtFrame * ddP;
+
+        if (Particle->T.LocalP.y < 0.0f)
+        {
+            r32 CoeficientRestitution = 0.5f;
+            Particle->T.LocalP.y = -Particle->T.LocalP.y;
+            Particle->dP.y *= -CoeficientRestitution;  
+        }
+
         UpdateTransform(&Particle->T,V3(0,0,-3.0f));
-        Particle->Color = Clamp(Particle->Color + (Input->DtFrame * V3(-0.5f)),0.0f,1.0f);
+        Particle->Color = Clamp(Particle->Color + (Input->DtFrame * V3(-0.5f)),0.3f,1.0f);
 #if 0
         if (ParticleIndex == 0)
         {
             Logn("Color: %f %f %f",Particle->Color.x,Particle->Color.y,Particle->Color.z);
         }
 #endif
-        PushDraw(Renderer, game_asset_material_default_no_light, &Particle->T.WorldT, game_asset_mesh_quad,ASSETS_NULL_TEXTURE, Particle->Color,0);
+        PushDraw(Renderer, game_asset_material_default_no_light, &Particle->T.WorldT, game_asset_mesh_cube,ASSETS_NULL_TEXTURE, Particle->Color,0);
     }
 
     RenderDraw(Renderer);
