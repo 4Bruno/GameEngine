@@ -119,8 +119,16 @@ if "%BuildThis%"=="Y" (
 
 popd
 
-if !%Mode%!==!release!  (
-    call ..\shaders.bat
-) else (
-    call ..\shaders.bat debug
+set BuildThis=Y
+if "%BuildDllID%" NEQ "All" (
+    if "%BuildDllID%" NEQ "4" (
+        set BuildThis=N
+    )
+)
+if "%BuildThis%"=="Y" (
+    if !%Mode%!==!release!  (
+        call ..\shaders.bat
+    ) else (
+        call ..\shaders.bat debug
+    )
 )
