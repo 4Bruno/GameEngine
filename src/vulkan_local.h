@@ -171,6 +171,7 @@ enum vulkan_destructor_type
     vulkan_destructor_type_vkDestroyDescriptorPool,
     vulkan_destructor_type_vkDestroyBuffer,
     vulkan_destructor_type_vkDestroyImage,
+    vulkan_destructor_type_vkDestroyDebugUtilsMessengerEXT,
 
     // CUSTOM DESTRUCTORS
     vulkan_destructor_type_vkDestroyArenaCustom,
@@ -203,7 +204,8 @@ struct vulkan_pipeline
     VkRect2D   Scissor;
 
     VkPipelineRasterizationStateCreateInfo Rasterizer;
-    VkPipelineColorBlendAttachmentState    ColorBlendAttachment;
+    VkPipelineColorBlendAttachmentState ColorBlendAttachment[2];
+    u32 ColorBlendAttachmentCount;
     VkPipelineMultisampleStateCreateInfo   Multisampling;
 
     VkPipelineLayout PipelineLayout;
@@ -225,6 +227,8 @@ struct vulkan_image
     VkFormat             Format;
     VkImageUsageFlags    UsageFlags;
     VkMemoryRequirements MemoryRequirements;
+    VkImageLayout        CurrentLayout;
+    VkImageAspectFlags   CurrentAccess;
 };
 
 typedef vulkan_image depth_buffer ;
@@ -327,6 +331,20 @@ struct ground_info
     ground_density_volume_pass DensityVolumePass;
 };
 
+#if DEBUG
+struct vulkan_obj_name
+{
+    b32 InUse;
+    char Name[40];
+};
+
+struct vulkan_debug_obj_name_cache
+{
+    vulkan_obj_name Objects[256];
+    u32 Count;
+};
+#endif
+
 // number of frames  [0-2] we are looping
 #define FRAME_OVERLAP 2
 
@@ -360,6 +378,12 @@ struct vulkan
 
     gpu_arena * PrimaryDepthBufferArena;
     depth_buffer * PrimaryDepthBuffer;
+    // OIT_WEIGHTED
+    gpu_arena * WeightedColorArena;
+    vulkan_image * WeightedColorImage;
+    gpu_arena * WeightedRevealArena;
+    vulkan_image * WeightedRevealImage;
+
 
     gpu_arena * TextureArena;
 
@@ -381,11 +405,14 @@ struct vulkan
     gpu_arena * IndexArena;
 
     VkRenderPass  RenderPass;
+    VkRenderPass  RenderPassTransparency;
     VkFramebuffer Framebuffers[3];
+    VkFramebuffer FramebuffersTransparency[3];
 
     VkDescriptorSetLayout _GlobalSetLayout;
     VkDescriptorSetLayout _ObjectsSetLayout;
     VkDescriptorSetLayout _DebugTextureSetLayout;
+    VkDescriptorSetLayout _AttachmentInputsSetLayout;
     VkDescriptorSet       _DebugTextureSet;
     VkDescriptorPool _DescriptorPool;
 
@@ -416,10 +443,14 @@ struct vulkan
     vulkan_pipeline PipelinesDefinition[ASSETS_TOTAL_MATERIALS];
     u32          PipelinesCount;
 
-    VkShaderModule ShaderModules[4];
+    VkShaderModule ShaderModules[16];
     u32         ShaderModulesCount;
 
     ground_info GroundInfo;
+
+#if DEBUG
+    VkDebugUtilsMessengerEXT DefaultDebugCb;
+#endif 
 };
 
 struct mesh_push_constant
@@ -443,7 +474,10 @@ VkDescriptorSetLayoutBinding
 VH_CreateDescriptorSetLayoutBinding(u32 BindingSlot,VkDescriptorType DescriptorType,VkShaderStageFlags ShaderStageFlags);
 
 b32
-VH_GetSupportedDepthFormat(VkPhysicalDevice PhysicalDevice, VkFormat *DepthFormat);
+VH_GetSupportedDepthFormat(VkPhysicalDevice PhysicalDevice, VkFormat *DepthFormat, b32 UseHighestPrecision = true);
+
+void
+VH_TranstionTo(VkCommandBuffer cmdBuffer, vulkan_image * VulkanImage, VkImageLayout   dstLayout, VkAccessFlags   dstAccesses);
 
 inline void
 VH_DeleteVulkanBuffer(vulkan_buffer * Buffer)

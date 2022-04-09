@@ -9,17 +9,6 @@
  *
  * - VulkanOnWindowResize
  *   Must be called from the OS on window resize event
- *
- * - Convention value returns
- *   Function names with as actions ('VulkanCreate..')
- *   _always_ return i32 which is:
- *    - Non-zero for error. Where the value is an error-code
- *    - Zero for success
- *   This is _not_ always the case for external API.
- *   Exceptions:
- *    - RenderCreatePipeline
- *    - RenderCreateShaderModule
- *    Will return the internal index in array of the pipeline
  */
 #include "graphics_api.h"
 #include "vulkan_local.h"
@@ -83,8 +72,11 @@ PFN_vkQueueSubmit                             vkQueueSubmit                     
 PFN_vkQueueWaitIdle                           vkQueueWaitIdle                           = 0;
 PFN_vkCreateShaderModule                      vkCreateShaderModule                      = 0;
 PFN_vkDestroyShaderModule                     vkDestroyShaderModule                     = 0;
+PFN_vkCreateDebugUtilsMessengerEXT            vkCreateDebugUtilsMessengerEXT            = 0;
+PFN_vkDestroyDebugUtilsMessengerEXT           vkDestroyDebugUtilsMessengerEXT           = 0;
+PFN_vkSetDebugUtilsObjectNameEXT              vkSetDebugUtilsObjectNameEXT              = 0;
 
-// LOGICAL DEVICE
+//  LOGICAL DEVICE
 PFN_vkGetDeviceQueue                          vkGetDeviceQueue                          = 0;
 PFN_vkDestroyDevice                           vkDestroyDevice                           = 0;
 PFN_vkDeviceWaitIdle                          vkDeviceWaitIdle                          = 0;
@@ -129,10 +121,15 @@ PFN_vkUnmapMemory                             vkUnmapMemory                     
 PFN_vkBindBufferMemory                        vkBindBufferMemory                        = 0;
 PFN_vkBindImageMemory                         vkBindImageMemory                         = 0;
 
+PFN_vkCmdSetDepthTestEnable                   vkCmdSetDepthTestEnable                   = 0;
+PFN_vkCmdNextSubpass                          vkCmdNextSubpass                          = 0;
+
 // GLOBALS
-vulkan                GlobalVulkan                = {};
-b32                   GlobalWindowIsMinimized     = false;
-vulkan_destroy_queue  PrimaryVulkanDestroyQueue   = {};
+vulkan                        GlobalVulkan                = {};
+b32                           GlobalWindowIsMinimized     = false;
+vulkan_destroy_queue          PrimaryVulkanDestroyQueue   = {};
+vulkan_debug_obj_name_cache   DebugNamesCache             = {};
+
 
 
 #define QUEUE_DELETE(queue,func_name, CountParams,Param1,Param2,Param3, Param4, Param5) queue_delete_(queue,vulkan_destructor_type_##func_name,CountParams, (void *)Param1, (void *)Param2,(void *)Param3, (void *)Param4,(void *)Param5)
@@ -157,8 +154,36 @@ vulkan_destroy_queue  PrimaryVulkanDestroyQueue   = {};
 #define QUEUE_DELETE_ARENA(queue,arena)                                    QUEUE_DELETE(queue,vkDestroyArenaCustom,1,arena,0,0,0,0)
 #define QUEUE_DELETE_IMAGE(queue,device,image)                             QUEUE_DELETE(queue,vkDestroyImage,2,device,image,0,0,0)
 #define QUEUE_DELETE_MEMORY_POOL(queue,memory_pool)                        QUEUE_DELETE(queue,vkDestroyMemoryPoolCustom,1,memory_pool,0,0,0,0)
+#define QUEUE_DELETE_DEBUG_MSG(queue,instance,debug_util_msg)              QUEUE_DELETE(queue,vkDestroyDebugUtilsMessengerEXT,2,instance,debug_util_msg,0,0,0)
 //#define QUEUE_DELETE_IMAGE_CUSTOM(queue,image)                             QUEUE_DELETE(queue,vkDestroyImageCustom,1,image,0,0,0,0)
 
+inline void
+CopyStr(char * DestStr,const char * SrcStr ,u32 Length)
+{
+    for (u32 ci = 0;
+                ci < Length;
+                ++ci)
+    {
+        DestStr[ci] = SrcStr[ci];
+    }
+}
+
+int
+strcmp(const char *p1, const char *p2)
+{
+    const unsigned char *s1 = (const unsigned char *) p1;
+    const unsigned char *s2 = (const unsigned char *) p2;
+    unsigned char c1, c2;
+    do
+    {
+        c1 = (unsigned char) *s1++;
+        c2 = (unsigned char) *s2++;
+        if (c1 == '\0')
+            return c1 - c2;
+    }
+    while (c1 == c2);
+    return c1 - c2;
+}
 void
 queue_delete_(vulkan_destroy_queue * Queue, vulkan_destructor_type DestructorType, u32 CountParams, void * Param1, void * Param2, void * Param3,void * Param4, void * Param5)
 {
@@ -179,6 +204,130 @@ queue_delete_(vulkan_destroy_queue * Queue, vulkan_destructor_type DestructorTyp
     Queue->ItemsCount += 1;
 }
 
+#if DEBUG
+void
+SetDebugName(uint64_t Handle, const char * Name, VkObjectType ObjectType)
+{
+    Assert(DebugNamesCache.Count < ArrayCount(DebugNamesCache.Objects));
+    Assert(Handle > 0);
+
+    for (u32 i = 0; i < ArrayCount(DebugNamesCache.Objects);++i)
+    {
+        if (!DebugNamesCache.Objects[i].InUse)
+        {
+            CopyStr(DebugNamesCache.Objects[i].Name, Name, ArrayCount(DebugNamesCache.Objects[i].Name));
+            DebugNamesCache.Objects[i].InUse = true;
+            ++DebugNamesCache.Count;
+
+            VkDebugUtilsObjectNameInfoEXT ObjectNameDebugInfo;
+            ObjectNameDebugInfo.sType        = VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT; // sType   sType
+            ObjectNameDebugInfo.pNext        = 0; // Void * pNext
+            ObjectNameDebugInfo.objectType   = ObjectType; // objectType   objectType
+            ObjectNameDebugInfo.objectHandle = (uint64_t)Handle; // objectHandle   objectHandle
+            ObjectNameDebugInfo.pObjectName  = DebugNamesCache.Objects[i].Name; // Char_S * pObjectName
+
+            vkSetDebugUtilsObjectNameEXT(GlobalVulkan.PrimaryDevice,&ObjectNameDebugInfo);
+
+            break;
+        }
+    }
+}
+#else
+void
+SetDebugName(uintptr_t Handle, const char * Name, VkObjectType ObjectType);
+#endif
+
+void SetDebugName(VkBuffer object, const char *  name)                  { SetDebugName((uint64_t)object, name, VK_OBJECT_TYPE_BUFFER); }
+void SetDebugName(VkBufferView object, const char *  name)              { SetDebugName((uint64_t)object, name, VK_OBJECT_TYPE_BUFFER_VIEW); }
+void SetDebugName(VkCommandBuffer object, const char *  name)           { SetDebugName((uint64_t)object, name, VK_OBJECT_TYPE_COMMAND_BUFFER ); }
+void SetDebugName(VkCommandPool object, const char *  name)             { SetDebugName((uint64_t)object, name, VK_OBJECT_TYPE_COMMAND_POOL ); }
+void SetDebugName(VkDescriptorPool object, const char *  name)          { SetDebugName((uint64_t)object, name, VK_OBJECT_TYPE_DESCRIPTOR_POOL); }
+void SetDebugName(VkDescriptorSet object, const char *  name)           { SetDebugName((uint64_t)object, name, VK_OBJECT_TYPE_DESCRIPTOR_SET); }
+void SetDebugName(VkDescriptorSetLayout object, const char *  name)     { SetDebugName((uint64_t)object, name, VK_OBJECT_TYPE_DESCRIPTOR_SET_LAYOUT); }
+void SetDebugName(VkDevice object, const char *  name)                  { SetDebugName((uint64_t)object, name, VK_OBJECT_TYPE_DEVICE); }
+void SetDebugName(VkDeviceMemory object, const char *  name)            { SetDebugName((uint64_t)object, name, VK_OBJECT_TYPE_DEVICE_MEMORY); }
+void SetDebugName(VkFramebuffer object, const char *  name)             { SetDebugName((uint64_t)object, name, VK_OBJECT_TYPE_FRAMEBUFFER); }
+void SetDebugName(VkImage object, const char *  name)                   { SetDebugName((uint64_t)object, name, VK_OBJECT_TYPE_IMAGE); }
+void SetDebugName(VkImageView object, const char *  name)               { SetDebugName((uint64_t)object, name, VK_OBJECT_TYPE_IMAGE_VIEW); }
+void SetDebugName(VkPipeline object, const char *  name)                { SetDebugName((uint64_t)object, name, VK_OBJECT_TYPE_PIPELINE); }
+void SetDebugName(VkPipelineLayout object, const char *  name)          { SetDebugName((uint64_t)object, name, VK_OBJECT_TYPE_PIPELINE_LAYOUT); }
+void SetDebugName(VkQueryPool object, const char *  name)               { SetDebugName((uint64_t)object, name, VK_OBJECT_TYPE_QUERY_POOL); }
+void SetDebugName(VkQueue object, const char *  name)                   { SetDebugName((uint64_t)object, name, VK_OBJECT_TYPE_QUEUE); }
+void SetDebugName(VkRenderPass object, const char *  name)              { SetDebugName((uint64_t)object, name, VK_OBJECT_TYPE_RENDER_PASS); }
+void SetDebugName(VkSampler object, const char *  name)                 { SetDebugName((uint64_t)object, name, VK_OBJECT_TYPE_SAMPLER); }
+void SetDebugName(VkSemaphore object, const char *  name)               { SetDebugName((uint64_t)object, name, VK_OBJECT_TYPE_SEMAPHORE); }
+void SetDebugName(VkShaderModule object, const char *  name)            { SetDebugName((uint64_t)object, name, VK_OBJECT_TYPE_SHADER_MODULE); }
+void SetDebugName(VkSwapchainKHR object, const char *  name)            { SetDebugName((uint64_t)object, name, VK_OBJECT_TYPE_SWAPCHAIN_KHR); }
+
+vulkan_image *
+VH_CreateImage(gpu_arena * Arena, VkFormat Format, VkImageUsageFlags UsageFlags, VkExtent3D Extent)
+{
+    Assert(Arena->Type == gpu_arena_type_image);
+    Assert(Arena->ImageCount < ArrayCount(Arena->Images));
+
+    vulkan_image * VulkanImage = Arena->Images + Arena->ImageCount;
+    VkDeviceMemory DeviceMemory = GetDeviceMemory(Arena->MemoryIndexType);
+
+    VkImageCreateInfo ImageCreateInfo = 
+        VH_CreateImageCreateInfo2D(Extent, Format, UsageFlags);
+
+    if (VK_FAILS(vkCreateImage(Arena->Device,&ImageCreateInfo, 0, &VulkanImage->Image)))
+    {
+        return 0;
+    }
+
+    vkGetImageMemoryRequirements(Arena->Device, VulkanImage->Image, &VulkanImage->MemoryRequirements);
+    VkMemoryPropertyFlags PropertyFlags = VK_MEMORY_GPU;
+    i32 MemoryTypeIndex = VH_FindSuitableMemoryIndex(GlobalVulkan.PrimaryGPU, VulkanImage->MemoryRequirements, PropertyFlags);
+
+    // only 1 type for now
+    Assert(MemoryTypeIndex == Arena->MemoryIndexType);
+
+    VkDeviceSize BindMemoryOffset = Arena->DeviceBindingOffsetBegin + Arena->CurrentSize;
+
+    if (VK_FAILS(vkBindImageMemory(Arena->Device, VulkanImage->Image,DeviceMemory, BindMemoryOffset)))
+    {
+        VH_DestroyImage(Arena->Device,VulkanImage);
+        return 0;
+    }
+
+    VkImageViewCreateInfo ImageViewCreateInfo;
+
+    ImageViewCreateInfo.sType            = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO; // VkStructureType   sType;
+    ImageViewCreateInfo.pNext            = 0; // Void * pNext;
+    ImageViewCreateInfo.flags            = 0; // VkImageViewCreateFlags   flags;
+    ImageViewCreateInfo.image            = VulkanImage->Image; // VkImage   image;
+    ImageViewCreateInfo.viewType         = VK_IMAGE_VIEW_TYPE_2D; // VkImageViewType   viewType;
+    ImageViewCreateInfo.format           = Format; // VkFormat   format;
+
+    VkComponentMapping   components;
+    components.r = VK_COMPONENT_SWIZZLE_IDENTITY; // VkComponentSwizzle   r;
+    components.g = VK_COMPONENT_SWIZZLE_IDENTITY; // VkComponentSwizzle   g;
+    components.b = VK_COMPONENT_SWIZZLE_IDENTITY; // VkComponentSwizzle   b;
+    components.a = VK_COMPONENT_SWIZZLE_IDENTITY; // VkComponentSwizzle   a;
+    ImageViewCreateInfo.components       = components; // VkComponentMapping   components;
+
+    VkImageSubresourceRange   subresourceRange;
+    subresourceRange.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT; // VkImageAspectFlags   aspectMask;
+    subresourceRange.baseMipLevel   = 0; // uint32_t   baseMipLevel;
+    subresourceRange.levelCount     = 1; // uint32_t   levelCount;
+    subresourceRange.baseArrayLayer = 0; // uint32_t   baseArrayLayer;
+    subresourceRange.layerCount     = 1; // uint32_t   layerCount;
+
+    ImageViewCreateInfo.subresourceRange = subresourceRange; // VkImageSubresourceRange   subresourceRange;
+
+    if (VK_FAILS(vkCreateImageView( GlobalVulkan.PrimaryDevice, &ImageViewCreateInfo, 0, &VulkanImage->ImageView)))
+    {
+        vkDestroyImage(Arena->Device,VulkanImage->Image,0);
+        return 0;
+    }
+
+    ++Arena->ImageCount;
+    VulkanImage->UsageFlags = UsageFlags;
+    VulkanImage->Format         = Format;
+
+    return VulkanImage;
+}
 
 i32
 VH_CreateImage(VkPhysicalDevice PhysicalDevice,VkDevice Device, u32 Width, u32 Height, u32 Channels, vulkan_image * Image)
@@ -341,9 +490,179 @@ GRAPHICS_DESTROY_MATERIAL_PIPELINE(FreeMaterialPipeline)
     }
 }
 
+GRAPHICS_CREATE_TRANSPARENCY_PIPELINE(CreateTransparencyPipeline)
+{
+    transparency_pipeline_creation_result Result = {};
+    pipeline_creation_result * PipelineSubpass1 = Result.PipelineCreationResult + 0;
+    pipeline_creation_result * PipelineSubpass2 = Result.PipelineCreationResult + 1;
+
+    Assert((VertexShaderIndex         >= 0) && (VertexShaderIndex         < ArrayCount(GlobalVulkan.ShaderModules)));
+    Assert((WeightFragmentShaderIndex >= 0) && (WeightFragmentShaderIndex < ArrayCount(GlobalVulkan.ShaderModules)));
+
+    Assert((FullscreenTriangleVertexShaderIndex >= 0) && (FullscreenTriangleVertexShaderIndex < ArrayCount(GlobalVulkan.ShaderModules)));
+    Assert((CompositeFragmentShaderIndex        >= 0) && (CompositeFragmentShaderIndex        < ArrayCount(GlobalVulkan.ShaderModules)));
+
+    vulkan_pipeline VulkanPipelines[2] = {};
+    vulkan_pipeline * VulkanPipelineWeight    = VulkanPipelines + 0;
+    vulkan_pipeline * VulkanPipelineComposite = VulkanPipelines + 1;
+
+    /* SUBPASS 1 */
+    {
+        VkShaderModule VertexShader                        = GlobalVulkan.ShaderModules[VertexShaderIndex];
+        VkShaderModule FragmentShader                      = GlobalVulkan.ShaderModules[WeightFragmentShaderIndex];
+        vertex_inputs_description VertexInputDesc          = RenderGetVertexInputsDescription();
+        VkPipelineDepthStencilStateCreateInfo DepthStencil = {};
+        VkPipelineColorBlendAttachmentState Subpass1ColorBlendAttach[2] = {};
+        VkPipelineColorBlendAttachmentState * Subpass1ColorBlendAttachWeight = Subpass1ColorBlendAttach + 0;
+        VkPipelineColorBlendAttachmentState * Subpass1ColorBlendAttachReveal = Subpass1ColorBlendAttach + 1;
+
+        VulkanPipelineWeight->ShaderStagesCount = 2; // u32 ShaderStagesCount;
+        VulkanPipelineWeight->ShaderStages[0]   = VH_CreateShaderStageInfo(VK_SHADER_STAGE_VERTEX_BIT,VertexShader);
+        VulkanPipelineWeight->ShaderStages[1]   = VH_CreateShaderStageInfo(VK_SHADER_STAGE_FRAGMENT_BIT,FragmentShader);
+
+        VulkanPipelineWeight->VertexInputInfo      = VH_CreateVertexInputStateInfo(); // VkPipelineVertexInputStateCreateInfo   VertexInputInfo;
+
+        VulkanPipelineWeight->VertexInputInfo.vertexBindingDescriptionCount   = 1;                              // u32_t vertexBindingDescriptionCount;
+        VulkanPipelineWeight->VertexInputInfo.pVertexBindingDescriptions      = &VertexInputDesc.Bindings[0];   // Typedef * pVertexBindingDescriptions;
+        VulkanPipelineWeight->VertexInputInfo.vertexAttributeDescriptionCount = ArrayCount(VertexInputDesc.Attributes);                              // u32_t vertexAttributeDescriptionCount;
+        VulkanPipelineWeight->VertexInputInfo.pVertexAttributeDescriptions    = &VertexInputDesc.Attributes[0]; // Typedef * pVertexAttributeDescriptions;
+
+        DepthStencil.sType                 = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO; // VkStructureType sType;
+        DepthStencil.depthTestEnable       = VK_TRUE;                                                    // VkBool32 depthTestEnable;
+        DepthStencil.depthWriteEnable      = VK_FALSE;                                                   // VkBool32 depthWriteEnable;
+        DepthStencil.depthCompareOp        = VK_COMPARE_OP_LESS;                                // VkCompareOp depthCompareOp;
+        DepthStencil.depthBoundsTestEnable = VK_FALSE;                                                   // VkBool32 depthBoundsTestEnable;
+        DepthStencil.stencilTestEnable     = VK_FALSE;                                                   // VkBool32 stencilTestEnable;
+        DepthStencil.minDepthBounds        = 0.0f;                                                       // FLOAT minDepthBounds;
+        DepthStencil.maxDepthBounds        = 1.0f;                                                       // FLOAT maxDepthBounds;
+
+        Subpass1ColorBlendAttachWeight->blendEnable         = VK_TRUE; // blendEnable   blendEnable
+        Subpass1ColorBlendAttachWeight->srcColorBlendFactor = VK_BLEND_FACTOR_ONE; // srcColorBlendFactor   srcColorBlendFactor
+        Subpass1ColorBlendAttachWeight->dstColorBlendFactor = VK_BLEND_FACTOR_ONE; // dstColorBlendFactor   dstColorBlendFactor
+        Subpass1ColorBlendAttachWeight->colorBlendOp        = VK_BLEND_OP_ADD; // colorBlendOp   colorBlendOp
+        Subpass1ColorBlendAttachWeight->srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE; // srcAlphaBlendFactor   srcAlphaBlendFactor
+        Subpass1ColorBlendAttachWeight->dstAlphaBlendFactor = VK_BLEND_FACTOR_ONE; // dstAlphaBlendFactor   dstAlphaBlendFactor
+        Subpass1ColorBlendAttachWeight->alphaBlendOp        = VK_BLEND_OP_ADD; // alphaBlendOp   alphaBlendOp
+        Subpass1ColorBlendAttachWeight->colorWriteMask      = 
+            VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT; // VkColorComponentFlags   colorWriteMask;
+
+        Subpass1ColorBlendAttachReveal->blendEnable         = VK_TRUE; // blendEnable   blendEnable
+        Subpass1ColorBlendAttachReveal->srcColorBlendFactor = VK_BLEND_FACTOR_ZERO; // srcColorBlendFactor   srcColorBlendFactor
+        Subpass1ColorBlendAttachReveal->dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_COLOR; // dstColorBlendFactor   dstColorBlendFactor
+        Subpass1ColorBlendAttachReveal->colorBlendOp        = VK_BLEND_OP_ADD; // colorBlendOp   colorBlendOp
+        Subpass1ColorBlendAttachReveal->srcAlphaBlendFactor = VK_BLEND_FACTOR_ZERO; // srcAlphaBlendFactor   srcAlphaBlendFactor
+        Subpass1ColorBlendAttachReveal->dstAlphaBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA; // dstAlphaBlendFactor   dstAlphaBlendFactor
+        Subpass1ColorBlendAttachReveal->alphaBlendOp        = VK_BLEND_OP_ADD; // alphaBlendOp   alphaBlendOp
+        Subpass1ColorBlendAttachReveal->colorWriteMask      = 
+            VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT; // VkColorComponentFlags   colorWriteMask;
+
+        VulkanPipelineWeight->DepthStencil         = DepthStencil;
+        VulkanPipelineWeight->InputAssembly        = VH_CreatePipelineInputAssemblyStateCreateInfo(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST); // VkPipelineInputAssemblyStateCreateInfo InputAssembly;
+        VulkanPipelineWeight->Viewport             = VH_CreateDefaultViewport(GlobalVulkan.WindowExtension);                             // VkViewport Viewport;
+        VulkanPipelineWeight->Scissor.offset       = {0,0};
+        VulkanPipelineWeight->Scissor.extent       = GlobalVulkan.WindowExtension;
+        VulkanPipelineWeight->Rasterizer           = VH_CreatePipelineRasterizationStateCreateInfo(VK_POLYGON_MODE_FILL);                // VkPipelineRasterizationStateCreateInfo Rasterizer;
+        VulkanPipelineWeight->ColorBlendAttachment[0] = *Subpass1ColorBlendAttachWeight;
+        VulkanPipelineWeight->ColorBlendAttachment[1] = *Subpass1ColorBlendAttachReveal;
+        VulkanPipelineWeight->ColorBlendAttachmentCount = 2;
+        VulkanPipelineWeight->Multisampling        = VH_CreatePipelineMultisampleStateCreateInfo();                                      // VkPipelineMultisampleStateCreateInfo Multisampling;
+        VulkanPipelineWeight->PipelineLayout       = GlobalVulkan.PipelineLayout[0];// VkPipelineLayout PipelineLayout;
+
+        VkPipeline Pipeline = 
+            VH_PipelineBuilder(VulkanPipelineWeight, GlobalVulkan.PrimaryDevice, GlobalVulkan.RenderPassTransparency);
+
+        if (VK_VALID_HANDLE(Pipeline))
+        {
+            Assert(GlobalVulkan.PipelinesCount < ArrayCount(GlobalVulkan.Pipelines));
+
+            i32 IndexPipeline = GlobalVulkan.PipelinesCount++;
+
+            GlobalVulkan.PipelinesDefinition[IndexPipeline] = *VulkanPipelineWeight;
+            GlobalVulkan.Pipelines[IndexPipeline]= Pipeline;
+
+            PipelineSubpass1->Success        = true; // Success   Success
+            PipelineSubpass1->Pipeline       = IndexPipeline; // Pipeline   Pipeline
+            // only 1 for now, hardcoded as the first 
+            PipelineSubpass1->PipelineLayout = 0; // PipelineLayout   PipelineLayout
+
+            QUEUE_DELETE_PIPELINE(&PrimaryVulkanDestroyQueue,GlobalVulkan.PrimaryDevice, &GlobalVulkan.Pipelines[IndexPipeline]);
+        }
+    }
+    
+    /* SUBPASS 2 */
+    {
+        VkShaderModule VertexShader = GlobalVulkan.ShaderModules[FullscreenTriangleVertexShaderIndex];
+        VkShaderModule FragmentShader = GlobalVulkan.ShaderModules[CompositeFragmentShaderIndex];
+        VkPipelineDepthStencilStateCreateInfo DepthStencil = {};
+        VkPipelineColorBlendAttachmentState Subpass2ColorBlendAttach;
+
+        VulkanPipelineComposite->ShaderStagesCount = 2; // u32 ShaderStagesCount;
+        VulkanPipelineComposite->ShaderStages[0]   = VH_CreateShaderStageInfo(VK_SHADER_STAGE_VERTEX_BIT,VertexShader);
+        VulkanPipelineComposite->ShaderStages[1]   = VH_CreateShaderStageInfo(VK_SHADER_STAGE_FRAGMENT_BIT,FragmentShader);
+
+        VkPipelineVertexInputStateCreateInfo NoVertexInputInfo;
+        NoVertexInputInfo.sType                           = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO; // sType   sType
+        NoVertexInputInfo.vertexBindingDescriptionCount   = 0; // vertexBindingDescriptionCount   vertexBindingDescriptionCount
+        NoVertexInputInfo.vertexAttributeDescriptionCount = 0; // vertexAttributeDescriptionCount   vertexAttributeDescriptionCount
+
+        VulkanPipelineComposite->VertexInputInfo      = NoVertexInputInfo; // VertexInputInfo   VertexInputInfo
+
+        DepthStencil.sType                 = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO; // VkStructureType sType;
+        DepthStencil.depthTestEnable       = VK_TRUE;                                                    // VkBool32 depthTestEnable;
+        DepthStencil.depthWriteEnable      = VK_FALSE;                                                   // VkBool32 depthWriteEnable;
+        DepthStencil.depthCompareOp        = VK_COMPARE_OP_LESS;                                // VkCompareOp depthCompareOp;
+        DepthStencil.depthBoundsTestEnable = VK_FALSE;                                                   // VkBool32 depthBoundsTestEnable;
+        DepthStencil.stencilTestEnable     = VK_FALSE;                                                   // VkBool32 stencilTestEnable;
+        DepthStencil.minDepthBounds        = 0.0f;                                                       // FLOAT minDepthBounds;
+        DepthStencil.maxDepthBounds        = 1.0f;                                                       // FLOAT maxDepthBounds;
+
+        Subpass2ColorBlendAttach.blendEnable         = VK_TRUE; // blendEnable   blendEnable
+        Subpass2ColorBlendAttach.srcColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA; // srcColorBlendFactor   srcColorBlendFactor
+        Subpass2ColorBlendAttach.dstColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA; // dstColorBlendFactor   dstColorBlendFactor
+        Subpass2ColorBlendAttach.colorBlendOp        = VK_BLEND_OP_ADD; // colorBlendOp   colorBlendOp
+        Subpass2ColorBlendAttach.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA; // srcAlphaBlendFactor   srcAlphaBlendFactor
+        Subpass2ColorBlendAttach.dstAlphaBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA; // dstAlphaBlendFactor   dstAlphaBlendFactor
+        Subpass2ColorBlendAttach.alphaBlendOp        = VK_BLEND_OP_ADD; // alphaBlendOp   alphaBlendOp
+        Subpass2ColorBlendAttach.colorWriteMask      = 
+            VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT; // VkColorComponentFlags   colorWriteMask;
+
+        VulkanPipelineComposite->DepthStencil         = DepthStencil;
+        VulkanPipelineComposite->InputAssembly        = VH_CreatePipelineInputAssemblyStateCreateInfo(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST); // VkPipelineInputAssemblyStateCreateInfo InputAssembly;
+        VulkanPipelineComposite->Viewport             = VH_CreateDefaultViewport(GlobalVulkan.WindowExtension);                             // VkViewport Viewport;
+        VulkanPipelineComposite->Scissor.offset       = {0,0};
+        VulkanPipelineComposite->Scissor.extent       = GlobalVulkan.WindowExtension;
+        VulkanPipelineComposite->Rasterizer           = VH_CreatePipelineRasterizationStateCreateInfo(VK_POLYGON_MODE_FILL);                // VkPipelineRasterizationStateCreateInfo Rasterizer;
+        VulkanPipelineComposite->ColorBlendAttachment[0] = Subpass2ColorBlendAttach;
+        VulkanPipelineComposite->ColorBlendAttachmentCount = 1;
+        VulkanPipelineComposite->Multisampling        = VH_CreatePipelineMultisampleStateCreateInfo();                                      // VkPipelineMultisampleStateCreateInfo Multisampling;
+        VulkanPipelineComposite->PipelineLayout       = GlobalVulkan.PipelineLayout[0];                                                     // VkPipelineLayout PipelineLayout;
+
+        VkPipeline Pipeline = 
+            VH_PipelineBuilder(VulkanPipelineComposite, GlobalVulkan.PrimaryDevice, GlobalVulkan.RenderPassTransparency);
+
+        if (VK_VALID_HANDLE(Pipeline))
+        {
+            Assert(GlobalVulkan.PipelinesCount < ArrayCount(GlobalVulkan.Pipelines));
+
+            i32 IndexPipeline = GlobalVulkan.PipelinesCount++;
+
+            GlobalVulkan.PipelinesDefinition[IndexPipeline] = *VulkanPipelineComposite;
+            GlobalVulkan.Pipelines[IndexPipeline]= Pipeline;
+
+            PipelineSubpass2->Success        = true; // Success   Success
+            PipelineSubpass2->Pipeline       = IndexPipeline; // Pipeline   Pipeline
+            // only 1 for now, hardcoded as the first 
+            PipelineSubpass2->PipelineLayout = 0; // PipelineLayout   PipelineLayout
+
+            QUEUE_DELETE_PIPELINE(&PrimaryVulkanDestroyQueue,GlobalVulkan.PrimaryDevice, &GlobalVulkan.Pipelines[IndexPipeline]);
+        }
+    }
+
+    return Result;
+}
+
 GRAPHICS_CREATE_MATERIAL_PIPELINE(CreatePipeline)
 {
-
     pipeline_creation_result Result = {};
 
     Assert((VertexShaderIndex >= 0) && (ArrayCount(GlobalVulkan.ShaderModules) > VertexShaderIndex));
@@ -401,7 +720,9 @@ GRAPHICS_CREATE_MATERIAL_PIPELINE(CreatePipeline)
     VulkanPipeline.Rasterizer           = 
         VH_CreatePipelineRasterizationStateCreateInfo(VK_POLYGON_MODE_FILL); // VkPipelineRasterizationStateCreateInfo   Rasterizer;
 
-    VulkanPipeline.ColorBlendAttachment = VH_CreatePipelineColorBlendAttachmentState();  // VkPipelineColorBlendAttachmentState ColorBlendAttachment;
+    VulkanPipeline.ColorBlendAttachment[0] = VH_CreatePipelineColorBlendAttachmentState();  // VkPipelineColorBlendAttachmentState ColorBlendAttachment;
+    VulkanPipeline.ColorBlendAttachmentCount = 1;
+
     VulkanPipeline.Multisampling        = VH_CreatePipelineMultisampleStateCreateInfo(); // VkPipelineMultisampleStateCreateInfo Multisampling;
     VulkanPipeline.PipelineLayout       = GlobalVulkan.PipelineLayout[0];                      // VkPipelineLayout PipelineLayout;
 
@@ -427,23 +748,6 @@ GRAPHICS_CREATE_MATERIAL_PIPELINE(CreatePipeline)
 }
 
 
-int
-strcmp(const char *p1, const char *p2)
-{
-    const unsigned char *s1 = (const unsigned char *) p1;
-    const unsigned char *s2 = (const unsigned char *) p2;
-    unsigned char c1, c2;
-    do
-    {
-        c1 = (unsigned char) *s1++;
-        c2 = (unsigned char) *s2++;
-        if (c1 == '\0')
-            return c1 - c2;
-    }
-    while (c1 == c2);
-    return c1 - c2;
-}
-
 
 
 
@@ -458,9 +762,9 @@ struct vulkan_device_extensions
 vulkan_device_extensions
 GetRequiredDeviceExtensions()
 {
-    vulkan_device_extensions Ext;
+    vulkan_device_extensions Ext = {};
     Ext.DeviceExtensions[0] = VK_KHR_SWAPCHAIN_EXTENSION_NAME; // CONSTANTARRAY   DeviceExtensions;
-    Ext.Count               = 1;                               // u32   Count;
+    ++Ext.Count;
     return Ext;
 }
 
@@ -803,26 +1107,121 @@ VulkanCreateSwapChain(i32 Width, i32 Height)
 }
 
 i32
-VulkanInitDefaultRenderPass()
+VulkanCreateTransparentRenderPass()
 {
-    VkAttachmentDescription DepthAttachment;
-    DepthAttachment.flags          = 0;                                                // VkDepthAttachmentFlags flags;
+    VkAttachmentDescription WeightedColorAttachment = {};
+    WeightedColorAttachment.format         = GlobalVulkan.WeightedColorImage->Format; // format   format
+    WeightedColorAttachment.samples        = VK_SAMPLE_COUNT_1_BIT; // samples   samples
+    WeightedColorAttachment.loadOp         = VK_ATTACHMENT_LOAD_OP_CLEAR; // loadOp   loadOp
+    WeightedColorAttachment.storeOp        = VK_ATTACHMENT_STORE_OP_STORE; // storeOp   storeOp
+    WeightedColorAttachment.stencilLoadOp  = VK_ATTACHMENT_LOAD_OP_DONT_CARE; // stencilLoadOp   stencilLoadOp
+    WeightedColorAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE; // stencilStoreOp   stencilStoreOp
+    WeightedColorAttachment.initialLayout  = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL; // initialLayout   initialLayout
+    WeightedColorAttachment.finalLayout    = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL; // finalLayout   finalLayout
+
+    VkAttachmentDescription WeightedRevealAttachment = WeightedColorAttachment;
+    WeightedRevealAttachment.format = GlobalVulkan.WeightedRevealImage->Format;
+
+    VkAttachmentDescription ColorAttachment = WeightedColorAttachment;
+    ColorAttachment.format         = GlobalVulkan.SwapchainImageFormat; // VkFormat   format;
+    ColorAttachment.loadOp         = VK_ATTACHMENT_LOAD_OP_LOAD;       // VkAttachmentLoadOp   loadOp;
+    ColorAttachment.finalLayout    = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;   // VkImageLayout   finalLayout;
+
+    VkAttachmentDescription DepthAttachment = ColorAttachment;
     DepthAttachment.format         = GlobalVulkan.PrimaryDepthBuffer->Format;                  // VkFormat format;
-    DepthAttachment.samples        = VK_SAMPLE_COUNT_1_BIT;                            // VkSampleCountFlagBits samples;
-    DepthAttachment.loadOp         = VK_ATTACHMENT_LOAD_OP_CLEAR;                      // VkAttachmentLoadOp loadOp;
-    DepthAttachment.storeOp        = VK_ATTACHMENT_STORE_OP_STORE;                     // VkAttachmentStoreOp storeOp;
-    DepthAttachment.stencilLoadOp  = VK_ATTACHMENT_LOAD_OP_CLEAR;                      // VkAttachmentLoadOp stencilLoadOp;
-    DepthAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;                 // VkAttachmentStoreOp stencilStoreOp;
-    DepthAttachment.initialLayout  = VK_IMAGE_LAYOUT_UNDEFINED;                        // VkImageLayout initialLayout;
+    DepthAttachment.initialLayout  = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;                        // VkImageLayout initialLayout;
     DepthAttachment.finalLayout    = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL; // VkImageLayout finalLayout;
 
-    VkAttachmentReference DepthAttachmentReference;
-    DepthAttachmentReference.attachment = 1; // u32_t   attachment;
-    DepthAttachmentReference.layout     = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL; // VkImageLayout   layout;
+    VkAttachmentDescription Attachments[] = {
+        WeightedColorAttachment,
+        WeightedRevealAttachment,
+        ColorAttachment,
+        DepthAttachment
+    };
 
+    /* BEGIN SUBPASS 1*/
+    VkSubpassDescription Subpasses[2] = {};
+    VkSubpassDescription * Subpass1 = Subpasses + 0;
+    VkSubpassDescription * Subpass2 = Subpasses + 1;
 
-    VkAttachmentDescription ColorAttachment;
-    ColorAttachment.flags          = 0;                                 // VkColorAttachmentFlags   flags;
+    VkAttachmentReference Subpass1ColorAttachment[2] = {};
+    VkAttachmentReference DepthAttachmentReference = {};
+
+    Subpass1ColorAttachment[0].attachment = 0;                                        // u32_t   attachment;
+    Subpass1ColorAttachment[0].layout     = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL; // VkImageLayout   layout;
+    Subpass1ColorAttachment[1].attachment = 1;                                        // u32_t   attachment;
+    Subpass1ColorAttachment[1].layout     = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL; // VkImageLayout   layout;
+    DepthAttachmentReference.attachment   = 3;                                        // u32_t   attachment;
+    DepthAttachmentReference.layout       = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL; // VkImageLayout   layout;
+
+    Subpass1->pipelineBindPoint        = VK_PIPELINE_BIND_POINT_GRAPHICS; // pipelineBindPoint   pipelineBindPoint
+    Subpass1->colorAttachmentCount     = ArrayCount(Subpass1ColorAttachment); // colorAttachmentCount   colorAttachmentCount
+    Subpass1->pColorAttachments        = &Subpass1ColorAttachment[0]; // VkAttachmentReference * pColorAttachments
+    Subpass1->pDepthStencilAttachment  = &DepthAttachmentReference; // VkAttachmentReference * pDepthStencilAttachment
+
+    /* BEGIN SUBPASS 2*/
+    VkAttachmentReference Subpass2InputAttachment[2] = {};
+    VkAttachmentReference Subpass2ColorAttachment;
+
+    Subpass2InputAttachment[0].attachment = 0;
+    Subpass2InputAttachment[0].layout     = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+    Subpass2InputAttachment[1].attachment = 1;
+    Subpass2InputAttachment[1].layout     = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+    Subpass2ColorAttachment.attachment    = 2;
+    Subpass2ColorAttachment.layout        = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+
+    Subpass2->pipelineBindPoint        = VK_PIPELINE_BIND_POINT_GRAPHICS; // pipelineBindPoint   pipelineBindPoint
+    Subpass2->inputAttachmentCount     = ArrayCount(Subpass2InputAttachment); // inputAttachmentCount   inputAttachmentCount
+    Subpass2->pInputAttachments        = &Subpass2InputAttachment[0]; // VkAttachmentReference * pInputAttachments
+    Subpass2->colorAttachmentCount     = 1; // colorAttachmentCount   colorAttachmentCount
+    Subpass2->pColorAttachments        = &Subpass2ColorAttachment; // VkAttachmentReference * pColorAttachments
+
+    /* BEGIN DEPENDENCIES */
+    VkSubpassDependency Dependencies[3] = {};
+    VkSubpassDependency * DependencyExternal     = Dependencies + 0;
+    VkSubpassDependency * DependencyWeightShader = Dependencies + 1;
+    VkSubpassDependency * DependencyToRender     = Dependencies + 2;
+    
+    DependencyExternal->srcSubpass        = VK_SUBPASS_EXTERNAL;                             // srcSubpass srcSubpass
+    DependencyExternal->dstSubpass        = 0;                                               // dstSubpass dstSubpass
+    DependencyExternal->srcStageMask      = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;   // srcStageMask srcStageMask
+    DependencyExternal->dstStageMask      = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;   // dstStageMask dstStageMask
+    DependencyExternal->srcAccessMask     = 0;                                               // srcAccessMask srcAccessMask
+    DependencyExternal->dstAccessMask     = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;            // dstAccessMask dstAccessMask
+    
+    DependencyWeightShader->srcSubpass    = 0;                                               // srcSubpass srcSubpass
+    DependencyWeightShader->dstSubpass    = 1;                                               // dstSubpass dstSubpass
+    DependencyWeightShader->srcStageMask  = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;   // srcStageMask srcStageMask
+    DependencyWeightShader->dstStageMask  = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;           // dstStageMask dstStageMask
+    DependencyWeightShader->srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;            // srcAccessMask srcAccessMask
+    DependencyWeightShader->dstAccessMask = VK_ACCESS_SHADER_READ_BIT;                       // dstAccessMask dstAccessMask
+    
+    DependencyToRender->srcSubpass        = 1;                                               // srcSubpass srcSubpass
+    DependencyToRender->dstSubpass        = VK_SUBPASS_EXTERNAL;                             // dstSubpass dstSubpass
+    DependencyToRender->srcStageMask      = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;           // srcStageMask srcStageMask
+    DependencyToRender->dstStageMask      = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT; // dstStageMask dstStageMask
+    DependencyToRender->srcAccessMask     = VK_ACCESS_SHADER_READ_BIT;                       // srcAccessMask srcAccessMask
+    DependencyToRender->dstAccessMask     = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;            // dstAccessMask dstAccessMask
+    
+    /* CREATE RENDER PASS */
+    VkRenderPassCreateInfo RenderPassCreateInfo = {};
+    RenderPassCreateInfo.sType           = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO; // sType   sType
+    RenderPassCreateInfo.attachmentCount = ArrayCount(Attachments); // attachmentCount   attachmentCount
+    RenderPassCreateInfo.pAttachments    = &Attachments[0]; // VkAttachmentDescription * pAttachments
+    RenderPassCreateInfo.subpassCount    = ArrayCount(Subpasses); // subpassCount   subpassCount
+    RenderPassCreateInfo.pSubpasses      = &Subpasses[0]; // VkSubpassDescription * pSubpasses
+    RenderPassCreateInfo.dependencyCount = ArrayCount(Dependencies); // dependencyCount   dependencyCount
+    RenderPassCreateInfo.pDependencies   = &Dependencies[0]; // VkSubpassDependency * pDependencies
+
+    VK_CHECK(vkCreateRenderPass(GlobalVulkan.PrimaryDevice,&RenderPassCreateInfo, 0, &GlobalVulkan.RenderPassTransparency));
+
+    return 0;
+}
+
+i32
+VulkanInitDefaultRenderPass()
+{
+    VkAttachmentDescription ColorAttachment = {};
     ColorAttachment.format         = GlobalVulkan.SwapchainImageFormat; // VkFormat   format;
     ColorAttachment.samples        = VK_SAMPLE_COUNT_1_BIT;             // VkSampleCountFlagBits   samples;
     ColorAttachment.loadOp         = VK_ATTACHMENT_LOAD_OP_CLEAR;       // VkAttachmentLoadOp   loadOp;
@@ -830,37 +1229,41 @@ VulkanInitDefaultRenderPass()
     ColorAttachment.stencilLoadOp  = VK_ATTACHMENT_LOAD_OP_DONT_CARE;   // VkAttachmentLoadOp   stencilLoadOp;
     ColorAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;  // VkAttachmentStoreOp   stencilStoreOp;
     ColorAttachment.initialLayout  = VK_IMAGE_LAYOUT_UNDEFINED;         // VkImageLayout   initialLayout;
-    ColorAttachment.finalLayout    = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;   // VkImageLayout   finalLayout;
+    //ColorAttachment.finalLayout    = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;   // VkImageLayout   finalLayout;
+    ColorAttachment.finalLayout    = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;   // VkImageLayout   finalLayout;
 
-    VkAttachmentReference ColorAttachmentReference;
-    ColorAttachmentReference.attachment = 0;                                        // u32_t   attachment;
-    ColorAttachmentReference.layout     = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL; // VkImageLayout   layout;
-
-    VkSubpassDescription SubpassDescription;
-    SubpassDescription.flags                   = 0;                               // VkSubpassDescriptionFlags flags;
-    SubpassDescription.pipelineBindPoint       = VK_PIPELINE_BIND_POINT_GRAPHICS; // VkPipelineBindPoint pipelineBindPoint;
-    SubpassDescription.inputAttachmentCount    = 0;                               // u32_t inputAttachmentCount;
-    SubpassDescription.pInputAttachments       = 0;                               // Typedef * pInputAttachments;
-    SubpassDescription.colorAttachmentCount    = 1;                               // u32_t colorAttachmentCount;
-    SubpassDescription.pColorAttachments       = &ColorAttachmentReference;       // Typedef * pColorAttachments;
-    SubpassDescription.pResolveAttachments     = 0;                               // Typedef * pResolveAttachments;
-    SubpassDescription.pDepthStencilAttachment = &DepthAttachmentReference;       // Typedef * pDepthStencilAttachment;
-    SubpassDescription.preserveAttachmentCount = 0;                               // u32_t preserveAttachmentCount;
-    SubpassDescription.pPreserveAttachments    = 0;                               // Typedef * pPreserveAttachments;
+    VkAttachmentDescription DepthAttachment = ColorAttachment;
+    DepthAttachment.format         = GlobalVulkan.PrimaryDepthBuffer->Format;                  // VkFormat format;
+    DepthAttachment.initialLayout  = VK_IMAGE_LAYOUT_UNDEFINED;                        // VkImageLayout initialLayout;
+    DepthAttachment.finalLayout    = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL; // VkImageLayout finalLayout;
 
     VkAttachmentDescription Attachments[2] = {
         ColorAttachment,
         DepthAttachment
     };
 
+    VkSubpassDescription SubpassDescription = {};
+    VkAttachmentReference ColorAttachmentReference;
+    VkAttachmentReference DepthAttachmentReference;
+
+    ColorAttachmentReference.attachment = 0;                                        // u32_t   attachment;
+    ColorAttachmentReference.layout     = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL; // VkImageLayout   layout;
+    DepthAttachmentReference.attachment = 1; // u32_t   attachment;
+    DepthAttachmentReference.layout     = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL; // VkImageLayout   layout;
+
+    SubpassDescription.pipelineBindPoint       = VK_PIPELINE_BIND_POINT_GRAPHICS; // VkPipelineBindPoint pipelineBindPoint;
+    SubpassDescription.colorAttachmentCount    = 1;                               // u32_t colorAttachmentCount;
+    SubpassDescription.pColorAttachments       = &ColorAttachmentReference;       // Typedef * pColorAttachments;
+    SubpassDescription.pDepthStencilAttachment = &DepthAttachmentReference;       // Typedef * pDepthStencilAttachment;
+
 #if 0
     VkSubpassDependency Dependency;
     //Dependency.srcSubpass      = ; // uint32_t   srcSubpass;
     //Dependency.dstSubpass      = ; // uint32_t   dstSubpass;
-    Dependency.srcStageMask    = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT; // VkPipelineStageFlags   srcStageMask;
-    Dependency.dstStageMask    = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;; // VkPipelineStageFlags   dstStageMask;
+    Dependency.srcStageMask    = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT; 
+    Dependency.dstStageMask    = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
     //Dependency.srcAccessMask   = ; // VkAccessFlags   srcAccessMask;
-    Dependency.dstAccessMask   = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;; // VkAccessFlags   dstAccessMask;
+    Dependency.dstAccessMask   = VK_ACCESS_COLOR_ATTACHMENT_READ_BIT;
     //Dependency.dependencyFlags = ; // VkDependencyFlags   dependencyFlags;
 #endif
 
@@ -910,6 +1313,31 @@ VulkanInitFramebuffers()
         FramebufferCreateInfo.layers          = 1;                                   // u32_t layers;
 
         VK_CHECK( vkCreateFramebuffer(GlobalVulkan.PrimaryDevice, &FramebufferCreateInfo, 0, &GlobalVulkan.Framebuffers[ImageIndex]));
+    }
+
+    for (u32 ImageIndex = 0;
+                ImageIndex < GlobalVulkan.SwapchainImageCount;
+                ++ImageIndex)
+    {
+        VkImageView Attachments[] = {
+            GlobalVulkan.WeightedColorImage->ImageView,
+            GlobalVulkan.WeightedRevealImage->ImageView,
+            GlobalVulkan.SwapchainImageViews[ImageIndex],
+            GlobalVulkan.PrimaryDepthBuffer->ImageView
+        };
+
+        VkFramebufferCreateInfo FramebufferCreateInfo;
+        FramebufferCreateInfo.sType           = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;     // VkStructureType   sType;
+        FramebufferCreateInfo.pNext           = 0;                                   // Void * pNext;
+        FramebufferCreateInfo.flags           = 0;                                   // VkFramebufferCreateFlags flags;
+        FramebufferCreateInfo.renderPass      = GlobalVulkan.RenderPassTransparency;             // VkRenderPass renderPass;
+        FramebufferCreateInfo.attachmentCount = ArrayCount(Attachments);             // u32_t attachmentCount;
+        FramebufferCreateInfo.pAttachments    = &Attachments[0];                     // Typedef * pAttachments;
+        FramebufferCreateInfo.width           = GlobalVulkan.WindowExtension.width;  // u32_t width;
+        FramebufferCreateInfo.height          = GlobalVulkan.WindowExtension.height; // u32_t height;
+        FramebufferCreateInfo.layers          = 1;                                   // u32_t layers;
+
+        VK_CHECK( vkCreateFramebuffer(GlobalVulkan.PrimaryDevice, &FramebufferCreateInfo, 0, &GlobalVulkan.FramebuffersTransparency[ImageIndex]));
     }
 
     return 0;
@@ -1214,7 +1642,7 @@ GRAPHICS_PUSH_TEXTURE_DATA(PushTextureData)
         VH_AllocateDescriptor(&GlobalVulkan._DebugTextureSetLayout,GlobalVulkan._DescriptorPool,&GlobalVulkan._DebugTextureSet);
     }
 
-    Arena->CurrentSize += (u32)VulkanImage->MemoryRequirements.size;
+    Arena->CurrentSize += maxval((u32)VulkanImage->MemoryRequirements.size, Arena->Alignment);
 
     // commit
     ResultImageIndex = Arena->ImageCount++;
@@ -1447,6 +1875,8 @@ RenderBeginPass(v4 ClearColor)
 
     VkPipelineLayout PipelineLayout = GlobalVulkan.PipelineLayout[0];
 
+    GlobalVulkan.CurrentPipelineLayout = PipelineLayout;
+
     // Global descriptor, bind once
     vkCmdBindDescriptorSets(cmd, 
                             VK_PIPELINE_BIND_POINT_GRAPHICS, 
@@ -1463,6 +1893,7 @@ RenderBeginPass(v4 ClearColor)
                             &GetCurrentFrame()->ObjectsDescriptor, 
                             0, nullptr);
 
+    RenderBindTexture(0);
 
     return 0;
 }
@@ -1613,6 +2044,11 @@ FreeSwapchain()
                 vkDestroyImageView(GlobalVulkan.PrimaryDevice,GlobalVulkan.SwapchainImageViews[ImageIndex],0);
                 GlobalVulkan.SwapchainImageViews[ImageIndex] = VK_NULL_HANDLE;
             }
+            if (VK_VALID_HANDLE(GlobalVulkan.FramebuffersTransparency[ImageIndex]))
+            {
+                vkDestroyFramebuffer(GlobalVulkan.PrimaryDevice,GlobalVulkan.FramebuffersTransparency[ImageIndex],0);
+                GlobalVulkan.FramebuffersTransparency[ImageIndex] = VK_NULL_HANDLE;
+            }
         }
 
         for (i32 FrameIndex = 0;
@@ -1626,6 +2062,11 @@ FreeSwapchain()
         if ( VK_VALID_HANDLE(GlobalVulkan.RenderPass) )
         {
             vkDestroyRenderPass(GlobalVulkan.PrimaryDevice, GlobalVulkan.RenderPass, 0);
+        }
+
+        if ( VK_VALID_HANDLE(GlobalVulkan.RenderPassTransparency) )
+        {
+            vkDestroyRenderPass(GlobalVulkan.PrimaryDevice, GlobalVulkan.RenderPassTransparency, 0);
         }
 
         GlobalVulkan.SwapchainImageCount = 0;
@@ -1663,6 +2104,7 @@ GRAPHICS_ON_WINDOW_RESIZE(OnWindowResize)
         }
 
         if (VulkanInitDefaultRenderPass()) return 1;
+        if (VulkanCreateTransparentRenderPass()) return 1;
 
         VH_DestroyImage(GlobalVulkan.PrimaryDepthBufferArena->Device,GlobalVulkan.PrimaryDepthBuffer);
         --GlobalVulkan.PrimaryDepthBufferArena->ImageCount;
@@ -1856,6 +2298,11 @@ VulkanCreateLogicaDevice()
 
     VK_DEVICE_LEVEL_FN(GlobalVulkan.PrimaryDevice,vkBindBufferMemory);
     VK_DEVICE_LEVEL_FN(GlobalVulkan.PrimaryDevice,vkBindImageMemory);
+
+    VK_DEVICE_LEVEL_FN(GlobalVulkan.PrimaryDevice,vkCmdSetDepthTestEnable);
+    VK_DEVICE_LEVEL_FN(GlobalVulkan.PrimaryDevice,vkCmdNextSubpass);
+    
+
 
     // Queue creation
     vkGetDeviceQueue(GlobalVulkan.PrimaryDevice, GlobalVulkan.GraphicsQueueFamilyIndex, 0, &GlobalVulkan.GraphicsQueue);
@@ -2126,23 +2573,62 @@ VulkanGetInstance(b32 EnableValidationLayer,
     AppInfo.engineVersion         = ENGINE_VERSION; // u32_t   engineVersion;
     AppInfo.apiVersion            = VULKAN_API_VERSION; // u32_t   apiVersion;
     
+    const char * ExtensionsRequired[] = {
+        VK_KHR_SURFACE_EXTENSION_NAME,
+        VkKHROSSurfaceExtensionName,
+#if DEBUG
+        VK_EXT_DEBUG_UTILS_EXTENSION_NAME
+#endif
+    };
+
     if (!VulkanInstanceSupportsSurface(VkKHROSSurfaceExtensionName))
     {
-        Log("Instance does not supports surfaces");
+        Logn("Surface (%s) not supported",VkKHROSSurfaceExtensionName);
+    }
+
+    u32 TotalInstanceExtensionProp = 0;
+    VK_CHECK(vkEnumerateInstanceExtensionProperties(0, &TotalInstanceExtensionProp, 0));
+
+    VkExtensionProperties InstanceExtensionProp[20] = {};
+    Assert(ArrayCount(InstanceExtensionProp) >= TotalInstanceExtensionProp);
+    VK_CHECK(vkEnumerateInstanceExtensionProperties(0, &TotalInstanceExtensionProp, &InstanceExtensionProp[0]));
+
+    b32 AnyInstanceExtPropNotFound = false;
+
+    for (u32 ExtReqIndex = 1;// SURFACE IS CHECKED WITH SPECIAL FUNCTION
+             ExtReqIndex < ArrayCount(ExtensionsRequired);
+             ++ExtReqIndex)
+    {
+        u32 InstanceExtPropIndex = 0;
+        for (InstanceExtPropIndex = 0; 
+            InstanceExtPropIndex < TotalInstanceExtensionProp;
+            ++InstanceExtPropIndex)
+        {
+            if ((strcmp(InstanceExtensionProp[InstanceExtPropIndex].extensionName,ExtensionsRequired[ExtReqIndex]) == 0))
+            {
+                break;
+            }
+        }
+        if (InstanceExtPropIndex == TotalInstanceExtensionProp)
+        {
+            Logn("Instance extension property (%s) not found.", ExtensionsRequired[ExtReqIndex]);
+            AnyInstanceExtPropNotFound = true;
+        }
+    }
+
+    Assert(!AnyInstanceExtPropNotFound);
+    if (AnyInstanceExtPropNotFound)
+    { 
         return 1;
     }
 
-    const char * ExtensionsRequired[2] = {
-        VK_KHR_SURFACE_EXTENSION_NAME,
-        VkKHROSSurfaceExtensionName
-    };
 
     i32 EnabledInstanceLayerCount = 0;
-    const char * AllInstanceLayers[1] = {
+    const char * AllInstanceLayers[] = {
         "VK_LAYER_KHRONOS_validation"
     };
     b32 InstanceLayersEnabledStatus[ArrayCount(AllInstanceLayers)] = {
-        EnableValidationLayer 
+        EnableValidationLayer
     };
 
     char * InstanceLayersToEnable[ArrayCount(AllInstanceLayers)];
@@ -2162,9 +2648,10 @@ VulkanGetInstance(b32 EnableValidationLayer,
         {
             b32 Found  = false;
             for (u32 LayerPropIndex = 0;
-                        LayerPropIndex < ArrayCount(LayerProperties);
+                        LayerPropIndex < InstanceLayerCount;
                         ++LayerPropIndex)
             {
+                Logn("%s",LayerProperties[LayerPropIndex].layerName);
                 if (strcmp(LayerProperties[LayerPropIndex].layerName,AllInstanceLayers[LayerIndex]) == 0)
                 {
                     InstanceLayersToEnable[EnabledInstanceLayerCount++] = (char *)AllInstanceLayers[LayerIndex];
@@ -2243,6 +2730,30 @@ VulkanGetInstance(b32 EnableValidationLayer,
     VK_INSTANCE_LEVEL_FN(Instance,vkQueueWaitIdle);
     VK_INSTANCE_LEVEL_FN(Instance,vkCmdBindVertexBuffers);
     VK_INSTANCE_LEVEL_FN(Instance,vkCmdBindIndexBuffer);
+
+    return 0;
+}
+i32
+CreateDescriptorSetAttachmentInputs()
+{
+    VkDescriptorSetLayoutBinding SimulationBufferBinding = 
+        VH_CreateDescriptorSetLayoutBinding(0,
+                VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC,
+                VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT);
+
+    VkDescriptorSetLayoutBinding DescriptorSetLayoutBindings[] = 
+    {
+        SimulationBufferBinding
+    };
+
+    VkDescriptorSetLayoutCreateInfo SetInfo;
+    SetInfo.sType        = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO; // VkStructureType   sType;
+    SetInfo.pNext        = 0; // Void * pNext;
+    SetInfo.flags        = 0; // VkDescriptorSetLayoutCreateFlags   flags;
+    SetInfo.bindingCount = ArrayCount(DescriptorSetLayoutBindings); // uint32_t   bindingCount;
+    SetInfo.pBindings    = &DescriptorSetLayoutBindings[0]; // Typedef * pBindings;
+
+    VK_CHECK(vkCreateDescriptorSetLayout(GlobalVulkan.PrimaryDevice,&SetInfo,0,&GlobalVulkan._AttachmentInputsSetLayout));
 
     return 0;
 }
@@ -2364,6 +2875,7 @@ CreatePipelineLayoutTexture(VkPipelineLayout * PipelineLayout)
 
     VK_CHECK(vkCreatePipelineLayout(GlobalVulkan.PrimaryDevice, &PipelineLayoutCreateInfo, 0, PipelineLayout));
 
+
     return 0;
 }
 
@@ -2451,6 +2963,71 @@ CreateUnallocatedMemoryArenas(gpu_arena * Arenas, i32 MaxArenas, u32 * ArenasCre
     PrimDepthBufArena->Alignment = (u32)TempMemReq.memoryRequirements.alignment;
     GlobalVulkan.PrimaryDepthBufferArena = PrimDepthBufArena;
 
+    // Query weight color for transparen objects
+    {
+        VkImageUsageFlags WeightUsageFlags = 
+            VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT;
+        VkFormat Format = VK_FORMAT_R16G16B16A16_SFLOAT; // VkFormat   format;
+        VkImageCreateInfo DefaultWeightInfo = 
+            VH_CreateImageCreateInfo2D(MaxExtent3D, Format, WeightUsageFlags);
+
+        VkDeviceImageMemoryRequirements ReqImage;
+        ReqImage.sType       = VK_STRUCTURE_TYPE_DEVICE_IMAGE_MEMORY_REQUIREMENTS; // sType   sType
+        ReqImage.pNext       = 0; // Void * pNext
+        ReqImage.pCreateInfo = &DefaultWeightInfo; // VkImageCreateInfo * pCreateInfo
+        ReqImage.planeAspect = VK_IMAGE_ASPECT_COLOR_BIT; // planeAspect   planeAspect
+
+        vkGetDeviceImageMemoryRequirements(GlobalVulkan.PrimaryDevice,&ReqImage,&TempMemReq);
+        VkMemoryPropertyFlags ImageMemoryPropertyFlags = VK_MEMORY_GPU;
+        TempMemoryTypeIndex = VH_FindSuitableMemoryIndex(GlobalVulkan.PrimaryGPU,TempMemReq,ImageMemoryPropertyFlags);
+
+        u32 WeightArenaSize = (u32)TempMemReq.memoryRequirements.size;
+        Assert(ArenaCount < MaxArenas);
+        gpu_arena * WeightColorArena = Arenas + ArenaCount++;
+        if (VH_CreateUnAllocArenaImage(GlobalVulkan.PrimaryGPU,GlobalVulkan.PrimaryDevice,
+                    WeightArenaSize,
+                    WeightColorArena)
+           )
+        {
+            return 1;
+        };
+        WeightColorArena->MemoryIndexType = TempMemoryTypeIndex;
+        WeightColorArena->Alignment = (u32)TempMemReq.memoryRequirements.alignment;
+        GlobalVulkan.WeightedColorArena = WeightColorArena;
+    }
+
+    // Query weight reveal for transparen objects
+    {
+        VkImageUsageFlags WeightUsageFlags = 
+            VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT;
+        VkFormat Format = VK_FORMAT_R16_SFLOAT; // VkFormat   format;
+        VkImageCreateInfo DefaultWeightInfo = 
+            VH_CreateImageCreateInfo2D(MaxExtent3D, Format, WeightUsageFlags);
+
+        VkDeviceImageMemoryRequirements ReqImage;
+        ReqImage.sType       = VK_STRUCTURE_TYPE_DEVICE_IMAGE_MEMORY_REQUIREMENTS; // sType   sType
+        ReqImage.pNext       = 0; // Void * pNext
+        ReqImage.pCreateInfo = &DefaultWeightInfo; // VkImageCreateInfo * pCreateInfo
+        ReqImage.planeAspect = VK_IMAGE_ASPECT_COLOR_BIT; // planeAspect   planeAspect
+
+        vkGetDeviceImageMemoryRequirements(GlobalVulkan.PrimaryDevice,&ReqImage,&TempMemReq);
+        VkMemoryPropertyFlags ImageMemoryPropertyFlags = VK_MEMORY_GPU;
+        TempMemoryTypeIndex = VH_FindSuitableMemoryIndex(GlobalVulkan.PrimaryGPU,TempMemReq,ImageMemoryPropertyFlags);
+
+        u32 WeightArenaSize = (u32)TempMemReq.memoryRequirements.size;
+        Assert(ArenaCount < MaxArenas);
+        gpu_arena * WeightRevealArena = Arenas + ArenaCount++;
+        if (VH_CreateUnAllocArenaImage(GlobalVulkan.PrimaryGPU,GlobalVulkan.PrimaryDevice,
+                    WeightArenaSize,
+                    WeightRevealArena)
+           )
+        {
+            return 1;
+        };
+        WeightRevealArena->MemoryIndexType = TempMemoryTypeIndex;
+        WeightRevealArena->Alignment = (u32)TempMemReq.memoryRequirements.alignment;
+        GlobalVulkan.WeightedRevealArena = WeightRevealArena;
+    }
 
     // Query default image required memory and allocate
     VkImageUsageFlags UsageFlags = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
@@ -2623,6 +3200,18 @@ CommitArenasToMemory(gpu_arena * Arenas, u32 ArenaCount, device_memory_pools * D
     return 0;
 }
 
+VKAPI_ATTR VkBool32 VKAPI_CALL
+VulkanDebugMessageCallback(VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity, 
+              VkDebugUtilsMessageTypeFlagsEXT messageType, 
+              const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData,
+              void* pUserData)
+{
+    if (messageSeverity >= VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT) {
+        Logn("Validation layer: %s", pCallbackData->pMessage);
+    }
+
+    return VK_FALSE;
+}
 
 // ivp -- initialize vulkan procedure
 i32
@@ -2642,6 +3231,27 @@ InitializeVulkan(i32 Width, i32 Height,
                           &pfnOSSurface,PlatformWindow.OSSurfaceFuncName,
                           GetInstanceProcAddr)) return 1;
     QUEUE_DELETE_INSTANCE(&PrimaryVulkanDestroyQueue,&GlobalVulkan.Instance);
+
+#if DEBUG
+    VK_INSTANCE_LEVEL_FN(GlobalVulkan.Instance,vkCreateDebugUtilsMessengerEXT);
+    VK_INSTANCE_LEVEL_FN(GlobalVulkan.Instance,vkDestroyDebugUtilsMessengerEXT);
+    VK_INSTANCE_LEVEL_FN(GlobalVulkan.Instance,vkSetDebugUtilsObjectNameEXT);
+
+    VkDebugUtilsMessengerCreateInfoEXT DebugUtilMsgCreateInfo;
+    
+    DebugUtilMsgCreateInfo.sType           = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT; // sType   sType
+    DebugUtilMsgCreateInfo.pNext           = 0; // Void * pNext
+    DebugUtilMsgCreateInfo.flags           = 0; // flags   flags
+    DebugUtilMsgCreateInfo.messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT; // messageSeverity   messageSeverity
+    DebugUtilMsgCreateInfo.messageType     = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT  | VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT; // messageType   messageType
+    DebugUtilMsgCreateInfo.pfnUserCallback = VulkanDebugMessageCallback; // pfnUserCallback   pfnUserCallback
+    DebugUtilMsgCreateInfo.pUserData       = 0; // Void * pUserData
+
+    // you can have multiple callbacks for different messages
+    vkCreateDebugUtilsMessengerEXT(GlobalVulkan.Instance , &DebugUtilMsgCreateInfo, 0, &GlobalVulkan.DefaultDebugCb);
+
+    QUEUE_DELETE_DEBUG_MSG(&PrimaryVulkanDestroyQueue,GlobalVulkan.Instance,&GlobalVulkan.DefaultDebugCb);
+#endif
 
     if (PlatformWindow.pfnVulkanCreateSurface(PlatformWindow.SurfaceData,pfnOSSurface, GlobalVulkan.Instance, &GlobalVulkan.Surface)) return 1;
     QUEUE_DELETE_SURFACEKHR(&PrimaryVulkanDestroyQueue,GlobalVulkan.Instance,&GlobalVulkan.Surface);
@@ -2670,10 +3280,18 @@ InitializeVulkan(i32 Width, i32 Height,
     /* INIT DESCRIPTOR SETS */
     /* Level 1 */ CreateDescriptorSetLayoutGlobal();
     QUEUE_DELETE_DESCRIPTORSETLAYOUT(&PrimaryVulkanDestroyQueue,GlobalVulkan.PrimaryDevice,&GlobalVulkan._GlobalSetLayout);
+    SetDebugName(GlobalVulkan._GlobalSetLayout,"_GlobalSetLayout");
     /* Level 2 */ CreateDescriptorSetLayoutObjects();
     QUEUE_DELETE_DESCRIPTORSETLAYOUT(&PrimaryVulkanDestroyQueue,GlobalVulkan.PrimaryDevice,&GlobalVulkan._ObjectsSetLayout);
+    SetDebugName(GlobalVulkan._ObjectsSetLayout,"_ObjectsSetLayout");
     /* Level 3 */ CreateDescriptorSetTextures();
     QUEUE_DELETE_DESCRIPTORSETLAYOUT(&PrimaryVulkanDestroyQueue,GlobalVulkan.PrimaryDevice,&GlobalVulkan._DebugTextureSetLayout);
+    SetDebugName(GlobalVulkan._DebugTextureSetLayout,"_DebugTextureSetLayout");
+#if 0
+    /* Level 4 */ CreateDescriptorSetAttachmentInputs();
+    QUEUE_DELETE_DESCRIPTORSETLAYOUT(&PrimaryVulkanDestroyQueue,GlobalVulkan.PrimaryDevice,&GlobalVulkan._AttachmentInputsSetLayout);
+    SetDebugName(GlobalVulkan._AttachmentInputsSetLayout,"_AttachmentInputsSetLayout");
+#endif
 
     VkDeviceSize TextureBufferSize = Megabytes(15);
     VkDescriptorPoolSize DescriptorPoolSizes[] =
@@ -2692,6 +3310,7 @@ InitializeVulkan(i32 Width, i32 Height,
 	PoolInfo.pPoolSizes = DescriptorPoolSizes;
 
 	vkCreateDescriptorPool(GlobalVulkan.PrimaryDevice, &PoolInfo, nullptr, &GlobalVulkan._DescriptorPool);
+    SetDebugName(GlobalVulkan._DescriptorPool,"_DescriptorPool");
     QUEUE_DELETE_DESCRIPTORPOOL(&PrimaryVulkanDestroyQueue,GlobalVulkan.PrimaryDevice,&GlobalVulkan._DescriptorPool);
 
 
@@ -2775,6 +3394,7 @@ InitializeVulkan(i32 Width, i32 Height,
 
     // INIT PIPELINES
     CreatePipelineLayoutTexture(GlobalVulkan.PipelineLayout + 0);
+    SetDebugName(GlobalVulkan.PipelineLayout[0], "PipeliLayout Texture");
     QUEUE_DELETE_PIPELINELAYOUT(&PrimaryVulkanDestroyQueue,GlobalVulkan.PrimaryDevice, &GlobalVulkan.PipelineLayout[0]);
 
     // Staging buffer commands
@@ -2801,9 +3421,67 @@ InitializeVulkan(i32 Width, i32 Height,
         Logn("Failed to create depth buffer");
         return 1;
     }
+    SetDebugName(GlobalVulkan.PrimaryDepthBuffer->Image, "PrimaryDepthBuffer");
+
+    VkImageUsageFlags WeightUsageFlags = 
+        VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT;
+    GlobalVulkan.WeightedColorImage = VH_CreateImage(GlobalVulkan.WeightedColorArena, 
+                                                     VK_FORMAT_R16G16B16A16_SFLOAT, 
+                                                     WeightUsageFlags, 
+                                                     Extent3D);
+    if (IS_NULL(GlobalVulkan.WeightedColorImage))
+    {
+        Logn("Failed to create weighted color image");
+    }
+    SetDebugName(GlobalVulkan.WeightedColorImage->Image, "WeightedColorImage");
+
+
+    GlobalVulkan.WeightedRevealImage = VH_CreateImage(GlobalVulkan.WeightedRevealArena, 
+                                                     VK_FORMAT_R16_SFLOAT, 
+                                                     WeightUsageFlags, 
+                                                     Extent3D);
+    if (IS_NULL(GlobalVulkan.WeightedRevealImage))
+    {
+        Logn("Failed to create weighted reveal image");
+    }
+    SetDebugName(GlobalVulkan.WeightedRevealImage->Image, "WeightedRevealImage");
+
+    VkImageSubresourceRange Range;
+    Range.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT;
+    Range.baseMipLevel   = 0; // uint32_t baseMipLevel;
+    Range.levelCount     = 1; // uint32_t levelCount;
+    Range.baseArrayLayer = 0; // uint32_t baseArrayLayer;
+    Range.layerCount     = 1; // uint32_t layerCount;
+
+    VkImageMemoryBarrier MemoryBarrierSetColorAttachment;
+    MemoryBarrierSetColorAttachment.sType               = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER; // sType   sType
+    MemoryBarrierSetColorAttachment.pNext               = 0; // Void * pNext
+    MemoryBarrierSetColorAttachment.srcAccessMask       = VK_ACCESS_NONE; // srcAccessMask   srcAccessMask
+    MemoryBarrierSetColorAttachment.dstAccessMask       = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT; // dstAccessMask   dstAccessMask
+    MemoryBarrierSetColorAttachment.oldLayout           = VK_IMAGE_LAYOUT_UNDEFINED; // oldLayout   oldLayout
+    MemoryBarrierSetColorAttachment.newLayout           = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL; // newLayout   newLayout
+    MemoryBarrierSetColorAttachment.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED; // srcQueueFamilyIndex   srcQueueFamilyIndex
+    MemoryBarrierSetColorAttachment.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED; // dstQueueFamilyIndex   dstQueueFamilyIndex
+    MemoryBarrierSetColorAttachment.subresourceRange    = Range; // subresourceRange   subresourceRange
+
+    VkCommandBuffer SingleCmd = BeginSingleCommandBuffer();
+
+    MemoryBarrierSetColorAttachment.image               = GlobalVulkan.WeightedRevealImage->Image; // image   image
+    vkCmdPipelineBarrier(SingleCmd, 
+                            VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, 
+                            VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, 0, 0, nullptr, 0, nullptr, 1, &MemoryBarrierSetColorAttachment);
+
+    MemoryBarrierSetColorAttachment.image               = GlobalVulkan.WeightedColorImage->Image; // image   image
+    vkCmdPipelineBarrier(SingleCmd, 
+                            VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, 
+                            VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, 0, 0, nullptr, 0, nullptr, 1, &MemoryBarrierSetColorAttachment);
+
+    EndSingleCommandBuffer(SingleCmd);
 
     if (VulkanInitDefaultRenderPass()) return 1;
     QUEUE_DELETE_RENDERPASS(&PrimaryVulkanDestroyQueue,GlobalVulkan.PrimaryDevice, &GlobalVulkan.RenderPass);
+    if (VulkanCreateTransparentRenderPass()) return 1;
+    QUEUE_DELETE_RENDERPASS(&PrimaryVulkanDestroyQueue,GlobalVulkan.PrimaryDevice, &GlobalVulkan.RenderPassTransparency);
 
     if (VulkanInitFramebuffers()) return 1;
     for (u32 ImageIndex = 0;
@@ -2811,6 +3489,7 @@ InitializeVulkan(i32 Width, i32 Height,
                 ++ImageIndex)
     {
         QUEUE_DELETE_FRAMEBUFFER(&PrimaryVulkanDestroyQueue,GlobalVulkan.PrimaryDevice, &GlobalVulkan.Framebuffers[ImageIndex]);
+        QUEUE_DELETE_FRAMEBUFFER(&PrimaryVulkanDestroyQueue,GlobalVulkan.PrimaryDevice, &GlobalVulkan.FramebuffersTransparency[ImageIndex]);
         QUEUE_DELETE_IMAGEVIEW(&PrimaryVulkanDestroyQueue,GlobalVulkan.PrimaryDevice, &GlobalVulkan.SwapchainImageViews[ImageIndex]);
     }
 
@@ -2818,6 +3497,12 @@ InitializeVulkan(i32 Width, i32 Height,
     VkSamplerCreateInfo SamplerCreateInfo = VulkanSamplerCreateInfo(VK_FILTER_LINEAR,VK_SAMPLER_ADDRESS_MODE_REPEAT);
 
     VK_CHECK(vkCreateSampler(GlobalVulkan.PrimaryDevice,&SamplerCreateInfo,0,&GlobalVulkan.TextureSampler));
+
+    // TODO: how to properly handle dummy texture on initialization?
+    i32 DummyImgData = (0xFF << 24) |
+                       (0xFF << 0 );
+
+    PushTextureData(&DummyImgData, 1, 1, 4);
 
 
     GlobalVulkan.Initialized = true;
@@ -2864,6 +3549,7 @@ CleanVulkanObjectsQueue(vulkan_destroy_queue * Queue)
             "vulkan_destructor_type_vkDestroyDescriptorPool",
             "vulkan_destructor_type_vkDestroyBuffer",
             "vulkan_destructor_type_vkDestroyImage",
+            "vulkan_destructor_type_vkDestroyDebugUtilsMessengerEXT",
 
             "vulkan_destructor_type_vkDestroyArenaCustom",
             "vulkan_destructor_type_vkDestroyMemoryPoolCustom"
@@ -2915,6 +3601,14 @@ CleanVulkanObjectsQueue(vulkan_destroy_queue * Queue)
 
 
             // GENERIC DESTRUCTOR
+           case vulkan_destructor_type_vkDestroyDebugUtilsMessengerEXT:
+           {
+               VkInstance instance = (VkInstance)Item->Params[0];
+               Assert(VK_VALID_HANDLE(instance));
+               VkDebugUtilsMessengerEXT * messenger = (VkDebugUtilsMessengerEXT *)Item->Params[1];
+               Assert(VK_VALID_HANDLE(messenger));
+               vkDestroyDebugUtilsMessengerEXT(instance, *messenger,0);
+           }break;
            case vulkan_destructor_type_vkDestroySurfaceKHR:
                {
                    VkInstance instance = (VkInstance)Item->Params[0];

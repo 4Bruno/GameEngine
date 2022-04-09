@@ -15,8 +15,10 @@ VH_CreateDescriptorSetLayoutBinding(u32 BindingSlot,VkDescriptorType DescriptorT
 
 //https://github.com/SaschaWillems/Vulkan/blob/master/base/VulkanTools.cpp
 b32
-VH_GetSupportedDepthFormat(VkPhysicalDevice PhysicalDevice, VkFormat *DepthFormat)
+VH_GetSupportedDepthFormat(VkPhysicalDevice PhysicalDevice, VkFormat *DepthFormat, b32 UseHighestPrecision)
 {
+    b32 DepthFormatSupported = false;
+
     // Since all depth formats may be optional, we need to find a suitable depth format to use
     // Start with the highest precision packed format
     VkFormat DepthFormats[] = 
@@ -39,12 +41,13 @@ VH_GetSupportedDepthFormat(VkPhysicalDevice PhysicalDevice, VkFormat *DepthForma
         // Format must support depth stencil attachment for optimal tiling
         if (formatProps.optimalTilingFeatures & VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT)
         {
+            DepthFormatSupported = true;
             *DepthFormat = Format;
-            return true;
+            if (UseHighestPrecision) break;
         }
     }
 
-    return false;
+    return DepthFormatSupported;
 }
 
 void
@@ -807,15 +810,15 @@ VH_CreatePipelineColorBlendAttachmentState()
 {
     VkPipelineColorBlendAttachmentState PipelineColorBlendAttachmentState = {};
 
-#if 1
+#if 0
     PipelineColorBlendAttachmentState.blendEnable         = VK_FALSE; // VkBool32   blendEnable;
 #else
     PipelineColorBlendAttachmentState.blendEnable         = VK_TRUE; // VkBool32   blendEnable;
     PipelineColorBlendAttachmentState.srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;           // VkBlendFactor srcColorBlendFactor;
     PipelineColorBlendAttachmentState.dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA; // VkBlendFactor dstColorBlendFactor;
     PipelineColorBlendAttachmentState.colorBlendOp        = VK_BLEND_OP_ADD;                     // VkBlendOp colorBlendOp;
-    PipelineColorBlendAttachmentState.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;                 // VkBlendFactor srcAlphaBlendFactor;
-    PipelineColorBlendAttachmentState.dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;                // VkBlendFactor dstAlphaBlendFactor;
+    PipelineColorBlendAttachmentState.srcAlphaBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;                 // VkBlendFactor srcAlphaBlendFactor;
+    PipelineColorBlendAttachmentState.dstAlphaBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;                // VkBlendFactor dstAlphaBlendFactor;
     PipelineColorBlendAttachmentState.alphaBlendOp        = VK_BLEND_OP_ADD;                      // VkBlendOp alphaBlendOp;
 #endif
     PipelineColorBlendAttachmentState.colorWriteMask      = 
@@ -986,8 +989,8 @@ VH_PipelineBuilder(vulkan_pipeline * VulkanPipeline,VkDevice Device, VkRenderPas
     ColorBlending.flags           = 0;                                     // VkPipelineColorBlendStateCreateFlags flags;
     ColorBlending.logicOpEnable   = VK_FALSE;                              // VkBool32 logicOpEnable;
     ColorBlending.logicOp         = VK_LOGIC_OP_COPY;                      // VkLogicOp logicOp;
-    ColorBlending.attachmentCount = 1;                                     // u32_t attachmentCount;
-    ColorBlending.pAttachments    = &VulkanPipeline->ColorBlendAttachment; // Typedef * pAttachments;
+    ColorBlending.attachmentCount = VulkanPipeline->ColorBlendAttachmentCount;                                     // u32_t attachmentCount;
+    ColorBlending.pAttachments    = &VulkanPipeline->ColorBlendAttachment[0]; // Typedef * pAttachments;
     //ColorBlending.blendConstants  = 0;// CONSTANTARRAY blendConstants;
 
     VkGraphicsPipelineCreateInfo PipelineInfo = {};
@@ -1090,6 +1093,7 @@ VH_DepthBufferCreateInfo(VkExtent3D Extent)
 
     return ImageCreateInfo;
 }
+
 
 
 vulkan_image *
@@ -1311,3 +1315,160 @@ VH_FreeMemory()
         }
     }
 }
+u32 
+makeAccessMaskPipelineStageFlags(
+        u32 accessMask, 
+        VkPipelineStageFlags supportedShaderBits = 
+                    VK_PIPELINE_STAGE_VERTEX_SHADER_BIT                   | 
+                    VK_PIPELINE_STAGE_TESSELLATION_CONTROL_SHADER_BIT     | 
+                    VK_PIPELINE_STAGE_TESSELLATION_EVALUATION_SHADER_BIT  | 
+                    VK_PIPELINE_STAGE_GEOMETRY_SHADER_BIT                 | 
+                    VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT                 | 
+                    VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT
+                    )
+{
+    const u32 accessPipes[] = {
+        VK_ACCESS_INDIRECT_COMMAND_READ_BIT,
+        VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT,
+        VK_ACCESS_INDEX_READ_BIT,
+        VK_PIPELINE_STAGE_VERTEX_INPUT_BIT,
+        VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT,
+        VK_PIPELINE_STAGE_VERTEX_INPUT_BIT,
+        VK_ACCESS_UNIFORM_READ_BIT,
+        supportedShaderBits,
+        VK_ACCESS_INPUT_ATTACHMENT_READ_BIT,
+        VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+        VK_ACCESS_SHADER_READ_BIT,
+        supportedShaderBits,
+        VK_ACCESS_SHADER_WRITE_BIT,
+        supportedShaderBits,
+        VK_ACCESS_COLOR_ATTACHMENT_READ_BIT,
+        VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+        VK_ACCESS_COLOR_ATTACHMENT_READ_NONCOHERENT_BIT_EXT,
+        VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+        VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+        VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+        VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT,
+        VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT,
+        VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
+        VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT,
+        VK_ACCESS_TRANSFER_READ_BIT,
+        VK_PIPELINE_STAGE_TRANSFER_BIT,
+        VK_ACCESS_TRANSFER_WRITE_BIT,
+        VK_PIPELINE_STAGE_TRANSFER_BIT,
+        VK_ACCESS_HOST_READ_BIT,
+        VK_PIPELINE_STAGE_HOST_BIT,
+        VK_ACCESS_HOST_WRITE_BIT,
+        VK_PIPELINE_STAGE_HOST_BIT,
+        VK_ACCESS_MEMORY_READ_BIT,
+        0,
+        VK_ACCESS_MEMORY_WRITE_BIT,
+        0,
+#if 0//VK_NV_device_generated_commands
+        VK_ACCESS_COMMAND_PREPROCESS_READ_BIT_NV,
+        VK_PIPELINE_STAGE_COMMAND_PREPROCESS_BIT_NV,
+        VK_ACCESS_COMMAND_PREPROCESS_WRITE_BIT_NV,
+        VK_PIPELINE_STAGE_COMMAND_PREPROCESS_BIT_NV,
+#endif
+#if 0 
+        VK_ACCESS_ACCELERATION_STRUCTURE_READ_BIT_NV,
+        VK_PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_NV | supportedShaderBits | VK_PIPELINE_STAGE_ACCELERATION_STRUCTURE_BUILD_BIT_NV,
+        VK_ACCESS_ACCELERATION_STRUCTURE_WRITE_BIT_NV,
+        VK_PIPELINE_STAGE_ACCELERATION_STRUCTURE_BUILD_BIT_NV,
+#endif
+    };
+    if(!accessMask)
+    {
+        return VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+    }
+
+    u32 pipes = 0;
+
+    for(u32 i = 0; i < ArrayCount(accessPipes); i += 2)
+    {
+        if(accessPipes[i] & accessMask)
+        {
+            pipes |= accessPipes[i + 1];
+        }
+    }
+
+    Assert(pipes != 0);
+
+    return pipes;
+}
+
+VkImageMemoryBarrier 
+makeImageMemoryBarrier(VkImage            img,
+                        VkAccessFlags      srcAccess,
+                        VkAccessFlags      dstAccess,
+                        VkImageLayout      oldLayout,
+                        VkImageLayout      newLayout,
+                        VkImageAspectFlags aspectMask)
+{
+    VkImageMemoryBarrier barrier        = {VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER};
+    barrier.srcAccessMask               = srcAccess;
+    barrier.dstAccessMask               = dstAccess;
+    barrier.oldLayout                   = oldLayout;
+    barrier.newLayout                   = newLayout;
+    barrier.dstQueueFamilyIndex         = VK_QUEUE_FAMILY_IGNORED;
+    barrier.srcQueueFamilyIndex         = VK_QUEUE_FAMILY_IGNORED;
+    barrier.image                       = img;
+    barrier.subresourceRange            = {0};
+    barrier.subresourceRange.aspectMask = aspectMask;
+    barrier.subresourceRange.levelCount = VK_REMAINING_MIP_LEVELS;
+    barrier.subresourceRange.layerCount = VK_REMAINING_ARRAY_LAYERS;
+
+    return barrier;
+}
+
+// A simple wrapper for writing a vkCmdPipelineBarrier for doing things such as
+// image layout transitions.
+inline void 
+cmdImageTransition(VkCommandBuffer    cmd,
+                               VkImage            img,
+                               VkImageAspectFlags aspects,
+                               VkAccessFlags      src,
+                               VkAccessFlags      dst,
+                               VkImageLayout      oldLayout,
+                               VkImageLayout      newLayout)
+{
+
+  VkPipelineStageFlags srcPipe = makeAccessMaskPipelineStageFlags(src);
+  VkPipelineStageFlags dstPipe = makeAccessMaskPipelineStageFlags(dst);
+  VkImageMemoryBarrier barrier = 
+      makeImageMemoryBarrier(img, src, dst, oldLayout, newLayout, aspects);
+
+  vkCmdPipelineBarrier(cmd, srcPipe, dstPipe, VK_FALSE, 0, VK_NULL_HANDLE, 0, VK_NULL_HANDLE, 1, &barrier);
+}
+
+void
+VH_TranstionTo(VkCommandBuffer cmdBuffer, vulkan_image * VulkanImage, VkImageLayout   dstLayout, VkAccessFlags   dstAccesses)
+{
+    //https://github.com/nvpro-samples/vk_order_independent_transparency/blob/90a4a007187ce7281c2eafb3b447cfb581616d1e/utilities_vk.h
+    // Note that in larger applications, we could batch together pipeline
+    // barriers for better performance!
+
+    // Maps to barrier.subresourceRange.aspectMask
+    VkImageAspectFlags aspectMask = 0;
+    if(dstLayout == VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL)
+    {
+        aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
+        if(VulkanImage->Format == VK_FORMAT_D32_SFLOAT_S8_UINT || VulkanImage->Format == VK_FORMAT_D24_UNORM_S8_UINT)
+        {
+            aspectMask |= VK_IMAGE_ASPECT_STENCIL_BIT;
+        }
+    }
+    else
+    {
+        aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    }
+
+    cmdImageTransition(cmdBuffer, VulkanImage->Image, aspectMask, 
+                        VulkanImage->CurrentAccess, dstAccesses, 
+                        VulkanImage->CurrentLayout, dstLayout);
+
+    // Update current layout, stages, and accesses
+    VulkanImage->CurrentLayout = dstLayout;
+    VulkanImage->CurrentAccess = dstAccesses;
+}
+
