@@ -27,8 +27,15 @@ struct render_unit
     m4 ModelTransform;
     v4 Color;
     i32 TextureID;
-    u32 MaterialPipelineIndex;
+    u32 MaterialPipelineIndex[2];
     mesh_group * MeshGroup;
+};
+
+struct render_units
+{
+    render_unit  * Units;
+    u32 UnitsLimit;
+    u32 UnitsCount;
 };
 
 struct render_controller
@@ -44,9 +51,8 @@ struct render_controller
     r32 WidthOverHeight;
     r32 OneOverWidthOverHeight;
 
-    render_unit  * Units;
-    u32 UnitsLimit;
-    u32 UnitsCount;
+    render_units UnitsOpaque;
+    render_units UnitsTransparent;
 };
 
 struct GPUSimulationData
@@ -127,6 +133,11 @@ typedef GRAPHICS_CREATE_MATERIAL_PIPELINE(graphics_create_material_pipeline);
 RENDER_API
 GRAPHICS_CREATE_MATERIAL_PIPELINE(CreatePipeline);
 
+#define GRAPHICS_CREATE_TRANSPARENCY_PIPELINE(name) transparency_pipeline_creation_result name(i32 VertexShaderIndex, i32 WeightFragmentShaderIndex,i32 FullscreenTriangleVertexShaderIndex, i32 CompositeFragmentShaderIndex)
+typedef GRAPHICS_CREATE_TRANSPARENCY_PIPELINE(graphics_create_transparency_pipeline);
+RENDER_API
+GRAPHICS_CREATE_TRANSPARENCY_PIPELINE(CreateTransparencyPipeline);
+
 #define GRAPHICS_DESTROY_MATERIAL_PIPELINE(name) void name(i32 Index)
 typedef GRAPHICS_DESTROY_MATERIAL_PIPELINE(graphics_destroy_material_pipeline);
 RENDER_API
@@ -135,19 +146,20 @@ GRAPHICS_DESTROY_MATERIAL_PIPELINE(FreeMaterialPipeline);
 
 struct graphics_api
 {
-    graphics_render_draw              * GraphicsRenderDraw;
-    graphics_begin_render             * GraphicsBeginRenderPass;
-    graphics_end_render               * GraphicsEndRenderPass;
-    graphics_push_vertex_data         * GraphicsPushVertexData;
-    graphics_push_texture_data        * GraphicsPushTextureData;
-    graphics_initialize_api           * GraphicsInitializeApi;
-    graphics_close_api                * GraphicsShutdownAPI;
-    graphics_wait_for_render          * GraphicsWaitForRender;
-    graphics_on_window_resize         * GraphicsOnWindowResize;
-    graphics_create_shader_module     * GraphicsCreateShaderModule;
-    graphics_delete_shader_module     * GraphicsDeleteShaderModule;
-    graphics_create_material_pipeline * GraphicsCreateMaterialPipeline;
-    graphics_destroy_material_pipeline * GraphicsDestroyMaterialPipeline;
+    graphics_render_draw                  * GraphicsRenderDraw;
+    graphics_begin_render                 * GraphicsBeginRenderPass;
+    graphics_end_render                   * GraphicsEndRenderPass;
+    graphics_push_vertex_data             * GraphicsPushVertexData;
+    graphics_push_texture_data            * GraphicsPushTextureData;
+    graphics_initialize_api               * GraphicsInitializeApi;
+    graphics_close_api                    * GraphicsShutdownAPI;
+    graphics_wait_for_render              * GraphicsWaitForRender;
+    graphics_on_window_resize             * GraphicsOnWindowResize;
+    graphics_create_shader_module         * GraphicsCreateShaderModule;
+    graphics_delete_shader_module         * GraphicsDeleteShaderModule;
+    graphics_create_material_pipeline     * GraphicsCreateMaterialPipeline;
+    graphics_destroy_material_pipeline    * GraphicsDestroyMaterialPipeline;
+    graphics_create_transparency_pipeline * GraphicsCreateTransparencyPipeline;
 };
 
 #endif

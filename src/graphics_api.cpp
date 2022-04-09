@@ -15,11 +15,12 @@ GRAPHICS_INITIALIZE_API(InitializeAPI)
     return ErrorCode;
 }
 
-GRAPHICS_RENDER_DRAW(RenderDraw)
+GRAPHICS_RENDER_DRAW(RenderOpaqueUnits)
 {
     START_CYCLE_COUNT(render_entities);
 
-    gpu_memory_mapping_result ObjectsMapResult = BeginObjectMapping(Renderer->UnitsCount);
+    gpu_memory_mapping_result ObjectsMapResult = 
+        BeginObjectMapping(Renderer->UnitsOpaque.UnitsCount);
 
     if (!ObjectsMapResult.Success)
     {
@@ -30,10 +31,10 @@ GRAPHICS_RENDER_DRAW(RenderDraw)
     GPUObjectData * ObjectData = (GPUObjectData *)ObjectsMapResult.BeginAddress;
 
     for (u32 UnitIndex = 0;
-            UnitIndex < Renderer->UnitsCount;
+            UnitIndex < Renderer->UnitsOpaque.UnitsCount;
             ++UnitIndex)
     {
-        render_unit * Unit = Renderer->Units + UnitIndex;
+        render_unit * Unit = Renderer->UnitsOpaque.Units + UnitIndex;
 
         m4 MVP = Renderer->Projection * Renderer->ViewTransform * Unit->ModelTransform;
 
@@ -55,10 +56,10 @@ GRAPHICS_RENDER_DRAW(RenderDraw)
     u32 ObjectInstance = ObjectsMapResult.Instance;
 
     for (u32 UnitIndex = 0;
-            UnitIndex < Renderer->UnitsCount;
+            UnitIndex < Renderer->UnitsOpaque.UnitsCount;
             ++UnitIndex)
     {
-        render_unit * Unit = Renderer->Units + UnitIndex;
+        render_unit * Unit = Renderer->UnitsOpaque.Units + UnitIndex;
 
         mesh_group * MeshGroup = Unit->MeshGroup;
 
@@ -78,11 +79,12 @@ GRAPHICS_RENDER_DRAW(RenderDraw)
 
         if (LastTextureID != Unit->TextureID && Unit->TextureID >= 0)
         {
+            vkCmdSetDepthTestEnable(GetCurrentFrame()->PrimaryCommandBuffer,VK_FALSE);
             RenderBindTexture(Unit->TextureID);
             LastTextureID = Unit->TextureID;
         }
 
-        i32 MaterialPipelineIndex = Unit->MaterialPipelineIndex;
+        i32 MaterialPipelineIndex = Unit->MaterialPipelineIndex[0];
 
         if (MaterialPipelineIndex != LastMaterialPipelineIndex)
         {
@@ -98,6 +100,143 @@ GRAPHICS_RENDER_DRAW(RenderDraw)
         RenderDrawObjectNTimes(MeshSize,CountMeshInstances,ObjectInstance);
     }
 
+    END_CYCLE_COUNT(render_entities);
+}
+
+GRAPHICS_RENDER_DRAW(RenderTransparentUnits)
+{
+    START_CYCLE_COUNT(render_entities);
+
+    gpu_memory_mapping_result ObjectsMapResult = 
+        BeginObjectMapping(Renderer->UnitsTransparent.UnitsCount);
+
+    if (!ObjectsMapResult.Success)
+    {
+        Assert(0);
+        return;
+    }
+
+    GPUObjectData * ObjectData = (GPUObjectData *)ObjectsMapResult.BeginAddress;
+
+    for (u32 UnitIndex = 0;
+            UnitIndex < Renderer->UnitsTransparent.UnitsCount;
+            ++UnitIndex)
+    {
+        render_unit * Unit = Renderer->UnitsTransparent.Units + UnitIndex;
+
+        m4 MVP = Renderer->Projection * Renderer->ViewTransform * Unit->ModelTransform;
+
+        ObjectData->ModelMatrix = Unit->ModelTransform;
+        ObjectData->MVP = MVP;
+        ObjectData->Color = Unit->Color;
+
+        ++ObjectData;
+    }
+
+    EndObjectsArena();
+
+    mesh_group * LastMeshGroup = 0;
+    i32 CountMeshInstances = 0;
+    u32 MeshSize = 0;
+    i32 LastTextureID = -1;
+
+    u32 ObjectInstance = ObjectsMapResult.Instance;
+
+    RenderSetPipeline(Renderer->UnitsTransparent.Units[0].MaterialPipelineIndex[0]);
+
+    for (u32 UnitIndex = 0;
+            UnitIndex < Renderer->UnitsTransparent.UnitsCount;
+            ++UnitIndex)
+    {
+        render_unit * Unit = Renderer->UnitsTransparent.Units + UnitIndex;
+
+        mesh_group * MeshGroup = Unit->MeshGroup;
+
+        if (LastMeshGroup != MeshGroup)
+        {
+            if (CountMeshInstances > 0)
+            {
+                RenderDrawObjectNTimes(MeshSize,CountMeshInstances,ObjectInstance);
+                ObjectInstance += CountMeshInstances;
+            }
+
+            // hardcoded only first mesh
+            MeshSize = MeshGroup->Meshes[0].VertexSize / sizeof(vertex_point);
+            RenderBindMesh(MeshSize, MeshGroup->GPUVertexBufferBeginOffset);
+            LastMeshGroup = MeshGroup;
+            CountMeshInstances = 0;
+        }
+
+        if (LastTextureID != Unit->TextureID && Unit->TextureID >= 0)
+        {
+            vkCmdSetDepthTestEnable(GetCurrentFrame()->PrimaryCommandBuffer,VK_FALSE);
+            RenderBindTexture(Unit->TextureID);
+            LastTextureID = Unit->TextureID;
+        }
+
+        ++CountMeshInstances;
+    }
+
+    if (CountMeshInstances > 0)
+    {
+        RenderDrawObjectNTimes(MeshSize,CountMeshInstances,ObjectInstance);
+    }
+
+    END_CYCLE_COUNT(render_entities);
+}
+
+GRAPHICS_RENDER_DRAW(RenderDraw)
+{
+    START_CYCLE_COUNT(render_entities);
+
+    VkCommandBuffer cmd = GetCurrentFrame()->PrimaryCommandBuffer;
+
+    RenderOpaqueUnits(Renderer);
+
+    vkCmdEndRenderPass(cmd);
+
+    VkClearValue ColorClear = {};
+    ColorClear.color.float32[0] = 0; // VkClearColorValue color;
+    ColorClear.color.float32[1] = 0; // VkClearColorValue color;
+    ColorClear.color.float32[2] = 0; // VkClearColorValue color;
+    ColorClear.color.float32[3] = 0;
+
+    VkClearValue DepthClear;
+    DepthClear.depthStencil = {1.0f,0};
+
+    VkClearValue ClearAttachments[2] = {
+        ColorClear,
+        DepthClear
+    };
+
+    u32 SwapchainImageIndex = GlobalVulkan.CurrentSwapchainImageIndex;
+
+    VkRenderPassBeginInfo RenderPassBeginInfo = {};
+    RenderPassBeginInfo.sType             = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;       // VkStructureType   sType;
+    RenderPassBeginInfo.pNext             = 0;                                              // Void * pNext;
+    RenderPassBeginInfo.renderPass        = GlobalVulkan.RenderPassTransparency;                        // VkRenderPass renderPass;
+    RenderPassBeginInfo.framebuffer       = GlobalVulkan.FramebuffersTransparency[SwapchainImageIndex]; // VkFramebuffer framebuffer;
+    RenderPassBeginInfo.renderArea.extent = GlobalVulkan.WindowExtension;                   // VkRect2D renderArea;
+    RenderPassBeginInfo.clearValueCount   = ArrayCount(ClearAttachments);                   // u32_t clearValueCount;
+    RenderPassBeginInfo.pClearValues      = &ClearAttachments[0];                           // Typedef * pClearValues;
+
+    vkCmdBeginRenderPass(cmd, &RenderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
+
+    GetCurrentFrame()->ObjectsCount = 0;
+
+    if (Renderer->UnitsTransparent.UnitsCount > 0)
+    {
+        RenderTransparentUnits(Renderer);
+    }
+
+    vkCmdNextSubpass(cmd, VK_SUBPASS_CONTENTS_INLINE);
+
+    if (Renderer->UnitsTransparent.UnitsCount > 0)
+    {
+        // Full screen triangle
+        RenderSetPipeline(Renderer->UnitsTransparent.Units[0].MaterialPipelineIndex[1]);
+        RenderDrawObject(3, 0);
+    }
 
     END_CYCLE_COUNT(render_entities);
 }
@@ -121,6 +260,30 @@ GRAPHICS_END_RENDER(EndRenderPass)
     u32 SwapchainImageIndex = GlobalVulkan.CurrentSwapchainImageIndex;
 
     vkCmdEndRenderPass(cmd);
+
+    VkImageSubresourceRange Range;
+    Range.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT;
+    Range.baseMipLevel   = 0; // uint32_t baseMipLevel;
+    Range.levelCount     = 1; // uint32_t levelCount;
+    Range.baseArrayLayer = 0; // uint32_t baseArrayLayer;
+    Range.layerCount     = 1; // uint32_t layerCount;
+
+    VkImageMemoryBarrier MemoryBarrierPresent;
+    MemoryBarrierPresent.sType               = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER; // sType   sType
+    MemoryBarrierPresent.pNext               = 0; // Void * pNext
+    MemoryBarrierPresent.srcAccessMask       = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT; // srcAccessMask   srcAccessMask
+    MemoryBarrierPresent.dstAccessMask       = VK_ACCESS_COLOR_ATTACHMENT_READ_BIT; // dstAccessMask   dstAccessMask
+    MemoryBarrierPresent.oldLayout           = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL; // oldLayout   oldLayout
+    MemoryBarrierPresent.newLayout           = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR; // newLayout   newLayout
+    MemoryBarrierPresent.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED; // srcQueueFamilyIndex   srcQueueFamilyIndex
+    MemoryBarrierPresent.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED; // dstQueueFamilyIndex   dstQueueFamilyIndex
+    MemoryBarrierPresent.subresourceRange    = Range; // subresourceRange   subresourceRange
+
+    MemoryBarrierPresent.image               = GlobalVulkan.SwapchainImages[SwapchainImageIndex];
+    vkCmdPipelineBarrier(cmd, 
+                            VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, 
+                            VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, 0, 0, nullptr, 0, nullptr, 1, &MemoryBarrierPresent);
+
 
     VK_CHECK(vkEndCommandBuffer(cmd));
 
@@ -161,7 +324,8 @@ EndRender(render_controller * Renderer)
 {
     EndRenderPass();
 
-    Renderer->UnitsCount = 0;
+    Renderer->UnitsOpaque.UnitsCount = 0;
+    Renderer->UnitsTransparent.UnitsCount = 0;
 }
 
 
