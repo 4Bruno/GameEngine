@@ -85,10 +85,16 @@ NewRenderController(memory_arena * Arena,
         } break;
     }
 
-    Renderer.UnitsLimit = RenderUnitLimits;
-    Renderer.Units = PushArray(Arena,RenderUnitLimits,render_unit);
+    // Expects power of 2
+    u32 RenderUnitLimitsPerQueue = RenderUnitLimits >> 1;
 
-    Renderer.UnitsCount = 0;
+    Renderer.UnitsOpaque.UnitsLimit = RenderUnitLimitsPerQueue;
+    Renderer.UnitsOpaque.Units = PushArray(Arena,RenderUnitLimitsPerQueue,render_unit);
+    Renderer.UnitsOpaque.UnitsCount = 0;
+
+    Renderer.UnitsTransparent.UnitsLimit = RenderUnitLimitsPerQueue;
+    Renderer.UnitsTransparent.Units = PushArray(Arena,RenderUnitLimitsPerQueue,render_unit);
+    Renderer.UnitsTransparent.UnitsCount = 0;
 
     return Renderer;
 }
@@ -165,22 +171,39 @@ void
 PushDraw(render_controller * Renderer, game_asset_id Material, m4 * ModelT, game_asset_id MeshID, game_asset_id TextureID, v3 Color, r32 Transparency)
 {
 
-    Assert(Renderer->UnitsCount <= Renderer->UnitsLimit);
 
     mesh_group * MeshGroup = GetMesh(GlobalAssets,MeshID);
-    asset_material MaterialPipeline = GetMaterial(GlobalAssets,Material);
+    asset_material * MaterialPipeline = GetMaterial(GlobalAssets,Material);
     asset_texture * Texture = 0;
     if (TextureID > game_asset_texture_begin && TextureID < game_asset_texture_end)
     {
         Texture = GetTexture(GlobalAssets,TextureID);
     }
 
-    if (MeshGroup && MaterialPipeline.Pipeline.Success && (Texture || TextureID == ASSETS_NULL_TEXTURE))
+    if (MeshGroup && MaterialPipeline && (Texture || TextureID == ASSETS_NULL_TEXTURE))
     {
-        render_unit * Unit = Renderer->Units + Renderer->UnitsCount++;
+        render_unit * Unit = 0;
+        if (Material == game_asset_material_transparent)
+        {
+            Assert(Renderer->UnitsTransparent.UnitsCount <= Renderer->UnitsTransparent.UnitsLimit);
+            Unit = Renderer->UnitsTransparent.Units + Renderer->UnitsTransparent.UnitsCount++;
+        }
+        else
+        {
+            Assert(Renderer->UnitsOpaque.UnitsCount <= Renderer->UnitsOpaque.UnitsLimit);
+            Unit = Renderer->UnitsOpaque.Units + Renderer->UnitsOpaque.UnitsCount++;
+        }
+
         Unit->ModelTransform = *ModelT;
         Unit->MeshGroup = MeshGroup;
-        Unit->MaterialPipelineIndex = MaterialPipeline.Pipeline.Pipeline;
+
+        for (u32 MaterialPipelineIndex = 0; 
+                 MaterialPipelineIndex < MaterialPipeline->PipelinesCount;
+                 ++MaterialPipelineIndex)
+        {
+            Unit->MaterialPipelineIndex[MaterialPipelineIndex] = 
+                MaterialPipeline->Pipeline[MaterialPipelineIndex].Pipeline;
+        }
         Unit->Color = V4(Color, 1.0f - Transparency);
         Unit->TextureID = Texture ? Texture->GPUID : -1;
     }
@@ -321,6 +344,157 @@ GetMatrixDirection(m4 &RotationMatrix)
     return D;
 }
 
+#if 0
+i32
+LookAt(Quaternion * Q, v3 P, v3 TargetP, v3 WorldUp)
+{
+    v3 Out;
+    Quaternion Q1,Q2;
+
+    Quaternion_setIdentity(&Q1);
+    Quaternion_setIdentity(&Q2);
+
+    Out = TargetP - P;
+
+    r32 LengthOut = Length(Out);
+
+    if (LengthOut < 0.000001)
+    {
+        Quaternion_setIdentity(Q);
+        return 1;
+    }
+
+    Out = Out / LengthOut;
+
+    v3 FwAxis = V3(0,0,1.0f);
+    v3 RotAxis = Cross(Out,FwAxis);
+
+    if (LengthSqr(RotAxis)== 0)
+    {
+        RotAxis = WorldUp;
+    }
+    r32 Angle = acosf(Inner(Out,FwAxis));
+
+    Quaternion_fromAxisAngle(RotAxis._V, Angle, Q1);
+
+    return 0;
+}
+#else
+i32
+LookAt(Quaternion * Q, v3 P, v3 TargetP, v3 WorldUp)
+{
+    v3 Right, Up, Out;
+
+    Out = TargetP - P;
+
+    r32 LengthOut = Length(Out);
+
+    if (LengthOut < 0.000001)
+    {
+        return -1;
+    }
+
+    Out = Out / LengthOut;
+
+    Quaternion Q1,Q2;
+
+    Quaternion_setIdentity(&Q1);
+    Quaternion_setIdentity(&Q2);
+
+    v3 FwAxis = V3(0,0,1.0f);
+    v3 RotAxis = Cross(Out,FwAxis);
+
+    if (LengthSqr(RotAxis)== 0)
+    {
+        RotAxis = WorldUp;
+    }
+
+    r32 Angle = acosf(Inner(Out,FwAxis));
+
+    Quaternion_fromAxisAngle(RotAxis._V, Angle, &Q1);
+
+    Quaternion_toAxisAngle(&Q1, Up._V);
+
+#if 0
+    Up = WorldUp - (Inner(WorldUp, Out)*Out);
+    r32 LengthSqrUp = LengthSqr(Up);
+    // too close
+    Assert(LengthSqrUp > 0.000001f);
+    Up = Up / sqrtf(LengthSqrUp);
+#else
+    Right = Normalize(Cross(Out, WorldUp));
+    Up = Normalize(Cross(Right, Out));
+#endif
+
+    RotAxis = Cross(Up, WorldUp);
+    Angle = acosf(Inner(Up,WorldUp));
+
+    Quaternion_fromAxisAngle(RotAxis._V, Angle, &Q2);
+
+    Quaternion_multiply(&Q2, &Q1, Q);
+
+    return 0;
+}
+#endif
+
+i32
+LookAt(m4 * M, v3 P, v3 TargetP, v3 WorldUp)
+{
+    v3 Right, Up, Out;
+
+    Out = TargetP - P;
+
+    r32 LengthOut = Length(Out);
+
+    if (LengthOut < 0.000001)
+    {
+        return -1;
+    }
+
+    Out = Out / LengthOut;
+
+    Up = WorldUp - (Inner(WorldUp, Out)*Out);
+
+    r32 LengthSqrUp = LengthSqr(Up);
+
+    if (LengthSqrUp < 0.000001f)
+    {
+        return -1;
+    }
+
+    Up = Up / sqrtf(LengthSqrUp);
+
+    Right = Cross(Out,Up);
+
+    // TODO: this is a hack I don't understand what I'm doing
+    if (Inner(V3(0,0,1), Out) > 0.0f)
+    {
+        Up = -Up;
+    }
+
+    (*M)[0].x = Right.x;
+    (*M)[0].y = Up.x;
+    (*M)[0].z = Out.x;
+    (*M)[0].w = 0;
+
+    (*M)[1].x = Right.y;
+    (*M)[1].y = Up.y;
+    (*M)[1].z = Out.y;
+    (*M)[1].w = 0;
+
+    (*M)[2].x = Right.z;
+    (*M)[2].y = Up.z;
+    (*M)[2].z = Out.z;
+    (*M)[2].w = 0;
+
+    (*M)[3].x = 0;
+    (*M)[3].y = 0;
+    (*M)[3].z = 0;
+    (*M)[3].w = 1;
+
+    return 0;
+}
+
 i32
 ViewLookAt(render_controller * Renderer, v3 P, v3 TargetP)
 {
@@ -412,7 +586,8 @@ ProjectionMatrix(r32 FOV,r32 AspectRatio, r32 n, r32 f)
 void
 BeginRender(render_controller * Renderer,i32 ScreenWidth, i32 ScreenHeight)
 {
-    Renderer->UnitsCount = 0;
+    Renderer->UnitsTransparent.UnitsCount = 0;
+    Renderer->UnitsOpaque.UnitsCount = 0;
     UpdateRenderViewport(Renderer,ScreenWidth, ScreenHeight);
     UpdateView(Renderer);
 }

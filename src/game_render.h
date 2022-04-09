@@ -69,6 +69,10 @@ GetMatrixDirection(m4 &RotationMatrix);
 
 i32
 ViewLookAt(render_controller * Renderer, v3 P, v3 TargetP);
+i32
+LookAt(Quaternion * Q, v3 P, v3 TargetP, v3 WorldUp);
+i32
+LookAt(m4 * M, v3 P, v3 TargetP, v3 WorldUp);
 
 GAME_API void
 EntityLookAt(render_controller * Renderer,entity Entity, v3 P);

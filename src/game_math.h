@@ -439,6 +439,13 @@ maxval(r32 a, r32 b)
     return Result;
 }
 
+inline u32
+maxval(u32 a, u32 b)
+{
+    u32 Result = a > b ? a : b;
+
+    return Result;
+}
 
 inline r32
 Clamp(r32 a, r32 min, r32 max)

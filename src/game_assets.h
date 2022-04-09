@@ -14,6 +14,11 @@ struct pipeline_creation_result
     i32 PipelineLayout;
 };
 
+struct transparency_pipeline_creation_result
+{
+    pipeline_creation_result PipelineCreationResult[2];
+};
+
 
 enum asset_state
 {
@@ -59,6 +64,7 @@ enum game_asset_id
 
     game_asset_shader_vertex_default_no_light,
     game_asset_shader_vertex_default_light,
+    game_asset_shader_vertex_fullscreen_triangle,
     game_asset_shader_fragment_default,
     game_asset_shader_fragment_texture,
 
@@ -69,13 +75,16 @@ enum game_asset_id
 
     game_asset_material_default_no_light,
     game_asset_material_default_light,
+    game_asset_material_texture_no_light,
     game_asset_material_texture,
+    game_asset_material_transparent,
 
     game_asset_material_end,
 
     /* TEXTURES */
     game_asset_texture_begin,
     game_asset_texture_test,
+    game_asset_texture_particle_01_small,
     game_asset_texture_end,
 
 };
@@ -130,7 +139,8 @@ struct asset_texture
 
 struct asset_material
 {
-    pipeline_creation_result Pipeline;
+    pipeline_creation_result Pipeline[2];
+    u32 PipelinesCount;
     game_asset_id AssetID;
 };
 
@@ -165,7 +175,7 @@ struct game_assets
 };
 
 
-asset_material
+asset_material *
 GetMaterial(game_assets * Assets, game_asset_id MaterialID);
 
 mesh_group *

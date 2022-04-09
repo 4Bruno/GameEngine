@@ -46,7 +46,9 @@ NewGameAssets(memory_arena * Arena, thread_memory_arena * ThreadArenas, i32 Limi
             MaterialIndex < ArrayCount(Assets.CachedMaterials);
             ++MaterialIndex)
     {
-        Assets.CachedMaterials[MaterialIndex].Pipeline = {};
+        Assets.CachedMaterials[MaterialIndex].Pipeline[0] = {};
+        Assets.CachedMaterials[MaterialIndex].Pipeline[1] = {};
+        Assets.CachedMaterials[MaterialIndex].PipelinesCount = 0;
         Assets.CachedMaterials[MaterialIndex].AssetID = (game_asset_id)0;
     }
 
@@ -284,10 +286,11 @@ GetShader(game_assets * Assets, game_asset_id ID)
     u32 LocalArrayIndex = ID - game_asset_shader_begin - 1;
 
     const char * ShaderPaths[game_asset_shader_end - game_asset_shader_begin - 1] = {
-        "shaders\\default_no_lighting.vert",
-        "shaders\\default_lighting.vert",
-        "shaders\\triangle.frag",
-        "shaders\\triangle_text.frag"
+        "shaders\\default_no_lighting.vert.spv",
+        "shaders\\default_lighting.vert.spv",
+        "shaders\\fullscreen_triangle.vert.spv",
+        "shaders\\triangle.frag.spv",
+        "shaders\\triangle_text.frag.spv"
     };
 
     switch (CurrentState)
@@ -379,7 +382,9 @@ GetTexture(game_assets * Assets, game_asset_id ID)
     u32 LocalArrayIndex = ID - game_asset_texture_begin - 1;
 
     const char * Paths[ASSETS_TOTAL_TEXTURES] = {
-        "assets\\vehicles_001.jpg"
+        "assets\\vehicles_001.jpg",
+        //"assets\\texture_particle_01_small.jpg"
+        "assets\\texture_particle_01_small.png"
     };
 
     struct texture_size
@@ -388,7 +393,8 @@ GetTexture(game_assets * Assets, game_asset_id ID)
     };
 
     const texture_size TextureSizes[ASSETS_TOTAL_TEXTURES] = {
-        {1224, 1632}
+        {1224, 1632},
+        {16,16}
     };
     
 
@@ -412,6 +418,7 @@ GetTexture(game_assets * Assets, game_asset_id ID)
         } break;
         case asset_unloaded:
         {
+            Assert(LocalArrayIndex < ArrayCount(TextureSizes));
             texture_size TextureSize = TextureSizes[LocalArrayIndex];
             u32 TextureSizeBytes = TextureSize.Width * TextureSize.Height * 4;
             u32 ArenaCurrentSize = Assets->MeshArena.CurrentSize;
@@ -526,19 +533,21 @@ GetTexture(game_assets * Assets, game_asset_id ID)
 }
 #endif
 
-asset_material
+asset_material *
 GetMaterial(game_assets * Assets, game_asset_id MaterialID)
 {
     Assert(MaterialID > game_asset_material_begin && MaterialID < game_asset_material_end);
 
-    asset_material Material = {};
-    Material.Pipeline.Success = 0;
+    asset_material * Material = 0;
 
     // TODO: Dynamic material creation?
-    const game_asset_id MappingMaterialShaders[game_asset_material_end - game_asset_material_begin - 1][2] = {
-        {game_asset_shader_vertex_default_no_light, game_asset_shader_fragment_default},
-        {game_asset_shader_vertex_default_light, game_asset_shader_fragment_default},
-        {game_asset_shader_vertex_default_light, game_asset_shader_fragment_texture}
+    const u32 MaxInputsPerMaterial = 4;
+    const game_asset_id MappingMaterialShaders[game_asset_material_end - game_asset_material_begin - 1][MaxInputsPerMaterial] = {
+        {game_asset_shader_vertex_default_no_light, game_asset_shader_fragment_default, (game_asset_id)0, (game_asset_id)0},
+        {game_asset_shader_vertex_default_light, game_asset_shader_fragment_default, (game_asset_id)0, (game_asset_id)0},
+        {game_asset_shader_vertex_default_no_light, game_asset_shader_fragment_texture, (game_asset_id)0, (game_asset_id)0},
+        {game_asset_shader_vertex_default_light, game_asset_shader_fragment_texture, (game_asset_id)0 , (game_asset_id)0},
+        {game_asset_shader_vertex_default_no_light, game_asset_shader_fragment_texture, game_asset_shader_vertex_fullscreen_triangle , (game_asset_id)0}
     };
 
     asset_slot * MaterialSlot = Assets->AssetSlots + MaterialID;
@@ -546,33 +555,41 @@ GetMaterial(game_assets * Assets, game_asset_id MaterialID)
     if (MaterialSlot->State == asset_unloaded)
     {
         u32 MaterialLookupIndex = MaterialID - game_asset_material_begin - 1;
+        asset_state AssetStateBeforeLock[MaxInputsPerMaterial];
+        asset_shader Shaders[MaxInputsPerMaterial];
 
-        game_asset_id VertexShaderID = MappingMaterialShaders[MaterialLookupIndex][0];
-        game_asset_id FragmentShaderID = MappingMaterialShaders[MaterialLookupIndex][1];
+        b32 AllShadersAreLocked = 0x01;
 
-        asset_slot * VertexShaderSlot = GetShader(Assets,VertexShaderID);
-        asset_slot * FragmentShaderSlot = GetShader(Assets,FragmentShaderID);
-        volatile asset_state * VertexShaderState = &VertexShaderSlot->State;
-        volatile asset_state * FragmentShaderState = &FragmentShaderSlot->State;
+        for (u32 ShaderIndex = 0; ShaderIndex < MaxInputsPerMaterial; ++ShaderIndex)
+        {
+            game_asset_id ShaderID = MappingMaterialShaders[MaterialLookupIndex][ShaderIndex];
+            if (ShaderID > game_asset_shader_begin && ShaderID < game_asset_shader_end)
+            {
+                volatile asset_state * AssetState = &GetShader(Assets,ShaderID)->State;
+                AssetStateBeforeLock[ShaderIndex] = 
+                    (asset_state)AtomicCompareExchangeU32(
+                            (volatile u32 *)AssetState, (u32)asset_loaded_locked, (u32)asset_loaded);
+                AllShadersAreLocked = AllShadersAreLocked &&
+                    (
+                        AssetStateBeforeLock[ShaderIndex] == asset_loaded ||
+                        AssetStateBeforeLock[ShaderIndex] == asset_loaded_locked
+                    );
+            }
+        }
 
-        asset_state VertexStateAfterLock = (asset_state)AtomicCompareExchangeU32((volatile u32 *)VertexShaderState, (u32)asset_loaded_locked, (u32)asset_loaded);
-        asset_state FragmentStateAfterLock = (asset_state)AtomicCompareExchangeU32((volatile u32 *)FragmentShaderState, (u32)asset_loaded_locked, (u32)asset_loaded);
-
-        if (
-                (
-                 VertexStateAfterLock == asset_loaded ||
-                 VertexStateAfterLock == asset_loaded_locked
-                ) &&
-                (
-                 FragmentStateAfterLock == asset_loaded ||
-                 FragmentStateAfterLock == asset_loaded_locked
-                )
-            )
+        if (AllShadersAreLocked)
         {
             // Create pipeline
-            asset_shader VertexShader = FindCachedShaderInfo(Assets, VertexShaderID);
-            asset_shader FragmentShader = FindCachedShaderInfo(Assets, FragmentShaderID);
-            
+
+            for (u32 ShaderIndex = 0; ShaderIndex < MaxInputsPerMaterial; ++ShaderIndex)
+            {
+                game_asset_id ShaderID = MappingMaterialShaders[MaterialLookupIndex][ShaderIndex];
+                if (ShaderID > game_asset_shader_begin && ShaderID < game_asset_shader_end)
+                {
+                    Shaders[ShaderIndex] = FindCachedShaderInfo(Assets, ShaderID);
+                }
+            }
+
             // ring cache
             u32 BitMask = ArrayCount(Assets->CachedMaterials) - 1; // 0x0F 0x1000 - 1 = 0x0111;
             u32 StartIndex = Assets->CachedMaterialIndex;
@@ -594,8 +611,12 @@ GetMaterial(game_assets * Assets, game_asset_id MaterialID)
 
                 if (StateBeforeLockAttempt == asset_loaded)
                 {
-                    Assert(CachedMaterial->Pipeline.Pipeline >= 0);
-                    GraphicsDestroyMaterialPipeline(CachedMaterial->Pipeline.Pipeline);
+                    for (u32 i = 0; i < CachedMaterial->PipelinesCount;++i)
+                    {
+                        Assert(CachedMaterial->Pipeline[i].Pipeline >= 0);
+                        GraphicsDestroyMaterialPipeline(
+                                CachedMaterial->Pipeline[i].Pipeline);
+                    }
                     // no need, we will set state at the end release lock
                     // AtomicExchangeU32((volatile u32 *)State, (u32)asset_unloaded);
                     break;
@@ -610,15 +631,31 @@ GetMaterial(game_assets * Assets, game_asset_id MaterialID)
 
             Assert(CachedMaterial);
 
-            CachedMaterial->Pipeline = GraphicsCreateMaterialPipeline(VertexShader.GPUID, FragmentShader.GPUID);
+            b32 Success = false;
+            if (MaterialID == game_asset_material_transparent)
+            {
+                transparency_pipeline_creation_result TransPipelineResult = 
+                    GraphicsCreateTransparencyPipeline(Shaders[0].GPUID,Shaders[1].GPUID,Shaders[2].GPUID,Shaders[3].GPUID);
+                CachedMaterial->Pipeline[0] = TransPipelineResult.PipelineCreationResult[0];
+                CachedMaterial->Pipeline[1] = TransPipelineResult.PipelineCreationResult[0];
+                CachedMaterial->PipelinesCount = 2;
+                Success = CachedMaterial->Pipeline[0].Success &&
+                          CachedMaterial->Pipeline[1].Success;
+            }
+            else
+            {
+                CachedMaterial->Pipeline[0] = GraphicsCreateMaterialPipeline(Shaders[0].GPUID, Shaders[1].GPUID);
+                CachedMaterial->PipelinesCount = 1;
+                Success = CachedMaterial->Pipeline[0].Success;
+            }
 
-            if (CachedMaterial->Pipeline.Success)
+            if (Success)
             {
                 //AtomicExchangeU32((volatile u32 *)&MaterialSlot->State, (u32)asset_loaded);
                 MaterialSlot->State = asset_loaded;
                 CachedMaterial->AssetID = MaterialID;
-                Material = *CachedMaterial;
-                Logn("Loaded material %i (pipeline %i)", MaterialID, CachedMaterial->Pipeline.Pipeline);
+                Material = CachedMaterial;
+                Logn("Loaded material %i (pipeline %i)", MaterialID, CachedMaterial->Pipeline[0].Pipeline);
             }
             else
             {
@@ -632,7 +669,7 @@ GetMaterial(game_assets * Assets, game_asset_id MaterialID)
         { 
             if (Assets->CachedMaterials[CachedIndex].AssetID == MaterialID)
             {
-                Material = Assets->CachedMaterials[CachedIndex];
+                Material = Assets->CachedMaterials + CachedIndex;
             }
         }
     }

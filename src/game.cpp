@@ -117,6 +117,7 @@ CreateWorld(world * World)
     EntityAddTranslation(Entity,0,V3(0), V3(1.0f),3.0f);
     EntityAddMesh(Entity,game_asset_mesh_cube,V3(0.0f,1.0f,0.0f));
 
+#if 1
     WC = WorldPosition(-5,0,0);
     Entity = AddEntity(World, WC);
     EntityAddTranslation(Entity,0,V3(0), V3(2.0f),3.0f);
@@ -124,6 +125,7 @@ CreateWorld(world * World)
     EntityAddMesh(Entity,game_asset_mesh_quad);
     Entity->TextureID = game_asset_texture_test;
     Entity->Material = game_asset_material_texture;
+#endif
 }
 
 void
@@ -190,6 +192,7 @@ graphics_create_shader_module * GraphicsCreateShaderModule = 0;
 graphics_delete_shader_module * GraphicsDeleteShaderModule = 0;
 graphics_create_material_pipeline * GraphicsCreateMaterialPipeline = 0;
 graphics_destroy_material_pipeline * GraphicsDestroyMaterialPipeline = 0;
+graphics_create_transparency_pipeline * GraphicsCreateTransparencyPipeline;
 
 void
 ReloadGraphicsAPI(graphics_api * GraphicsAPI)
@@ -207,6 +210,7 @@ ReloadGraphicsAPI(graphics_api * GraphicsAPI)
     GraphicsDeleteShaderModule        = GraphicsAPI->GraphicsDeleteShaderModule;
     GraphicsCreateMaterialPipeline    = GraphicsAPI->GraphicsCreateMaterialPipeline;
     GraphicsDestroyMaterialPipeline   = GraphicsAPI->GraphicsDestroyMaterialPipeline;
+    GraphicsCreateTransparencyPipeline= GraphicsAPI->GraphicsCreateTransparencyPipeline;
 }
 
 // rotate example
@@ -349,7 +353,7 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
         i32 AvailablePermanentMemory = Memory->PermanentMemorySize - sizeof(game_state);
         InitializeArena(&GameState->PermanentArena,Base, AvailablePermanentMemory);
 
-        u32 MaxRenderUnits = 8192;
+        u32 MaxRenderUnits = 4096;
         u32 RenderMemorySize = 2 * MaxRenderUnits * sizeof(render_unit);
         Base = PushSize(&GameState->PermanentArena,RenderMemorySize);
         InitializeArena(&GameState->RenderArena, Base, RenderMemorySize);
@@ -476,6 +480,7 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
     {
         ReloadGraphicsAPI(GraphicsAPI);
         GlobalAssets = &GameState->Assets;
+        GlobalPlatformMemory = Memory;
     }
 
     if (Input->GraphicsDllReloaded)
@@ -725,7 +730,7 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
         Cell->VelocityTimesDensity += Density * Particle->dP;
     }
 
-#if 1
+#if 0
     r32 OneOverMaxCellDensity = 1.0f / MaxDensityCell;
     for (u32 X = 0;
                 X < PARTICLE_CELL_DIM;
@@ -750,12 +755,7 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
                     UpdateTransform(&T, V3(0));
                     r32 DensityOverMax =  Cell->Density * OneOverMaxCellDensity; 
                     v3 Color = V3(DensityOverMax,DensityOverMax,0);
-                    PushDraw(Renderer, 
-                            game_asset_material_default_no_light, 
-                            &T.WorldT, 
-                            game_asset_mesh_cube,
-                            ASSETS_NULL_TEXTURE, 
-                            Color,0);
+                    PushDraw(Renderer, game_asset_material_default_no_light, &T.WorldT, game_asset_mesh_cube, ASSETS_NULL_TEXTURE, Color,0);
                 }
             }
         }
@@ -795,7 +795,7 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
 
         particle_cell * CellCenter = &GameState->ParticleCells[X][Y][Z];
         v3 Dispersion = V3(0);
-        r32 DispersionCoefficient = 1.0f;
+        r32 DispersionCoefficient = 0.1f;
         for (i32 CellX = -1; CellX <= 1; ++CellX)
         {
             for (i32 CellY = -1; CellY <= 1; ++CellY)
@@ -825,16 +825,76 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
             Particle->dP.y *= -CoeficientRestitution;  
         }
 
-        UpdateTransform(&Particle->T,V3(0,0,-3.0f));
-        Particle->Color = Clamp(Particle->Color + (Input->DtFrame * V3(-0.5f)),0.3f,1.0f);
-#if 0
-        if (ParticleIndex == 0)
-        {
-            Logn("Color: %f %f %f",Particle->Color.x,Particle->Color.y,Particle->Color.z);
-        }
-#endif
-        PushDraw(Renderer, game_asset_material_default_no_light, &Particle->T.WorldT, game_asset_mesh_cube,ASSETS_NULL_TEXTURE, Particle->Color,0);
+        Particle->DistToCamera = LengthSqr(CameraP - Particle->T.LocalP);
+        GameState->ParticlesZOrder[ParticleIndex] = Particle;
     }
+
+    u32 TotalParticles = ArrayCount(GameState->ParticlesZOrder);
+    for (u32 i = 0, j = 1;
+             i < (TotalParticles - 1);
+             ++j)
+    {
+        particle * Pa = GameState->ParticlesZOrder[i];
+        particle * Pb = GameState->ParticlesZOrder[j];
+        if (Pa->DistToCamera < Pb->DistToCamera)
+        {
+            particle * tmp = Pa;
+            GameState->ParticlesZOrder[i] = GameState->ParticlesZOrder[j];
+            GameState->ParticlesZOrder[j] = Pa;
+        }
+
+        if (j >= (TotalParticles - 1))
+        {
+            i += 1;
+            j = i;
+        }
+        
+    }
+
+    for (u32 ParticleIndex = 0;
+                ParticleIndex < ArrayCount(GameState->Particles);
+                ++ParticleIndex)
+    {
+        particle * Particle = GameState->ParticlesZOrder[ParticleIndex];
+        //Logn("%f ", Particle->DistToCamera);
+
+        m4 R = {};
+        LookAt(&R,Particle->T.LocalP, CameraP, Renderer->WorldUp);
+        //LookAt(&Particle->T.LocalR, Particle->T.LocalP, CameraP, Renderer->WorldUp);
+        //UpdateTransform(&Particle->T,);
+        v3 WorldP = V3(0,0,-3.0f);
+        WorldP += Particle->T.LocalP;
+        //Particle->Color = Clamp(Particle->Color + (Input->DtFrame * V3(-0.5f)),0.3f,1.0f);
+        Particle->Color = V3(1.0f,0,0);
+        
+        m4 WorldPM = M4();
+        Translate(WorldPM, WorldP);
+        m4 Scale = M4(Particle->T.WorldS * 5.0f);
+        m4 WorldT = WorldPM * R * Scale;
+
+        //PushDraw(Renderer, game_asset_material_default_no_light, &Particle->T.WorldT, game_asset_mesh_cube,ASSETS_NULL_TEXTURE, Particle->Color,0);
+        PushDraw(Renderer, game_asset_material_texture_no_light, &WorldT, game_asset_mesh_quad,game_asset_texture_particle_01_small, Particle->Color,0.0f);
+        //PushDraw(Renderer, game_asset_material_transparent, &WorldT, game_asset_mesh_quad,game_asset_texture_particle_01_small, Particle->Color,0.0f);
+    }
+
+#if 0
+    // test quaternion lookat with single quad
+    {
+        //entity_transform T;
+        //InitializeTransform(&T, V3(0), V3(3.0f));
+        //LookAt(&T.LocalR, T.LocalP, CameraP, Renderer->WorldUp);
+        //UpdateTransform(&T,V3(0,0,-3.0f));
+        m4 R = {};
+        v3 LocalP = V3(0);
+        LookAt(&R, LocalP, CameraP, Renderer->WorldUp);
+        m4 WorldPM = M4();
+        Translate(WorldPM, LocalP);
+        m4 Scale = M4(V3(3.0f));
+        m4 WorldT = WorldPM * R * Scale;
+        //PushDraw(Renderer, game_asset_material_texture, &WorldT, game_asset_mesh_quad,game_asset_texture_particle_01_small, V3(1.0f),0);
+        PushDraw(Renderer, game_asset_material_default_no_light, &WorldT, game_asset_mesh_quad,ASSETS_NULL_TEXTURE, V3(1.0f),0);
+    }
+#endif
 
     RenderDraw(Renderer);
     RenderDraw(&GameState->RendererUI);

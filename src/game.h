@@ -103,6 +103,7 @@ struct particle
     v3 dP;
     v3 ddP;
     v3 Color;
+    r32 DistToCamera;
 };
 
 struct game_state
@@ -147,6 +148,7 @@ struct game_state
 #define PARTICLE_CELL_DIM_MINUS_ONE (PARTICLE_CELL_DIM - 1)
 #define PARTICLE_CELL_DIM_MINUS_TWO (PARTICLE_CELL_DIM - 2)
     particle Particles[256];
+    particle * ParticlesZOrder[256];
     particle_cell ParticleCells[PARTICLE_CELL_DIM][PARTICLE_CELL_DIM][PARTICLE_CELL_DIM];
     u32 NextParticle;
 
@@ -166,6 +168,7 @@ extern graphics_create_shader_module * GraphicsCreateShaderModule;
 extern graphics_delete_shader_module * GraphicsDeleteShaderModule;
 extern graphics_create_material_pipeline * GraphicsCreateMaterialPipeline;
 extern graphics_destroy_material_pipeline * GraphicsDestroyMaterialPipeline;
+extern graphics_create_transparency_pipeline * GraphicsCreateTransparencyPipeline;
 
 extern game_memory * GlobalPlatformMemory;
 extern game_assets * GlobalAssets;
