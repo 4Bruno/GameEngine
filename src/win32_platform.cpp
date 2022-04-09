@@ -263,19 +263,20 @@ LoadGraphicsLib(graphics_handler * Graphics)
     {
         Graphics->InitializerLastModified = Win32GetLastWriteTime((char *)RENDER_DLL_TEMP);
         graphics_api * API  = &Graphics->API;
-        API->GraphicsRenderDraw     = (graphics_render_draw *)      GetProcAddress(Graphics->InitializerLib,"RenderDraw");
-        API->GraphicsBeginRenderPass= (graphics_begin_render *)     GetProcAddress(Graphics->InitializerLib,"BeginRenderPass");
-        API->GraphicsEndRenderPass  = (graphics_end_render *)       GetProcAddress(Graphics->InitializerLib,"EndRenderPass");
-        API->GraphicsPushVertexData = (graphics_push_vertex_data *) GetProcAddress(Graphics->InitializerLib,"PushVertexData");
-        API->GraphicsPushTextureData = (graphics_push_texture_data *) GetProcAddress(Graphics->InitializerLib,"PushTextureData");
-        API->GraphicsInitializeApi  = (graphics_initialize_api *)   GetProcAddress(Graphics->InitializerLib,"InitializeAPI");
-        API->GraphicsShutdownAPI    = (graphics_close_api *)        GetProcAddress(Graphics->InitializerLib,"ShutdownAPI");
-        API->GraphicsWaitForRender  = (graphics_wait_for_render *)  GetProcAddress(Graphics->InitializerLib,"WaitForRender");
-        API->GraphicsOnWindowResize = (graphics_on_window_resize *) GetProcAddress(Graphics->InitializerLib,"OnWindowResize");
-        API->GraphicsCreateShaderModule = (graphics_create_shader_module *) GetProcAddress(Graphics->InitializerLib,"CreateShaderModule");
-        API->GraphicsDeleteShaderModule = (graphics_delete_shader_module *) GetProcAddress(Graphics->InitializerLib,"DeleteShaderModule");
-        API->GraphicsCreateMaterialPipeline = (graphics_create_material_pipeline *)GetProcAddress(Graphics->InitializerLib,"CreatePipeline");
-        API->GraphicsDestroyMaterialPipeline= (graphics_destroy_material_pipeline *)GetProcAddress(Graphics->InitializerLib,"FreeMaterialPipeline");
+        API->GraphicsRenderDraw                 = (graphics_render_draw *) GetProcAddress(Graphics->InitializerLib,"RenderDraw");
+        API->GraphicsBeginRenderPass            = (graphics_begin_render *) GetProcAddress(Graphics->InitializerLib,"BeginRenderPass");
+        API->GraphicsEndRenderPass              = (graphics_end_render *) GetProcAddress(Graphics->InitializerLib,"EndRenderPass");
+        API->GraphicsPushVertexData             = (graphics_push_vertex_data *) GetProcAddress(Graphics->InitializerLib,"PushVertexData");
+        API->GraphicsPushTextureData            = (graphics_push_texture_data *) GetProcAddress(Graphics->InitializerLib,"PushTextureData");
+        API->GraphicsInitializeApi              = (graphics_initialize_api *) GetProcAddress(Graphics->InitializerLib,"InitializeAPI");
+        API->GraphicsShutdownAPI                = (graphics_close_api *) GetProcAddress(Graphics->InitializerLib,"ShutdownAPI");
+        API->GraphicsWaitForRender              = (graphics_wait_for_render *) GetProcAddress(Graphics->InitializerLib,"WaitForRender");
+        API->GraphicsOnWindowResize             = (graphics_on_window_resize *) GetProcAddress(Graphics->InitializerLib,"OnWindowResize");
+        API->GraphicsCreateShaderModule         = (graphics_create_shader_module *) GetProcAddress(Graphics->InitializerLib,"CreateShaderModule");
+        API->GraphicsDeleteShaderModule         = (graphics_delete_shader_module *) GetProcAddress(Graphics->InitializerLib,"DeleteShaderModule");
+        API->GraphicsCreateMaterialPipeline     = (graphics_create_material_pipeline *)GetProcAddress(Graphics->InitializerLib,"CreatePipeline");
+        API->GraphicsDestroyMaterialPipeline    = (graphics_destroy_material_pipeline *)GetProcAddress(Graphics->InitializerLib,"FreeMaterialPipeline");
+        API->GraphicsCreateTransparencyPipeline = (graphics_create_transparency_pipeline *)GetProcAddress(Graphics->InitializerLib,"CreateTransparencyPipeline");
 
         GraphicsOnWindowResize = API->GraphicsOnWindowResize;
 
@@ -292,7 +293,8 @@ LoadGraphicsLib(graphics_handler * Graphics)
             Graphics->API.GraphicsCreateShaderModule        &&
             Graphics->API.GraphicsDeleteShaderModule        &&
             Graphics->API.GraphicsCreateMaterialPipeline    &&
-            Graphics->API.GraphicsDestroyMaterialPipeline
+            Graphics->API.GraphicsDestroyMaterialPipeline   &&
+            Graphics->API.GraphicsCreateTransparencyPipeline
             ;
 
         if (!APILoaded)
