@@ -972,7 +972,7 @@ VH_CreateDefaultViewport(VkExtent2D WindowExtent)
 }
 
 VkPipeline
-VH_PipelineBuilder(vulkan_pipeline * VulkanPipeline,VkDevice Device, VkRenderPass RenderPass)
+VH_PipelineBuilder(vulkan_pipeline * VulkanPipeline,VkDevice Device, VkRenderPass RenderPass, u32 Subpass)
 {
     VkPipelineViewportStateCreateInfo ViewportState = {};
     ViewportState.sType         = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO; // VkStructureType sType;
@@ -1010,7 +1010,7 @@ VH_PipelineBuilder(vulkan_pipeline * VulkanPipeline,VkDevice Device, VkRenderPas
     PipelineInfo.pDynamicState       = 0;                                 // Typedef * pDynamicState;
     PipelineInfo.layout              = VulkanPipeline->PipelineLayout;    // VkPipelineLayout layout;
     PipelineInfo.renderPass          = RenderPass;                        // VkRenderPass renderPass;
-    PipelineInfo.subpass             = 0;                                 // u32_t subpass;
+    PipelineInfo.subpass             = Subpass;                                 // u32_t subpass;
     PipelineInfo.basePipelineHandle  = VK_NULL_HANDLE;                    // VkPipeline basePipelineHandle;
     PipelineInfo.basePipelineIndex   = 0;                                 // i32_t basePipelineIndex;
     
@@ -1188,6 +1188,25 @@ VH_CreateUnAllocArenaImage(VkPhysicalDevice PhysicalDevice,
     }
 
     return 0;
+}
+
+VkWriteDescriptorSet
+VH_WriteDescriptor(u32 BindingSlot,VkDescriptorSet Set,VkDescriptorType DescriptorType, VkDescriptorImageInfo * DescriptorInfo)
+{
+    VkWriteDescriptorSet WriteDescriptor;
+
+    WriteDescriptor.sType            = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET; // VkStructureType   sType;
+    WriteDescriptor.pNext            = 0; // Void * pNext;
+    WriteDescriptor.dstSet           = Set; // VkDescriptorSet   dstSet;
+    WriteDescriptor.dstBinding       = BindingSlot; // uint32_t   dstBinding;
+    WriteDescriptor.dstArrayElement  = 0; // uint32_t   dstArrayElement;
+    WriteDescriptor.descriptorCount  = 1; // uint32_t   descriptorCount;
+    WriteDescriptor.descriptorType   = DescriptorType;
+    WriteDescriptor.pImageInfo       = DescriptorInfo; // Typedef * pImageInfo;
+    WriteDescriptor.pBufferInfo      = 0; // Typedef * pBufferInfo;
+    WriteDescriptor.pTexelBufferView = 0; // Typedef * pTexelBufferView;
+
+    return WriteDescriptor;
 }
 
 VkWriteDescriptorSet

@@ -67,6 +67,8 @@ enum game_asset_id
     game_asset_shader_vertex_fullscreen_triangle,
     game_asset_shader_fragment_default,
     game_asset_shader_fragment_texture,
+    game_asset_shader_fragment_oit_weighted_color,
+    game_asset_shader_fragment_oit_weighted_composite,
 
     game_asset_shader_end,
 

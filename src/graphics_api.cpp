@@ -169,7 +169,6 @@ GRAPHICS_RENDER_DRAW(RenderTransparentUnits)
 
         if (LastTextureID != Unit->TextureID && Unit->TextureID >= 0)
         {
-            vkCmdSetDepthTestEnable(GetCurrentFrame()->PrimaryCommandBuffer,VK_FALSE);
             RenderBindTexture(Unit->TextureID);
             LastTextureID = Unit->TextureID;
         }
@@ -221,6 +220,18 @@ GRAPHICS_RENDER_DRAW(RenderDraw)
     RenderPassBeginInfo.pClearValues      = &ClearAttachments[0];                           // Typedef * pClearValues;
 
     vkCmdBeginRenderPass(cmd, &RenderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
+
+    VkDescriptorSet oitWeightDescriptors[] = {
+        GlobalVulkan._oit_WeightedColorSet,
+        GlobalVulkan._oit_WeightedRevealSet,
+    };
+
+    vkCmdBindDescriptorSets(cmd, 
+                            VK_PIPELINE_BIND_POINT_GRAPHICS, 
+                            GlobalVulkan.CurrentPipelineLayout, 
+                            3, 2, 
+                            &oitWeightDescriptors[0], 
+                            0, nullptr);
 
     GetCurrentFrame()->ObjectsCount = 0;
 

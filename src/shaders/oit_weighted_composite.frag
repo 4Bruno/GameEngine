@@ -47,15 +47,15 @@ layout (set = 0, binding = 0) uniform SimulationBuffer
 
 } Simulation;
 
-#define IMG_WEIGHTED_COLOR 7
-#define IMG_WEIGHTED_REVEAL 8
+#define IMG_WEIGHTED_COLOR 3
+#define IMG_WEIGHTED_REVEAL 4
 
 #if 0//OIT_MSAA != 1
-layout(input_attachment_index = 0, binding = IMG_WEIGHTED_COLOR) uniform subpassInputMS texColor;
-layout(input_attachment_index = 1, binding = IMG_WEIGHTED_REVEAL) uniform subpassInputMS texWeights;
+layout(set = 3, input_attachment_index = 0, binding = 0) uniform subpassInputMS texColor;
+layout(set = 4, input_attachment_index = 1, binding = 0) uniform subpassInputMS texWeights;
 #else
-layout(input_attachment_index = 0, binding = IMG_WEIGHTED_COLOR) uniform subpassInput texColor;
-layout(input_attachment_index = 1, binding = IMG_WEIGHTED_REVEAL) uniform subpassInput texWeights;
+layout(set = 3, input_attachment_index = 0, binding = 0) uniform subpassInput texColor;
+layout(set = 4, input_attachment_index = 1, binding = 0) uniform subpassInput texWeights;
 #endif
 
 layout(location = 0) out vec4 outColor;

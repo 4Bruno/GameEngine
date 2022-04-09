@@ -600,7 +600,7 @@ GRAPHICS_CREATE_TRANSPARENCY_PIPELINE(CreateTransparencyPipeline)
         VulkanPipelineComposite->ShaderStages[0]   = VH_CreateShaderStageInfo(VK_SHADER_STAGE_VERTEX_BIT,VertexShader);
         VulkanPipelineComposite->ShaderStages[1]   = VH_CreateShaderStageInfo(VK_SHADER_STAGE_FRAGMENT_BIT,FragmentShader);
 
-        VkPipelineVertexInputStateCreateInfo NoVertexInputInfo;
+        VkPipelineVertexInputStateCreateInfo NoVertexInputInfo = {};
         NoVertexInputInfo.sType                           = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO; // sType   sType
         NoVertexInputInfo.vertexBindingDescriptionCount   = 0; // vertexBindingDescriptionCount   vertexBindingDescriptionCount
         NoVertexInputInfo.vertexAttributeDescriptionCount = 0; // vertexAttributeDescriptionCount   vertexAttributeDescriptionCount
@@ -638,7 +638,7 @@ GRAPHICS_CREATE_TRANSPARENCY_PIPELINE(CreateTransparencyPipeline)
         VulkanPipelineComposite->PipelineLayout       = GlobalVulkan.PipelineLayout[0];                                                     // VkPipelineLayout PipelineLayout;
 
         VkPipeline Pipeline = 
-            VH_PipelineBuilder(VulkanPipelineComposite, GlobalVulkan.PrimaryDevice, GlobalVulkan.RenderPassTransparency);
+            VH_PipelineBuilder(VulkanPipelineComposite, GlobalVulkan.PrimaryDevice, GlobalVulkan.RenderPassTransparency, 1);
 
         if (VK_VALID_HANDLE(Pipeline))
         {
@@ -2216,8 +2216,9 @@ VulkanCreateLogicaDevice()
 
     /* ---------------------- ADDITIONAL FEATURES HERE ---------------------- */
     IndexingFeatures.descriptorBindingUpdateUnusedWhilePending = VK_TRUE;
-    PhysicalDeviceFeatures2.features.geometryShader = VK_TRUE;
-    PhysicalDeviceFeatures2.features.samplerAnisotropy = VK_TRUE;
+    PhysicalDeviceFeatures2.features.geometryShader            = VK_TRUE;
+    PhysicalDeviceFeatures2.features.samplerAnisotropy         = VK_TRUE;
+    PhysicalDeviceFeatures2.features.independentBlend          = VK_TRUE;
 
     PhysicalDevice11Features.pNext = &PhysicalDeviceFeatures2;
 
@@ -2369,10 +2370,12 @@ VulkanGetPhysicalDevice()
 
         b32 SupportsAnisotropyFilter = (PhysicalDeviceFeatures.samplerAnisotropy == VK_TRUE);
         b32 SupportsGeometryShaders = (PhysicalDeviceFeatures.geometryShader == VK_TRUE);
+        b32 SupportIndependentBlend = (PhysicalDeviceFeatures.independentBlend == VK_TRUE);
 
         b32 AllFeaturesSupported = SupportsAnisotropyFilter &&
                                    SupportsGeometryShaders  &&
-                                   SupportsBindingDescriptorDuringCommand
+                                   SupportsBindingDescriptorDuringCommand &&
+                                   SupportIndependentBlend
                                    ;
 
         vk_version Version = GetVkVersionFromu32(PhysicalDeviceProperties.apiVersion);
@@ -2734,16 +2737,16 @@ VulkanGetInstance(b32 EnableValidationLayer,
     return 0;
 }
 i32
-CreateDescriptorSetAttachmentInputs()
+CreateDescriptorSetAttachmentInputs(VkDescriptorSetLayout * SetLayout)
 {
-    VkDescriptorSetLayoutBinding SimulationBufferBinding = 
+    VkDescriptorSetLayoutBinding WeightedColorInputAttachmentBinding = 
         VH_CreateDescriptorSetLayoutBinding(0,
-                VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC,
-                VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT);
+                VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT,
+                VK_SHADER_STAGE_FRAGMENT_BIT);
 
     VkDescriptorSetLayoutBinding DescriptorSetLayoutBindings[] = 
     {
-        SimulationBufferBinding
+        WeightedColorInputAttachmentBinding
     };
 
     VkDescriptorSetLayoutCreateInfo SetInfo;
@@ -2753,7 +2756,7 @@ CreateDescriptorSetAttachmentInputs()
     SetInfo.bindingCount = ArrayCount(DescriptorSetLayoutBindings); // uint32_t   bindingCount;
     SetInfo.pBindings    = &DescriptorSetLayoutBindings[0]; // Typedef * pBindings;
 
-    VK_CHECK(vkCreateDescriptorSetLayout(GlobalVulkan.PrimaryDevice,&SetInfo,0,&GlobalVulkan._AttachmentInputsSetLayout));
+    VK_CHECK(vkCreateDescriptorSetLayout(GlobalVulkan.PrimaryDevice,&SetInfo,0,SetLayout));
 
     return 0;
 }
@@ -2857,7 +2860,9 @@ CreatePipelineLayoutTexture(VkPipelineLayout * PipelineLayout)
     {
         GlobalVulkan._GlobalSetLayout,
         GlobalVulkan._ObjectsSetLayout,
-        GlobalVulkan._DebugTextureSetLayout
+        GlobalVulkan._DebugTextureSetLayout,
+        GlobalVulkan._oit_WeightedColorAttachmentInputsSetLayout,
+        GlobalVulkan._oit_WeightedRevealAttachmentInputsSetLayout
     };
 
     VkPipelineLayoutCreateInfo PipelineLayoutCreateInfo = VH_CreatePipelineLayoutCreateInfo();
@@ -2874,7 +2879,6 @@ CreatePipelineLayoutTexture(VkPipelineLayout * PipelineLayout)
     PipelineLayoutCreateInfo.pSetLayouts = LayoutSets;
 
     VK_CHECK(vkCreatePipelineLayout(GlobalVulkan.PrimaryDevice, &PipelineLayoutCreateInfo, 0, PipelineLayout));
-
 
     return 0;
 }
@@ -3287,10 +3291,14 @@ InitializeVulkan(i32 Width, i32 Height,
     /* Level 3 */ CreateDescriptorSetTextures();
     QUEUE_DELETE_DESCRIPTORSETLAYOUT(&PrimaryVulkanDestroyQueue,GlobalVulkan.PrimaryDevice,&GlobalVulkan._DebugTextureSetLayout);
     SetDebugName(GlobalVulkan._DebugTextureSetLayout,"_DebugTextureSetLayout");
-#if 0
-    /* Level 4 */ CreateDescriptorSetAttachmentInputs();
-    QUEUE_DELETE_DESCRIPTORSETLAYOUT(&PrimaryVulkanDestroyQueue,GlobalVulkan.PrimaryDevice,&GlobalVulkan._AttachmentInputsSetLayout);
-    SetDebugName(GlobalVulkan._AttachmentInputsSetLayout,"_AttachmentInputsSetLayout");
+#if 1
+    /* Level 4 */ CreateDescriptorSetAttachmentInputs(&GlobalVulkan._oit_WeightedColorAttachmentInputsSetLayout);
+    QUEUE_DELETE_DESCRIPTORSETLAYOUT(&PrimaryVulkanDestroyQueue,GlobalVulkan.PrimaryDevice,&GlobalVulkan._oit_WeightedColorAttachmentInputsSetLayout);
+    SetDebugName(GlobalVulkan._oit_WeightedColorAttachmentInputsSetLayout,"_oit_WeightedColorAttachmentInputsSetLayout");
+
+    /* Level 5 */ CreateDescriptorSetAttachmentInputs(&GlobalVulkan._oit_WeightedRevealAttachmentInputsSetLayout);
+    QUEUE_DELETE_DESCRIPTORSETLAYOUT(&PrimaryVulkanDestroyQueue,GlobalVulkan.PrimaryDevice,&GlobalVulkan._oit_WeightedRevealAttachmentInputsSetLayout);
+    SetDebugName(GlobalVulkan._oit_WeightedRevealAttachmentInputsSetLayout,"_oit_WeightedRevealAttachmentInputsSetLayout");
 #endif
 
     VkDeviceSize TextureBufferSize = Megabytes(15);
@@ -3299,7 +3307,8 @@ InitializeVulkan(i32 Width, i32 Height,
         { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 10 },
         { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, 10 },
         { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 10 },
-        { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 10 }
+        { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 10 },
+        { VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT, 2 }
 	};
 
 	VkDescriptorPoolCreateInfo PoolInfo = {};
@@ -3312,7 +3321,6 @@ InitializeVulkan(i32 Width, i32 Height,
 	vkCreateDescriptorPool(GlobalVulkan.PrimaryDevice, &PoolInfo, nullptr, &GlobalVulkan._DescriptorPool);
     SetDebugName(GlobalVulkan._DescriptorPool,"_DescriptorPool");
     QUEUE_DELETE_DESCRIPTORPOOL(&PrimaryVulkanDestroyQueue,GlobalVulkan.PrimaryDevice,&GlobalVulkan._DescriptorPool);
-
 
     // (fef) for each frame
     for (i32 FrameIndex = 0;
@@ -3504,6 +3512,36 @@ InitializeVulkan(i32 Width, i32 Height,
 
     PushTextureData(&DummyImgData, 1, 1, 4);
 
+    // Update descriptors once oit weight images are created
+    {
+        VH_AllocateDescriptor(&GlobalVulkan._oit_WeightedColorAttachmentInputsSetLayout, GlobalVulkan._DescriptorPool, &GlobalVulkan._oit_WeightedColorSet);
+        VH_AllocateDescriptor(&GlobalVulkan._oit_WeightedRevealAttachmentInputsSetLayout, GlobalVulkan._DescriptorPool, &GlobalVulkan._oit_WeightedRevealSet);
+
+
+        VkDescriptorImageInfo OitWeightedColorImageInfo;
+        OitWeightedColorImageInfo.sampler     = VK_NULL_HANDLE; // sampler   sampler
+        OitWeightedColorImageInfo.imageView   = GlobalVulkan.WeightedColorImage->ImageView; // imageView   imageView
+        OitWeightedColorImageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL; // imageLayout   imageLayout
+
+        VkWriteDescriptorSet OitWeightedColorWriteSet =
+            VH_WriteDescriptor(0,GlobalVulkan._oit_WeightedColorSet, VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT, &OitWeightedColorImageInfo);
+
+        VkDescriptorImageInfo OitWeightedRevealImageInfo;
+        OitWeightedRevealImageInfo.sampler     = VK_NULL_HANDLE; // sampler   sampler
+        OitWeightedRevealImageInfo.imageView   = GlobalVulkan.WeightedRevealImage->ImageView; // imageView   imageView
+        OitWeightedRevealImageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL; // imageLayout   imageLayout
+
+        VkWriteDescriptorSet OitWeightedRevealWriteSet =
+            VH_WriteDescriptor(0,GlobalVulkan._oit_WeightedRevealSet, VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT, &OitWeightedRevealImageInfo);
+
+        VkWriteDescriptorSet WriteSets[] = 
+        {
+            OitWeightedColorWriteSet,
+            OitWeightedRevealWriteSet
+        };
+
+        vkUpdateDescriptorSets(GlobalVulkan.PrimaryDevice, ArrayCount(WriteSets), WriteSets, 0, nullptr);
+    }
 
     GlobalVulkan.Initialized = true;
 

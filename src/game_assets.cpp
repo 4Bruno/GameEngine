@@ -290,7 +290,9 @@ GetShader(game_assets * Assets, game_asset_id ID)
         "shaders\\default_lighting.vert.spv",
         "shaders\\fullscreen_triangle.vert.spv",
         "shaders\\triangle.frag.spv",
-        "shaders\\triangle_text.frag.spv"
+        "shaders\\triangle_text.frag.spv",
+        "shaders\\oit_weighted_color.frag.spv",
+        "shaders\\oit_weighted_composite.frag.spv",
     };
 
     switch (CurrentState)
@@ -546,7 +548,7 @@ GetMaterial(game_assets * Assets, game_asset_id MaterialID)
         {game_asset_shader_vertex_default_light, game_asset_shader_fragment_default, (game_asset_id)0, (game_asset_id)0},
         {game_asset_shader_vertex_default_no_light, game_asset_shader_fragment_texture, (game_asset_id)0, (game_asset_id)0},
         {game_asset_shader_vertex_default_light, game_asset_shader_fragment_texture, (game_asset_id)0 , (game_asset_id)0},
-        {game_asset_shader_vertex_default_no_light, game_asset_shader_fragment_texture, game_asset_shader_vertex_fullscreen_triangle , (game_asset_id)0}
+        {game_asset_shader_vertex_default_no_light, game_asset_shader_fragment_oit_weighted_color, game_asset_shader_vertex_fullscreen_triangle , game_asset_shader_fragment_oit_weighted_composite }
     };
 
     asset_slot * MaterialSlot = Assets->AssetSlots + MaterialID;
@@ -636,7 +638,7 @@ GetMaterial(game_assets * Assets, game_asset_id MaterialID)
                 transparency_pipeline_creation_result TransPipelineResult = 
                     GraphicsCreateTransparencyPipeline(Shaders[0].GPUID,Shaders[1].GPUID,Shaders[2].GPUID,Shaders[3].GPUID);
                 CachedMaterial->Pipeline[0] = TransPipelineResult.PipelineCreationResult[0];
-                CachedMaterial->Pipeline[1] = TransPipelineResult.PipelineCreationResult[0];
+                CachedMaterial->Pipeline[1] = TransPipelineResult.PipelineCreationResult[1];
                 CachedMaterial->PipelinesCount = 2;
                 Success = CachedMaterial->Pipeline[0].Success &&
                           CachedMaterial->Pipeline[1].Success;

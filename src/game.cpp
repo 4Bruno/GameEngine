@@ -702,11 +702,13 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
         Particle->Color = V3(1.0f,0.3f,0);
     }
 
+    //u32 TotalParticles = 1;
+    u32 TotalParticles = ArrayCount(GameState->Particles);
     Memset((u8 *)&GameState->ParticleCells[0], 0, sizeof(GameState->ParticleCells));
     v3 GridOrigin = {-0.5f * PARTICLE_CELL_DIM, 0, -0.5f * PARTICLE_CELL_DIM};
     r32 MaxDensityCell = 0;
     for (u32 ParticleIndex = 0;
-                ParticleIndex < ArrayCount(GameState->Particles);
+                ParticleIndex < TotalParticles;
                 ++ParticleIndex)
     {
         particle * Particle = GameState->Particles + ParticleIndex;
@@ -775,7 +777,7 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
     };
 
     for (u32 ParticleIndex = 0;
-                ParticleIndex < ArrayCount(GameState->Particles);
+                ParticleIndex < TotalParticles;
                 ++ParticleIndex)
     {
         particle * Particle = GameState->Particles + ParticleIndex;
@@ -829,7 +831,6 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
         GameState->ParticlesZOrder[ParticleIndex] = Particle;
     }
 
-    u32 TotalParticles = ArrayCount(GameState->ParticlesZOrder);
     for (u32 i = 0, j = 1;
              i < (TotalParticles - 1);
              ++j)
@@ -852,7 +853,7 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
     }
 
     for (u32 ParticleIndex = 0;
-                ParticleIndex < ArrayCount(GameState->Particles);
+                ParticleIndex < TotalParticles;
                 ++ParticleIndex)
     {
         particle * Particle = GameState->ParticlesZOrder[ParticleIndex];
@@ -873,8 +874,8 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
         m4 WorldT = WorldPM * R * Scale;
 
         //PushDraw(Renderer, game_asset_material_default_no_light, &Particle->T.WorldT, game_asset_mesh_cube,ASSETS_NULL_TEXTURE, Particle->Color,0);
-        PushDraw(Renderer, game_asset_material_texture_no_light, &WorldT, game_asset_mesh_quad,game_asset_texture_particle_01_small, Particle->Color,0.0f);
-        //PushDraw(Renderer, game_asset_material_transparent, &WorldT, game_asset_mesh_quad,game_asset_texture_particle_01_small, Particle->Color,0.0f);
+        //PushDraw(Renderer, game_asset_material_texture_no_light, &WorldT, game_asset_mesh_quad,game_asset_texture_particle_01_small, Particle->Color,0.0f);
+        PushDraw(Renderer, game_asset_material_transparent, &WorldT, game_asset_mesh_quad,game_asset_texture_particle_01_small, Particle->Color,0.0f);
     }
 
 #if 0

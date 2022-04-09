@@ -383,6 +383,8 @@ struct vulkan
     vulkan_image * WeightedColorImage;
     gpu_arena * WeightedRevealArena;
     vulkan_image * WeightedRevealImage;
+    VkDescriptorSet _oit_WeightedColorSet;
+    VkDescriptorSet _oit_WeightedRevealSet;
 
 
     gpu_arena * TextureArena;
@@ -412,7 +414,8 @@ struct vulkan
     VkDescriptorSetLayout _GlobalSetLayout;
     VkDescriptorSetLayout _ObjectsSetLayout;
     VkDescriptorSetLayout _DebugTextureSetLayout;
-    VkDescriptorSetLayout _AttachmentInputsSetLayout;
+    VkDescriptorSetLayout _oit_WeightedColorAttachmentInputsSetLayout;
+    VkDescriptorSetLayout _oit_WeightedRevealAttachmentInputsSetLayout;
     VkDescriptorSet       _DebugTextureSet;
     VkDescriptorPool _DescriptorPool;
 
@@ -541,7 +544,7 @@ VkViewport
 VH_CreateDefaultViewport(VkExtent2D WindowExtent);
 
 VkPipeline
-VH_PipelineBuilder(vulkan_pipeline * VulkanPipeline,VkDevice Device, VkRenderPass RenderPass);
+VH_PipelineBuilder(vulkan_pipeline * VulkanPipeline,VkDevice Device, VkRenderPass RenderPass, u32 Subpass = 0);
 
 i32
 VH_CreateCommandBuffers(VkDevice Device,VkCommandPool CommandPool,u32 CommandBufferCount,VkCommandBuffer * CommandBuffers);
@@ -560,6 +563,8 @@ VH_DepthBufferCreateInfo(VkExtent3D Extent);
 
 VkWriteDescriptorSet
 VH_WriteDescriptor(u32 BindingSlot,VkDescriptorSet Set,VkDescriptorType DescriptorType, VkDescriptorBufferInfo * BufferInfo);
+VkWriteDescriptorSet
+VH_WriteDescriptor(u32 BindingSlot,VkDescriptorSet Set,VkDescriptorType DescriptorType, VkDescriptorImageInfo * DescriptorInfo);
 
 i32
 VH_AllocateDescriptor(VkDescriptorSetLayout  * SetLayout, VkDescriptorPool Pool, VkDescriptorSet * Set);
