@@ -383,7 +383,6 @@ GetTexture(game_assets * Assets, game_asset_id ID)
 
     const char * Paths[ASSETS_TOTAL_TEXTURES] = {
         "assets\\vehicles_001.jpg",
-        //"assets\\texture_particle_01_small.jpg"
         "assets\\texture_particle_01_small.png"
     };
 
