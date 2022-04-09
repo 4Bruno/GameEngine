@@ -127,8 +127,8 @@ if "%BuildDllID%" NEQ "All" (
 )
 if "%BuildThis%"=="Y" (
     if !%Mode%!==!release!  (
-        call ..\shaders.bat
+        call python ..\shaders.py
     ) else (
-        call ..\shaders.bat debug
+        call python ..\shaders.py d
     )
 )
