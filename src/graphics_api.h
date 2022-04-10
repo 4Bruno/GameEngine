@@ -66,6 +66,7 @@ struct GPUObjectData
 {
     m4 MVP;
     m4 ModelMatrix;
+    m4 ViewMatrix;
     v4 Color;
 };
 

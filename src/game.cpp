@@ -85,6 +85,31 @@ SCENE_HANDLER(HandleSceneFloor)
         A[i].M = V; \
     }
 
+void
+CreateWorld2(world * World)
+{
+
+    world_pos WC = MapIntoCell(World,WorldPosition(0,0,0),V3(0,0.f,0));
+    entity * Entity = AddEntity(World, WC);
+    EntityAddTranslation(Entity,0,V3(0), V3(5.0f),3.0f);
+    EntityAddMesh(Entity,game_asset_mesh_quad,V3(0.0f,0.0f,0.75f), 0.25f);
+
+    WC = WorldPosition(0,0,-2);
+    Entity = AddEntity(World, WC);
+    EntityAddTranslation(Entity,0,V3(0), V3(5.0f),3.0f);
+    EntityAddMesh(Entity,game_asset_mesh_quad, V3(1.0f,1.0f,0.0f),0.25f);
+
+    WC = WorldPosition(0,0,-4);
+    Entity = AddEntity(World, WC);
+    EntityAddTranslation(Entity,0,V3(0), V3(5.0f),3.0f);
+    EntityAddMesh(Entity,game_asset_mesh_quad,V3(1.0f,0.0f,0.0f),0.25f);
+
+    WC = WorldPosition(0,0,-6);
+    Entity = AddEntity(World, WC);
+    EntityAddTranslation(Entity,0,V3(0), V3(10.0f),3.0f);
+    EntityAddMesh(Entity,game_asset_mesh_quad,V3(0.75f,0.75f,0.75f),0.f);
+
+}
 
 void
 CreateWorld(world * World)
@@ -395,6 +420,7 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
         InitializeArena(&GameState->WorldArena,Base, WorldArenaSize);
         *World = NewWorld(&GameState->WorldArena, 16, 16, 16);
         CreateWorld(World);
+        //CreateWorld2(World);
         world_pos WorldCenter = WorldPosition(0,0,0);
         //GenerateWorld(World, WorldCenter);
         GameState->Simulation = PushStruct(&GameState->TemporaryArena,simulation);
@@ -430,7 +456,7 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
 
         v3 WorldCenterV3 = V3(0,0,0);
 
-        r32 FarView = 2000.0f;
+        r32 FarView = 500.0f;
         v3 WorldUp = V3(0,1,0);
         GameState->Renderer = 
             NewRenderController(&GameState->RenderArena,MaxRenderUnits,
@@ -702,8 +728,11 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
         Particle->Color = V3(1.0f,0.3f,0);
     }
 
-    //u32 TotalParticles = 1;
+#if 0
+    u32 TotalParticles = 1;
+#else
     u32 TotalParticles = ArrayCount(GameState->Particles);
+#endif
     Memset((u8 *)&GameState->ParticleCells[0], 0, sizeof(GameState->ParticleCells));
     v3 GridOrigin = {-0.5f * PARTICLE_CELL_DIM, 0, -0.5f * PARTICLE_CELL_DIM};
     r32 MaxDensityCell = 0;
@@ -831,8 +860,9 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
         GameState->ParticlesZOrder[ParticleIndex] = Particle;
     }
 
-    for (u32 i = 0, j = 1;
-             i < (TotalParticles - 1);
+#if 0 // using oit_weighted
+    for (i32 i = 0, j = 1;
+             i < ((i32)TotalParticles - 1);
              ++j)
     {
         particle * Pa = GameState->ParticlesZOrder[i];
@@ -844,13 +874,14 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
             GameState->ParticlesZOrder[j] = Pa;
         }
 
-        if (j >= (TotalParticles - 1))
+        if (j >= ((i32)TotalParticles - 1))
         {
             i += 1;
             j = i;
         }
         
     }
+#endif
 
     for (u32 ParticleIndex = 0;
                 ParticleIndex < TotalParticles;

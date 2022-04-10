@@ -41,6 +41,7 @@ GRAPHICS_RENDER_DRAW(RenderOpaqueUnits)
         ObjectData->ModelMatrix = Unit->ModelTransform;
         ObjectData->MVP = MVP;
         ObjectData->Color = Unit->Color;
+        ObjectData->ViewMatrix = Renderer->ViewTransform;
 
         ++ObjectData;
     }
@@ -79,7 +80,7 @@ GRAPHICS_RENDER_DRAW(RenderOpaqueUnits)
 
         if (LastTextureID != Unit->TextureID && Unit->TextureID >= 0)
         {
-            vkCmdSetDepthTestEnable(GetCurrentFrame()->PrimaryCommandBuffer,VK_FALSE);
+            //vkCmdSetDepthTestEnable(GetCurrentFrame()->PrimaryCommandBuffer,VK_FALSE);
             RenderBindTexture(Unit->TextureID);
             LastTextureID = Unit->TextureID;
         }
@@ -129,6 +130,7 @@ GRAPHICS_RENDER_DRAW(RenderTransparentUnits)
         ObjectData->ModelMatrix = Unit->ModelTransform;
         ObjectData->MVP = MVP;
         ObjectData->Color = Unit->Color;
+        ObjectData->ViewMatrix = Renderer->ViewTransform;
 
         ++ObjectData;
     }
@@ -192,58 +194,63 @@ GRAPHICS_RENDER_DRAW(RenderDraw)
 
     RenderOpaqueUnits(Renderer);
 
-    vkCmdEndRenderPass(cmd);
-
-    VkClearValue ColorClear = {};
-    ColorClear.color.float32[0] = 0; // VkClearColorValue color;
-    ColorClear.color.float32[1] = 0; // VkClearColorValue color;
-    ColorClear.color.float32[2] = 0; // VkClearColorValue color;
-    ColorClear.color.float32[3] = 0;
-
-    VkClearValue DepthClear;
-    DepthClear.depthStencil = {1.0f,0};
-
-    VkClearValue ClearAttachments[2] = {
-        ColorClear,
-        DepthClear
-    };
-
-    u32 SwapchainImageIndex = GlobalVulkan.CurrentSwapchainImageIndex;
-
-    VkRenderPassBeginInfo RenderPassBeginInfo = {};
-    RenderPassBeginInfo.sType             = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;       // VkStructureType   sType;
-    RenderPassBeginInfo.pNext             = 0;                                              // Void * pNext;
-    RenderPassBeginInfo.renderPass        = GlobalVulkan.RenderPassTransparency;                        // VkRenderPass renderPass;
-    RenderPassBeginInfo.framebuffer       = GlobalVulkan.FramebuffersTransparency[SwapchainImageIndex]; // VkFramebuffer framebuffer;
-    RenderPassBeginInfo.renderArea.extent = GlobalVulkan.WindowExtension;                   // VkRect2D renderArea;
-    RenderPassBeginInfo.clearValueCount   = ArrayCount(ClearAttachments);                   // u32_t clearValueCount;
-    RenderPassBeginInfo.pClearValues      = &ClearAttachments[0];                           // Typedef * pClearValues;
-
-    vkCmdBeginRenderPass(cmd, &RenderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
-
-    VkDescriptorSet oitWeightDescriptors[] = {
-        GlobalVulkan._oit_WeightedColorSet,
-        GlobalVulkan._oit_WeightedRevealSet,
-    };
-
-    vkCmdBindDescriptorSets(cmd, 
-                            VK_PIPELINE_BIND_POINT_GRAPHICS, 
-                            GlobalVulkan.CurrentPipelineLayout, 
-                            3, 2, 
-                            &oitWeightDescriptors[0], 
-                            0, nullptr);
-
-    GetCurrentFrame()->ObjectsCount = 0;
-
     if (Renderer->UnitsTransparent.UnitsCount > 0)
     {
+        vkCmdEndRenderPass(cmd);
+
+        u32 SwapchainImageIndex = GlobalVulkan.CurrentSwapchainImageIndex;
+
+#if 0
+        VH_TranstionTo(cmd, 
+                       GlobalVulkan.SwapchainImages[SwapchainImageIndex], 
+                       VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, 
+                       VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT);
+#endif
+
+        VkClearValue ColorClear = {};
+        ColorClear.color.float32[0] = 0; // VkClearColorValue color;
+        ColorClear.color.float32[1] = 0; // VkClearColorValue color;
+        ColorClear.color.float32[2] = 0; // VkClearColorValue color;
+        ColorClear.color.float32[3] = 0;
+
+        VkClearValue DepthClear;
+        DepthClear.depthStencil = {1.0f,0};
+
+        VkClearValue ClearAttachments[2] = {
+            ColorClear,
+            DepthClear
+        };
+
+
+        VkRenderPassBeginInfo RenderPassBeginInfo = {};
+        RenderPassBeginInfo.sType             = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;       // VkStructureType   sType;
+        RenderPassBeginInfo.pNext             = 0;                                              // Void * pNext;
+        RenderPassBeginInfo.renderPass        = GlobalVulkan.RenderPassTransparency;                        // VkRenderPass renderPass;
+        RenderPassBeginInfo.framebuffer       = GlobalVulkan.FramebuffersTransparency[SwapchainImageIndex]; // VkFramebuffer framebuffer;
+        RenderPassBeginInfo.renderArea.extent = GlobalVulkan.WindowExtension;                   // VkRect2D renderArea;
+        RenderPassBeginInfo.clearValueCount   = ArrayCount(ClearAttachments);                   // u32_t clearValueCount;
+        RenderPassBeginInfo.pClearValues      = &ClearAttachments[0];                           // Typedef * pClearValues;
+
+        vkCmdBeginRenderPass(cmd, &RenderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
+
+        VkDescriptorSet oitWeightDescriptors[] = {
+            GlobalVulkan._oit_WeightedColorSet,
+            GlobalVulkan._oit_WeightedRevealSet,
+        };
+
+        vkCmdBindDescriptorSets(cmd, 
+                VK_PIPELINE_BIND_POINT_GRAPHICS, 
+                GlobalVulkan.CurrentPipelineLayout, 
+                3, 2, 
+                &oitWeightDescriptors[0], 
+                0, nullptr);
+
+        GetCurrentFrame()->ObjectsCount = 0;
+
         RenderTransparentUnits(Renderer);
-    }
 
-    vkCmdNextSubpass(cmd, VK_SUBPASS_CONTENTS_INLINE);
+        vkCmdNextSubpass(cmd, VK_SUBPASS_CONTENTS_INLINE);
 
-    if (Renderer->UnitsTransparent.UnitsCount > 0)
-    {
         // Full screen triangle
         RenderSetPipeline(Renderer->UnitsTransparent.Units[0].MaterialPipelineIndex[1]);
         RenderDrawObject(3, 0);
@@ -272,6 +279,7 @@ GRAPHICS_END_RENDER(EndRenderPass)
 
     vkCmdEndRenderPass(cmd);
 
+#if 1
     VkImageSubresourceRange Range;
     Range.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT;
     Range.baseMipLevel   = 0; // uint32_t baseMipLevel;
@@ -294,7 +302,13 @@ GRAPHICS_END_RENDER(EndRenderPass)
     vkCmdPipelineBarrier(cmd, 
                             VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, 
                             VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, 0, 0, nullptr, 0, nullptr, 1, &MemoryBarrierPresent);
+#else
+    VH_TranstionTo(cmd, 
+            GlobalVulkan.SwapchainImages[SwapchainImageIndex], 
+            VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, 
+            VK_ACCESS_COLOR_ATTACHMENT_READ_BIT);
 
+#endif
 
     VK_CHECK(vkEndCommandBuffer(cmd));
 

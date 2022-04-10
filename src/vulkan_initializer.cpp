@@ -1256,15 +1256,15 @@ VulkanInitDefaultRenderPass()
     SubpassDescription.pColorAttachments       = &ColorAttachmentReference;       // Typedef * pColorAttachments;
     SubpassDescription.pDepthStencilAttachment = &DepthAttachmentReference;       // Typedef * pDepthStencilAttachment;
 
-#if 0
-    VkSubpassDependency Dependency;
-    //Dependency.srcSubpass      = ; // uint32_t   srcSubpass;
-    //Dependency.dstSubpass      = ; // uint32_t   dstSubpass;
-    Dependency.srcStageMask    = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT; 
-    Dependency.dstStageMask    = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-    //Dependency.srcAccessMask   = ; // VkAccessFlags   srcAccessMask;
-    Dependency.dstAccessMask   = VK_ACCESS_COLOR_ATTACHMENT_READ_BIT;
-    //Dependency.dependencyFlags = ; // VkDependencyFlags   dependencyFlags;
+#if 1
+    VkSubpassDependency SelfDependency;
+    SelfDependency.srcSubpass      = 0; // uint32_t   srcSubpass;
+    SelfDependency.dstSubpass      = 0; // uint32_t   dstSubpass;
+    SelfDependency.srcStageMask    = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT; 
+    SelfDependency.dstStageMask    = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+    SelfDependency.srcAccessMask   = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT; // VkAccessFlags   srcAccessMask;
+    SelfDependency.dstAccessMask   = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
+    SelfDependency.dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT; // VkSelfDependencyFlags   dependencyFlags;
 #endif
 
     VkRenderPassCreateInfo RenderPassCreateInfo;
@@ -1275,9 +1275,9 @@ VulkanInitDefaultRenderPass()
     RenderPassCreateInfo.pAttachments    = &Attachments[0];                           // Typedef * pAttachments;
     RenderPassCreateInfo.subpassCount    = 1;                                         // u32_t subpassCount;
     RenderPassCreateInfo.pSubpasses      = &SubpassDescription;                       // Typedef * pSubpasses;
-#if 0
+#if 1
     RenderPassCreateInfo.dependencyCount = 1;                                         // u32_t dependencyCount;
-    RenderPassCreateInfo.pDependencies   = &Dependency;                               // Typedef * pDependencies;
+    RenderPassCreateInfo.pDependencies   = &SelfDependency;                               // Typedef * pDependencies;
 #else
     RenderPassCreateInfo.dependencyCount = 0;                                         // u32_t dependencyCount;
     RenderPassCreateInfo.pDependencies   = 0;                               // Typedef * pDependencies;
