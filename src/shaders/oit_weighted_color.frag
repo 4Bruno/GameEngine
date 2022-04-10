@@ -48,6 +48,8 @@ layout (set = 0, binding = 0) uniform SimulationBuffer
 
 } Simulation;
 
+layout (set = 2, binding = 0) uniform sampler2D text1;
+
 layout(location = 0) in interpolants IN;
 
 layout(location = 0) out vec4 outColor;
@@ -70,11 +72,14 @@ vec3 goochLighting(vec3 normal)
 // an unpremultiplied RGBA color.
 vec4 shading(const interpolants its)
 {
-  vec3 colorRGB = its.Color.rgb * goochLighting(its.Normal);
+  //vec3 colorRGB = its.Color.rgb * goochLighting(its.Normal);
+  vec4 Color = texture(text1,its.UV);
+  vec3 colorRGB = Color.rgb * goochLighting(its.Normal);
 
   // Calculate transparency in [alphaMin, alphaMin+alphaWidth]
   //float alpha = clamp(scene.alphaMin + its.color.a * scene.alphaWidth, 0, 1);
-  float alpha = clamp(0.0f + its.Color.a * 1.0f, 0, 1);
+  //float alpha = clamp(0.2f + Color.a * 0.3f, 0, 1);
+  float alpha = clamp(Color.a, 0, 1);
 
   return vec4(colorRGB, alpha);
 }
@@ -91,7 +96,10 @@ void main()
   // The depth functions in the paper want a camera-space depth of 0.1 < z < 500,
   // but the scene at the moment uses a range of about 0.01 to 50, so multiply
   // by 10 to get an adjusted depth:
-  const float depthZ = -IN.Depth * 10.0f;
+  // const float depthZ = -IN.Depth * 10.0f;
+
+    // Current set it to 500 to match paper
+  const float depthZ = -IN.Depth;
 
   const float distWeight = clamp(0.03 / (1e-5 + pow(depthZ / 200, 4.0)), 1e-2, 3e3);
 

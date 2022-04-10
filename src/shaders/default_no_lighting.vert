@@ -25,11 +25,12 @@ void main()
     mat4 ModelMatrix = ObjectsArray.Objects[gl_InstanceIndex].ModelMatrix;
     mat4 MVP = ObjectsArray.Objects[gl_InstanceIndex].MVP;
     vec4 Color = ObjectsArray.Objects[gl_InstanceIndex].Color;
+    float Depth = (ObjectsArray.Objects[gl_InstanceIndex].ViewMatrix * vec4(Position,1.0f)).z;
 
     outIP.Color = Color;
     outIP.Normal = Normal;
     outIP.Pos = Position;
-    outIP.Depth = 1.0f;
+    outIP.Depth = Depth;
     outIP.UV = UV;
 
     gl_Position = MVP * vec4(Position, 1.0f);

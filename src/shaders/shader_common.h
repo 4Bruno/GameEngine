@@ -11,6 +11,7 @@ struct objects_data
 {
     mat4 MVP;
     mat4 ModelMatrix;
+    mat4 ViewMatrix;
     vec4 Color;
 };
 
