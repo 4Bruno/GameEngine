@@ -18,7 +18,12 @@ This is just for learning purposes.
 * I can reload game dll during debug with memory intact
 * I can generate entities and simulate multiple world areas
 * I can render 1 simulation with spatial query
-* I can generated complex 3D ground (low resolution 9 voxels per meter sqr)
+* -I can generated complex 3D ground (low resolution 9 voxels per meter sqr)-
+** CPU implementation was working but I will be focus on GPU implementation using computation shader
+* Transparent pipeline using oit_weighted (targeted for particle system, opaque objects with transparency not well designed)
+** http://casual-effects.blogspot.com/2015/03/implemented-weighted-blended-order.html
+** https://github.com/nvpro-samples/vk_order_independent_transparency
+* Rudimentary particle system (no generic, just a sample of how to render particles)
 ![Visual sample of current status](game_engine_current_status_sample.gif)
 
 # QA
