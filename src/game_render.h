@@ -35,6 +35,8 @@ GAME_API void
 PushDrawEntity(render_controller * Renderer,entity * Entity);
 GAME_API void
 PushDraw(render_controller * Renderer, game_asset_id Material, m4 * ModelT, game_asset_id MeshID, game_asset_id TextureID, v3 Color, r32 Transparency);
+GAME_API void
+PushDrawParticle(render_controller * Renderer, m4 * ModelT, mesh_group * MeshGroup, game_asset_id TextureID, v3 Color, r32 Transparency);
 
 GAME_API render_controller
 NewRenderController(memory_arena * Arena, u32 RenderUnitLimits,

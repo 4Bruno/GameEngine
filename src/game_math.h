@@ -507,5 +507,29 @@ TruncateReal32ToInt32(r32 A)
 }
 
 
+inline v3
+VectorByMatrix(m4 &M,v3 A)
+{
+    v3 Result = {
+        M[0].x * A.x + M[1].x * A.y + M[2].x * A.z,
+        M[0].y * A.x + M[1].y * A.x + M[2].y * A.z,
+        M[0].z * A.x + M[1].z * A.x + M[2].z * A.z,
+    };
+
+    return Result;
+}
+
+inline v3
+VectorByMatrix(v3 A, m4 &M)
+{
+    v3 Result = {
+        M[0].x * A.x + M[0].y * A.y + M[0].z * A.z,
+        M[1].x * A.x + M[1].y * A.y + M[1].z * A.z,
+        M[2].x * A.x + M[2].y * A.y + M[2].z * A.z,
+    };
+
+    return Result;
+}
+
 #define GAME_MATH_H
 #endif

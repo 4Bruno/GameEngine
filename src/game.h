@@ -148,9 +148,10 @@ struct game_state
 #define PARTICLE_CELL_DIM_MINUS_ONE (PARTICLE_CELL_DIM - 1)
 #define PARTICLE_CELL_DIM_MINUS_TWO (PARTICLE_CELL_DIM - 2)
     particle Particles[256];
-    particle * ParticlesZOrder[256];
+    vertex_point ParticlePoints[256*6];
     particle_cell ParticleCells[PARTICLE_CELL_DIM][PARTICLE_CELL_DIM][PARTICLE_CELL_DIM];
     u32 NextParticle;
+    mesh_group ParticlesMesh;
 
     random_series RandomSeed;
 };

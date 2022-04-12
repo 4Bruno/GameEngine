@@ -857,37 +857,95 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
         }
 
         Particle->DistToCamera = LengthSqr(CameraP - Particle->T.LocalP);
-        GameState->ParticlesZOrder[ParticleIndex] = Particle;
     }
 
-#if 0 // using oit_weighted
-    for (i32 i = 0, j = 1;
-             i < ((i32)TotalParticles - 1);
-             ++j)
+    // render single mesh with all vertex points versus render quads / particle
+    // based on unity meshes < 256 vertex are not worth rendering
+#if 1
+    const int VerticesInQuad = 6;
+    const int TotalParticlePoints = ArrayCount(GameState->Particles) * VerticesInQuad;
+    vertex_point * ParticlePoints = GameState->ParticlePoints + 0;
+
+    for (u32 ParticleIndex = 0;
+             ParticleIndex < (TotalParticles * VerticesInQuad);
+             ParticleIndex += VerticesInQuad)
     {
-        particle * Pa = GameState->ParticlesZOrder[i];
-        particle * Pb = GameState->ParticlesZOrder[j];
-        if (Pa->DistToCamera < Pb->DistToCamera)
-        {
-            particle * tmp = Pa;
-            GameState->ParticlesZOrder[i] = GameState->ParticlesZOrder[j];
-            GameState->ParticlesZOrder[j] = Pa;
-        }
+        particle * Particle = &GameState->Particles[ParticleIndex / VerticesInQuad];
 
-        if (j >= ((i32)TotalParticles - 1))
-        {
-            i += 1;
-            j = i;
-        }
+        m4 R = {};
+        i32 TooClose = LookAt(&R,Particle->T.LocalP, CameraP, Renderer->WorldUp);
+        //if (TooClose) { Assert(0); }
+        //
+        v3 WorldP = Particle->T.LocalP;
+        //Particle->Color = Clamp(Particle->Color + (Input->DtFrame * V3(-0.5f)),0.3f,1.0f);
+        Particle->Color = V3(1.0f,0,0);
         
-    }
+        m4 WorldPM = M4();
+        Translate(WorldPM, WorldP);
+        m4 Scale = M4(Particle->T.WorldS * 5.0f);
+        m4 WorldT = WorldPM * R * Scale;
+
+        // quad vertices
+        v3 qv1 = V3(-1,-1,0);
+        v3 qv2 = V3(-1,+1,0);
+        v3 qv3 = V3(+1,+1,0);
+        v3 qv4 = V3(+1,-1,0);
+
+#if 0
+        Quaternion_rotate(&Particle->T.WorldR,&qv1,&qv1);
+        Quaternion_rotate(&Particle->T.WorldR,&qv2,&qv2);
+        Quaternion_rotate(&Particle->T.WorldR,&qv3,&qv3);
+        Quaternion_rotate(&Particle->T.WorldR,&qv4,&qv4);
+#else
+        qv1 = VectorByMatrix(qv1, R) + WorldP;
+        qv2 = VectorByMatrix(qv2, R) + WorldP;
+        qv3 = VectorByMatrix(qv3, R) + WorldP;
+        qv4 = VectorByMatrix(qv4, R) + WorldP;
 #endif
 
+        ParticlePoints[ParticleIndex + 0].P = qv2;
+        ParticlePoints[ParticleIndex + 1].P = qv1;
+        ParticlePoints[ParticleIndex + 2].P = qv4;
+        ParticlePoints[ParticleIndex + 3].P = qv2;
+        ParticlePoints[ParticleIndex + 4].P = qv4;
+        ParticlePoints[ParticleIndex + 5].P = qv3;
+
+        ParticlePoints[ParticleIndex + 0].UV = V2(0,1);
+        ParticlePoints[ParticleIndex + 1].UV = V2(0,0);
+        ParticlePoints[ParticleIndex + 2].UV = V2(1,0);
+        ParticlePoints[ParticleIndex + 3].UV = V2(0,1);
+        ParticlePoints[ParticleIndex + 4].UV = V2(1,0);
+        ParticlePoints[ParticleIndex + 5].UV = V2(1,1);
+
+        //v3 N = GetMatrixDirection(R);
+        v3 N = V3(1.0f,0,0);
+        ParticlePoints[ParticleIndex + 0].N = N;
+        ParticlePoints[ParticleIndex + 1].N = N;
+        ParticlePoints[ParticleIndex + 2].N = N;
+        ParticlePoints[ParticleIndex + 3].N = N;
+        ParticlePoints[ParticleIndex + 4].N = N;
+        ParticlePoints[ParticleIndex + 5].N = N;
+    }
+
+    GraphicsPushVertexData(ParticlePoints,sizeof(vertex_point)*TotalParticlePoints,&GameState->ParticlesMesh.GPUVertexBufferBeginOffset);
+    m4 ParticleModelT = M4(V3(0.5f));
+    v3 ParticleEmiterP = V3(0,0,0);
+    Translate(ParticleModelT, ParticleEmiterP);
+    m4 Scale = M4(V3(5.0f));
+    ParticleModelT = ParticleModelT * Scale;
+    if (GameState->ParticlesMesh.Meshes == 0) 
+    {
+        GameState->ParticlesMesh.Meshes = PushStruct(&GameState->TemporaryArena, mesh);
+        GameState->ParticlesMesh.Meshes[0].VertexSize = sizeof(vertex_point)*TotalParticlePoints;
+    }
+    PushDrawParticle(Renderer, &ParticleModelT, &GameState->ParticlesMesh, game_asset_texture_particle_01_small, V3(1.0f,0,0), 0);
+
+#else
     for (u32 ParticleIndex = 0;
                 ParticleIndex < TotalParticles;
                 ++ParticleIndex)
     {
-        particle * Particle = GameState->ParticlesZOrder[ParticleIndex];
+        particle * Particle = GameState->Particles + ParticleIndex;
         //Logn("%f ", Particle->DistToCamera);
 
         m4 R = {};
@@ -908,6 +966,7 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
         //PushDraw(Renderer, game_asset_material_texture_no_light, &WorldT, game_asset_mesh_quad,game_asset_texture_particle_01_small, Particle->Color,0.0f);
         PushDraw(Renderer, game_asset_material_transparent, &WorldT, game_asset_mesh_quad,game_asset_texture_particle_01_small, Particle->Color,0.0f);
     }
+#endif
 
 #if 0
     // test quaternion lookat with single quad

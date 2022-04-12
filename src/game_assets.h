@@ -40,9 +40,9 @@ struct asset_slot
 };
 
 
-#define ASSETS_DEFAULT_MESH (game_asset_id)(game_asset_mesh_begin + 1)
+#define ASSETS_DEFAULT_MESH     (game_asset_id)(game_asset_mesh_begin + 1)
 #define ASSETS_DEFAULT_MATERIAL (game_asset_id)(game_asset_material_begin + 2)
-#define ASSETS_NULL_TEXTURE ((game_asset_id)-1)
+#define ASSETS_NULL_TEXTURE     ((game_asset_id)-1)
 #define ASSETS_TOTAL_MESHES     (game_asset_mesh_end - game_asset_mesh_begin - 1)
 #define ASSETS_TOTAL_MATERIALS  (game_asset_material_end - game_asset_material_begin - 1)
 #define ASSETS_TOTAL_SHADERS    (game_asset_shader_end - game_asset_shader_begin - 1)

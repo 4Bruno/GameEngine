@@ -167,23 +167,14 @@ RenderDrawGround(game_state * GameState,render_controller * Renderer, simulation
 }
 #endif
 
+
 void
-PushDraw(render_controller * Renderer, game_asset_id Material, m4 * ModelT, game_asset_id MeshID, game_asset_id TextureID, v3 Color, r32 Transparency)
+PushDraw_(render_controller * Renderer, asset_material * Material, m4 * ModelT, mesh_group * MeshGroup, asset_texture * Texture, game_asset_id TextureID, v3 Color, r32 Transparency)
 {
-
-
-    mesh_group * MeshGroup = GetMesh(GlobalAssets,MeshID);
-    asset_material * MaterialPipeline = GetMaterial(GlobalAssets,Material);
-    asset_texture * Texture = 0;
-    if (TextureID > game_asset_texture_begin && TextureID < game_asset_texture_end)
-    {
-        Texture = GetTexture(GlobalAssets,TextureID);
-    }
-
-    if (MeshGroup && MaterialPipeline && (Texture || TextureID == ASSETS_NULL_TEXTURE))
+    if (MeshGroup && Material && (Texture || TextureID == ASSETS_NULL_TEXTURE))
     {
         render_unit * Unit = 0;
-        if (Material == game_asset_material_transparent)
+        if (Material->AssetID == game_asset_material_transparent)
         {
             Assert(Renderer->UnitsTransparent.UnitsCount <= Renderer->UnitsTransparent.UnitsLimit);
             Unit = Renderer->UnitsTransparent.Units + Renderer->UnitsTransparent.UnitsCount++;
@@ -197,16 +188,48 @@ PushDraw(render_controller * Renderer, game_asset_id Material, m4 * ModelT, game
         Unit->ModelTransform = *ModelT;
         Unit->MeshGroup = MeshGroup;
 
-        for (u32 MaterialPipelineIndex = 0; 
-                 MaterialPipelineIndex < MaterialPipeline->PipelinesCount;
-                 ++MaterialPipelineIndex)
+        for (u32 MaterialIndex = 0; 
+                 MaterialIndex < Material->PipelinesCount;
+                 ++MaterialIndex)
         {
-            Unit->MaterialPipelineIndex[MaterialPipelineIndex] = 
-                MaterialPipeline->Pipeline[MaterialPipelineIndex].Pipeline;
+            Unit->MaterialPipelineIndex[MaterialIndex] = 
+                Material->Pipeline[MaterialIndex].Pipeline;
         }
         Unit->Color = V4(Color, 1.0f - Transparency);
         Unit->TextureID = Texture ? Texture->GPUID : -1;
     }
+}
+
+void
+PushDrawParticle(render_controller * Renderer, m4 * ModelT, mesh_group * MeshGroup, game_asset_id TextureID, v3 Color, r32 Transparency)
+{
+    asset_material * MaterialPipeline = GetMaterial(GlobalAssets,game_asset_material_transparent);
+    asset_texture * Texture = 0;
+    if (TextureID > game_asset_texture_begin && TextureID < game_asset_texture_end)
+    {
+        Texture = GetTexture(GlobalAssets,TextureID);
+    }
+#if 0
+    Texture = 0; TextureID = ASSETS_NULL_TEXTURE;
+    MaterialPipeline = GetMaterial(GlobalAssets,game_asset_material_default_no_light);
+#endif
+    PushDraw_(Renderer, MaterialPipeline, ModelT, MeshGroup, Texture, TextureID, Color, Transparency);
+}
+
+void
+PushDraw(render_controller * Renderer, game_asset_id Material, m4 * ModelT, game_asset_id MeshID, game_asset_id TextureID, v3 Color, r32 Transparency)
+{
+
+
+    mesh_group * MeshGroup = GetMesh(GlobalAssets,MeshID);
+    asset_material * MaterialPipeline = GetMaterial(GlobalAssets,Material);
+    asset_texture * Texture = 0;
+    if (TextureID > game_asset_texture_begin && TextureID < game_asset_texture_end)
+    {
+        Texture = GetTexture(GlobalAssets,TextureID);
+    }
+    PushDraw_(Renderer, MaterialPipeline, ModelT, MeshGroup, Texture, TextureID,Color, Transparency);
+
 }
 
 
@@ -467,10 +490,12 @@ LookAt(m4 * M, v3 P, v3 TargetP, v3 WorldUp)
     Right = Cross(Out,Up);
 
     // TODO: this is a hack I don't understand what I'm doing
+#if 1
     if (Inner(V3(0,0,1), Out) > 0.0f)
     {
         Up = -Up;
     }
+#endif
 
     (*M)[0].x = Right.x;
     (*M)[0].y = Up.x;

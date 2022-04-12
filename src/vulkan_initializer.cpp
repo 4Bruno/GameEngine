@@ -1691,12 +1691,23 @@ GRAPHICS_PUSH_VERTEX_DATA(PushVertexData)
 {
 
     gpu_arena * VertexArena = GlobalVulkan.VertexArena;
-    VkDeviceSize Offset = VertexArena->CurrentSize;
-
     u32 Align = VertexArena->Alignment - 1;
     u32 DataSizeAligned = (DataSize + Align) & ~Align;
 
-    Assert((VertexArena->CurrentSize + DataSizeAligned) < VertexArena->MaxSize);
+    VkDeviceSize Offset = 0;
+
+    if (*outVertexBufferBeginOffset == 0)
+    {
+        Offset = VertexArena->CurrentSize;
+        Assert((VertexArena->CurrentSize + DataSizeAligned) < VertexArena->MaxSize);
+    }
+    else
+    {
+        // this is a hack to re-use vertex buffer for particles with known size
+        // i dont have a way to check i'm passing same buffer size
+        // expecting particle system to dont change buffer size
+        Offset = *outVertexBufferBeginOffset;
+    }
 
     VulkanWriteDataToArena(GlobalVulkan.TransferBitArena,Data, DataSize);
 
@@ -1707,9 +1718,11 @@ GRAPHICS_PUSH_VERTEX_DATA(PushVertexData)
         return 1;
     }
 
-    VertexArena->CurrentSize += DataSizeAligned;
-
-    *outVertexBufferBeginOffset = (u32)Offset;
+    if (*outVertexBufferBeginOffset == 0)
+    {
+        VertexArena->CurrentSize += DataSizeAligned;
+        *outVertexBufferBeginOffset = (u32)Offset;
+    }
 
     return 0;
 }
