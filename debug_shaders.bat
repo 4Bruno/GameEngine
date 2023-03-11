@@ -1,2 +1,2 @@
 @echo off
-call ..\shaders.bat debug
+call ..\shaders.py d

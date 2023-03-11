@@ -672,6 +672,7 @@ UpdateWorldLocation(world * World, simulation * Sim)
         }
     }
 
+#if 0
     for (u32 GroundIndex = 0;
              GroundIndex < World->GroundEntityCount;
              ++GroundIndex)
@@ -685,6 +686,7 @@ UpdateWorldLocation(world * World, simulation * Sim)
             SimulationRegisterGround(Sim,Ground,GroundIndex);
         }
     }
+#endif
 }
 
 

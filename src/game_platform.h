@@ -119,7 +119,8 @@ typedef DEBUG_CLOSE_FILE(debug_close_file);
 /* ----------------------- BEGIN MULTI THREAD ---------------------- */
 
 // TODO how to get other intrinsics and avoid linking to winin.h??
-#define COMPILER_DONOT_REORDER_BARRIER  __faststorefence()
+//#define COMPILER_DONOT_REORDER_BARRIER  __faststorefence()
+#define COMPILER_DONOT_REORDER_BARRIER  MemoryBarrier()
 struct thread_work_queue;
 
 #define THREAD_WORK_HANDLER(name) void name(thread_work_queue * Queue, void * Data)

@@ -4,7 +4,7 @@
 #include <inttypes.h>
 
 #define STB_IMAGE_IMPLEMENTATION
-#include "stb_image.h"
+#include "stb_image_modified.h"
 
 
 #define ASSETS_MULTITHREAD_ENABLED 0
@@ -71,6 +71,8 @@ NewGameAssets(memory_arena * Arena, thread_memory_arena * ThreadArenas, i32 Limi
         Assets.CachedMeshGroups[MeshIndex].AssetID = (game_asset_id)0;
         Assets.CachedMeshGroups[MeshIndex].TotalMeshObjects = 0;
         Assets.CachedMeshGroups[MeshIndex].GPUVertexBufferBeginOffset = 0;
+        Assets.CachedMeshGroups[MeshIndex].Sphere.c = V3();
+        Assets.CachedMeshGroups[MeshIndex].Sphere.r = 0.0f;
     }
 
     Assets.MeshArenaPermanentSize = 
@@ -308,53 +310,6 @@ GetShader(game_assets * Assets, game_asset_id ID)
                 Assets->ShaderLoadInProgress += 1;
             }
         } break;
-        case asset_loaded_on_cpu:
-        {
-            CurrentState = asset_transfer_to_gpu_inprogress;
-            i32 ShaderIndex = GraphicsCreateShaderModule(AssetSlot->Data, AssetSlot->Size);
-            Assert(ShaderIndex > -1); // Invalid code path, why failed?
-
-            CurrentState = asset_loaded_on_gpu;
-            Assets->ShaderLoadInProgress -= 1;
-
-            if (Assets->ShaderLoadInProgress <= 0)
-            {
-                Assets->ShaderArena.CurrentSize = 0;
-            }
-
-            // ring cache
-            u32 BitMask = ArrayCount(Assets->CachedShaders) - 1; // 0x0F 0x1000 - 1 = 0x0111;
-            u32 StartIndex = Assets->CachedShadersIndex;
-            u32 CachedIndex = ((StartIndex + 1) & BitMask);
-            asset_shader * CachedShader = 0;
-            for (; 
-                 CachedIndex != StartIndex;
-                 CachedIndex = (++CachedIndex & BitMask))
-            {
-                CachedShader = Assets->CachedShaders + CachedIndex;
-                volatile asset_state * State = &Assets->AssetSlots[CachedShader->AssetID].State;
-                asset_state StateBeforeUpdate = (asset_state)AtomicCompareExchangeU32((volatile u32 *)State, (u32)asset_unloaded, (u32)asset_loaded);
-                if (StateBeforeUpdate == asset_loaded)
-                {
-                    Assert(CachedShader->GPUID > -1);
-                    GraphicsDeleteShaderModule(CachedShader->GPUID);
-                }
-                
-                if (StateBeforeUpdate == asset_unloaded || StateBeforeUpdate == asset_loaded)
-                {
-                    break;
-                }
-            };
-
-            Assert(CachedShader);
-
-            *CachedShader = { ShaderIndex, ID };
-
-            Assets->CachedShadersIndex = CachedIndex;
-
-            AssetSlot->State = asset_loaded;
-
-        } break;
         case asset_load_inprogress:
         {
             //pass
@@ -368,6 +323,54 @@ GetShader(game_assets * Assets, game_asset_id ID)
             Assert(0); // INVALID_PATH_CODE
         };
     };
+
+    if (AssetSlot->State == asset_loaded_on_cpu)
+    {
+        CurrentState = asset_transfer_to_gpu_inprogress;
+        i32 ShaderIndex = GraphicsCreateShaderModule(AssetSlot->Data, AssetSlot->Size);
+        Assert(ShaderIndex > -1); // Invalid code path, why failed?
+
+        CurrentState = asset_loaded_on_gpu;
+        Assets->ShaderLoadInProgress -= 1;
+
+        if (Assets->ShaderLoadInProgress <= 0)
+        {
+            Assets->ShaderArena.CurrentSize = 0;
+        }
+
+        // ring cache
+        u32 BitMask = ArrayCount(Assets->CachedShaders) - 1; // 0x0F 0x1000 - 1 = 0x0111;
+        u32 StartIndex = Assets->CachedShadersIndex;
+        u32 CachedIndex = ((StartIndex + 1) & BitMask);
+        asset_shader * CachedShader = 0;
+        for (; 
+                CachedIndex != StartIndex;
+                CachedIndex = (++CachedIndex & BitMask))
+        {
+            CachedShader = Assets->CachedShaders + CachedIndex;
+            volatile asset_state * State = &Assets->AssetSlots[CachedShader->AssetID].State;
+            asset_state StateBeforeUpdate = (asset_state)AtomicCompareExchangeU32((volatile u32 *)State, (u32)asset_unloaded, (u32)asset_loaded);
+            if (StateBeforeUpdate == asset_loaded)
+            {
+                Assert(CachedShader->GPUID > -1);
+                GraphicsDeleteShaderModule(CachedShader->GPUID);
+            }
+
+            if (StateBeforeUpdate == asset_unloaded || StateBeforeUpdate == asset_loaded)
+            {
+                break;
+            }
+        };
+
+        Assert(CachedShader);
+
+        *CachedShader = { ShaderIndex, ID };
+
+        Assets->CachedShadersIndex = CachedIndex;
+
+        AssetSlot->State = asset_loaded;
+
+    }
 
     return AssetSlot;
 }
@@ -535,20 +538,31 @@ GetTexture(game_assets * Assets, game_asset_id ID)
 #endif
 
 asset_material *
-GetMaterial(game_assets * Assets, game_asset_id MaterialID)
+GetMaterial(game_assets * Assets, game_asset_id MaterialID, b32 WaitUntilLoaded)
 {
     Assert(MaterialID > game_asset_material_begin && MaterialID < game_asset_material_end);
 
     asset_material * Material = 0;
 
-    // TODO: Dynamic material creation?
-    const u32 MaxInputsPerMaterial = 4;
-    const game_asset_id MappingMaterialShaders[game_asset_material_end - game_asset_material_begin - 1][MaxInputsPerMaterial] = {
-        {game_asset_shader_vertex_default_no_light, game_asset_shader_fragment_default, (game_asset_id)0, (game_asset_id)0},
-        {game_asset_shader_vertex_default_light, game_asset_shader_fragment_default, (game_asset_id)0, (game_asset_id)0},
-        {game_asset_shader_vertex_default_no_light, game_asset_shader_fragment_texture, (game_asset_id)0, (game_asset_id)0},
-        {game_asset_shader_vertex_default_light, game_asset_shader_fragment_texture, (game_asset_id)0 , (game_asset_id)0},
+#define MATERIAL_INPUTS 4
+    const game_asset_id 
+          MappingMaterialShaders[ASSETS_TOTAL_MATERIALS][MATERIAL_INPUTS] = 
+    {
+        {game_asset_shader_vertex_default_no_light, game_asset_shader_fragment_default,           (game_asset_id)0, (game_asset_id)0},
+        {game_asset_shader_vertex_default_light,    game_asset_shader_fragment_default,           (game_asset_id)0, (game_asset_id)0},
+        {game_asset_shader_vertex_default_light,    game_asset_shader_fragment_default,           (game_asset_id)0, (game_asset_id)0},
+        {game_asset_shader_vertex_default_no_light, game_asset_shader_fragment_texture,           (game_asset_id)0, (game_asset_id)0},
+        {game_asset_shader_vertex_default_light,    game_asset_shader_fragment_texture,           (game_asset_id)0 , (game_asset_id)0},
         {game_asset_shader_vertex_default_no_light, game_asset_shader_fragment_oit_weighted_color, game_asset_shader_vertex_fullscreen_triangle , game_asset_shader_fragment_oit_weighted_composite }
+    };
+    const polygon_mode MappingPolygonMode[ASSETS_TOTAL_MATERIALS] =
+    {
+        polygon_mode_fill,
+        polygon_mode_fill,
+        polygon_mode_line,
+        polygon_mode_fill,
+        polygon_mode_fill,
+        polygon_mode_fill
     };
 
     asset_slot * MaterialSlot = Assets->AssetSlots + MaterialID;
@@ -556,12 +570,12 @@ GetMaterial(game_assets * Assets, game_asset_id MaterialID)
     if (MaterialSlot->State == asset_unloaded)
     {
         u32 MaterialLookupIndex = MaterialID - game_asset_material_begin - 1;
-        asset_state AssetStateBeforeLock[MaxInputsPerMaterial];
-        asset_shader Shaders[MaxInputsPerMaterial];
+        asset_state AssetStateBeforeLock[MATERIAL_INPUTS];
+        asset_shader Shaders[MATERIAL_INPUTS];
 
         b32 AllShadersAreLocked = 0x01;
 
-        for (u32 ShaderIndex = 0; ShaderIndex < MaxInputsPerMaterial; ++ShaderIndex)
+        for (u32 ShaderIndex = 0; ShaderIndex < MATERIAL_INPUTS; ++ShaderIndex)
         {
             game_asset_id ShaderID = MappingMaterialShaders[MaterialLookupIndex][ShaderIndex];
             if (ShaderID > game_asset_shader_begin && ShaderID < game_asset_shader_end)
@@ -578,11 +592,35 @@ GetMaterial(game_assets * Assets, game_asset_id MaterialID)
             }
         }
 
+#if ASSETS_MULTITHREAD_ENABLED
+        if (WaitUntilLoaded)
+        {
+            GlobalPlatformMemory->CompleteWorkQueue(GlobalPlatformMemory->HighPriorityWorkQueue);
+            for (u32 ShaderIndex = 0; ShaderIndex < MATERIAL_INPUTS; ++ShaderIndex)
+            {
+                game_asset_id ShaderID = MappingMaterialShaders[MaterialLookupIndex][ShaderIndex];
+                if (ShaderID > game_asset_shader_begin && ShaderID < game_asset_shader_end)
+                {
+                    volatile asset_state * AssetState = &GetShader(Assets,ShaderID)->State;
+                    AssetStateBeforeLock[ShaderIndex] = 
+                        (asset_state)AtomicCompareExchangeU32(
+                                (volatile u32 *)AssetState, (u32)asset_loaded_locked, (u32)asset_loaded);
+                    AllShadersAreLocked = AllShadersAreLocked &&
+                        (
+                         AssetStateBeforeLock[ShaderIndex] == asset_loaded ||
+                         AssetStateBeforeLock[ShaderIndex] == asset_loaded_locked
+                        );
+                }
+            }
+            Assert(AllShadersAreLocked);
+        }
+#endif
+
         if (AllShadersAreLocked)
         {
             // Create pipeline
 
-            for (u32 ShaderIndex = 0; ShaderIndex < MaxInputsPerMaterial; ++ShaderIndex)
+            for (u32 ShaderIndex = 0; ShaderIndex < MATERIAL_INPUTS; ++ShaderIndex)
             {
                 game_asset_id ShaderID = MappingMaterialShaders[MaterialLookupIndex][ShaderIndex];
                 if (ShaderID > game_asset_shader_begin && ShaderID < game_asset_shader_end)
@@ -633,6 +671,8 @@ GetMaterial(game_assets * Assets, game_asset_id MaterialID)
             Assert(CachedMaterial);
 
             b32 Success = false;
+            polygon_mode PolygonMode = MappingPolygonMode[MaterialLookupIndex];
+
             if (MaterialID == game_asset_material_transparent)
             {
                 transparency_pipeline_creation_result TransPipelineResult = 
@@ -645,7 +685,8 @@ GetMaterial(game_assets * Assets, game_asset_id MaterialID)
             }
             else
             {
-                CachedMaterial->Pipeline[0] = GraphicsCreateMaterialPipeline(Shaders[0].GPUID, Shaders[1].GPUID);
+                CachedMaterial->Pipeline[0] = 
+                    GraphicsCreateMaterialPipeline(Shaders[0].GPUID, Shaders[1].GPUID, PolygonMode);
                 CachedMaterial->PipelinesCount = 1;
                 Success = CachedMaterial->Pipeline[0].Success;
             }
@@ -1083,6 +1124,9 @@ THREAD_WORK_HANDLER(LoadMesh)
             OffsetVertexN += Header.VertexNormalCount;
         }
 
+        u32 VertexCount = MeshGroup->Meshes[0].VertexSize / sizeof(vertex_point);
+        SphereFromDistantPoints(&MeshGroup->Sphere, WorkData->VertexBuffer, VertexCount);
+
         COMPILER_DONOT_REORDER_BARRIER;
         WorkData->AssetSlot->State = asset_loaded_on_cpu;
     }
@@ -1098,7 +1142,7 @@ THREAD_WORK_HANDLER(LoadMesh)
 
 
 mesh_group *
-GetMesh(game_assets * Assets, game_asset_id ID)
+GetMesh(game_assets * Assets, game_asset_id ID, b32 WaitUntilLoaded)
 {
     Assert(ID > game_asset_mesh_begin && ID < game_asset_mesh_end);
 
@@ -1111,13 +1155,19 @@ GetMesh(game_assets * Assets, game_asset_id ID)
 
     const char * MeshPaths[ASSETS_TOTAL_MESHES] = {
         "assets\\cube_triangles.obj",
-        "assets\\quad.obj"
+        "assets\\quad.obj",
+        "assets\\sphere.obj",
+        "assets\\tree_001.obj"
     };
     const u32 MeshSizes[ASSETS_TOTAL_MESHES] = {
         36 * sizeof(vertex_point),
-        6 * sizeof(vertex_point)
+        6 * sizeof(vertex_point),
+        2880 * sizeof(vertex_point),
+        906 * sizeof(vertex_point)
     };
     const u32 MeshObjects[ASSETS_TOTAL_MESHES] = {
+        1,
+        1,
         1,
         1
     };
@@ -1143,13 +1193,23 @@ GetMesh(game_assets * Assets, game_asset_id ID)
             u32 MeshSize = MeshSizes[LocalArrayIndex];
             u32 ArenaCurrentSize = Assets->MeshArena.CurrentSize;
             u32 ArenaSizeAfterMesh = ArenaCurrentSize + MeshSize;
-            if (ArenaSizeAfterMesh < Assets->MeshArena.MaxSize)
+            b32 HasMemory = ArenaSizeAfterMesh < Assets->MeshArena.MaxSize;
+            if (!HasMemory && Assets->MeshLoadInProgress > 1)
+            {
+                GlobalPlatformMemory->CompleteWorkQueue(GlobalPlatformMemory->HighPriorityWorkQueue);
+                ArenaCurrentSize = Assets->MeshArena.CurrentSize;
+                ArenaSizeAfterMesh = ArenaCurrentSize + MeshSize;
+                HasMemory = ArenaSizeAfterMesh < Assets->MeshArena.MaxSize;
+                Assert(HasMemory);
+            }
+            if (HasMemory)
             {
                 thread_memory_arena * ThreadArena =
                     GetThreadArena(Assets->ThreadArena, Assets->LimitThreadArenas);
 
                 if (ThreadArena)
                 {
+                    // TODO: do I really need atomic op? Who else is touching mesharena?
                     if (
                             AtomicCompareExchangeU32((volatile u32 *)&Assets->MeshArena.CurrentSize, 
                                 ArenaSizeAfterMesh, 
@@ -1175,8 +1235,15 @@ GetMesh(game_assets * Assets, game_asset_id ID)
                         AssetLoadData->AssetSlot    = AssetSlot;                                                 
 
 #if ASSETS_MULTITHREAD_ENABLED
-                        GlobalPlatformMemory->AddWorkToWorkQueue(
-                                GlobalPlatformMemory->HighPriorityWorkQueue , LoadMesh ,AssetLoadData);
+                        if (WaitUntilLoaded)
+                        {
+                            LoadMesh(0,(void *)AssetLoadData);
+                        }
+                        else
+                        {
+                            GlobalPlatformMemory->AddWorkToWorkQueue(
+                                    GlobalPlatformMemory->HighPriorityWorkQueue , LoadMesh ,AssetLoadData);
+                        }
 #else
                         LoadMesh(0,(void *)AssetLoadData);
 #endif
@@ -1189,6 +1256,7 @@ GetMesh(game_assets * Assets, game_asset_id ID)
                 }
             }
         } break;
+#if 0 // if loading asset synchonously will load to cpu and we will miss this code. Instead IF statement before exit
         case asset_loaded_on_cpu:
         {
             // find placeholder
@@ -1224,6 +1292,7 @@ GetMesh(game_assets * Assets, game_asset_id ID)
             }
 
         } break;
+#endif
         case asset_load_inprogress:
         {
             //pass
@@ -1233,6 +1302,42 @@ GetMesh(game_assets * Assets, game_asset_id ID)
             Assert(0); // INVALID_PATH_CODE
         };
     };
+
+    if (AssetSlot->State == asset_loaded_on_cpu)
+    {
+        // find placeholder
+        for (i32 CachedMeshIndex = 0;
+                CachedMeshIndex < ArrayCount(Assets->CachedMeshGroups);
+                ++CachedMeshIndex)
+        {
+            MeshGroup = Assets->CachedMeshGroups + CachedMeshIndex;
+            if (MeshGroup->AssetID == ID)
+            {
+                break;
+            }
+        }
+
+        Assert(MeshGroup);
+
+        CurrentState = asset_transfer_to_gpu_inprogress;
+        void * Data = AssetSlot->Data;
+        u32 Size = (u32)AssetSlot->Size;
+        i32 ErrorCode = GraphicsPushVertexData(Data, Size, &MeshGroup->GPUVertexBufferBeginOffset);
+        if (!ErrorCode)
+        {
+            CurrentState = asset_loaded_on_gpu;
+            Assets->MeshLoadInProgress -= 1;
+
+            if (Assets->MeshLoadInProgress <= 0)
+            {
+                Assets->MeshArena.CurrentSize = 
+                    Assets->MeshArenaPermanentSize;
+            }
+
+            AssetSlot->State = asset_loaded;
+        }
+
+    }
 
     return MeshGroup;
 }

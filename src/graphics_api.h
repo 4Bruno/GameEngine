@@ -51,6 +51,14 @@ struct render_controller
     r32 WidthOverHeight;
     r32 OneOverWidthOverHeight;
 
+    mesh_group * Sphere;
+#if DEBUG
+    i32 DebugWireframeMaterialPipelineIndex;
+    void * DebugBoundingBoxVertexBuffer;
+    u32 DebugBoundingBoxVertexBufferSize;
+    render_units UnitsBBV;
+#endif
+
     render_units UnitsOpaque;
     render_units UnitsTransparent;
 };
@@ -84,6 +92,11 @@ GRAPHICS_BEGIN_RENDER(BeginRenderPass);
 typedef GRAPHICS_END_RENDER(graphics_end_render);
 RENDER_API
 GRAPHICS_END_RENDER(EndRenderPass);
+
+#define GRAPHICS_PUSH_VERTEX_DATA_TEMP(name) i32 name(void * Data, u32 DataSize, u32 * outVertexBufferBeginOffset)
+typedef GRAPHICS_PUSH_VERTEX_DATA_TEMP(graphics_push_vertex_data_temp);
+RENDER_API
+GRAPHICS_PUSH_VERTEX_DATA_TEMP(PushVertexDataTemp);
 
 #define GRAPHICS_PUSH_VERTEX_DATA(name) i32 name(void * Data, u32 DataSize, u32 * outVertexBufferBeginOffset)
 typedef GRAPHICS_PUSH_VERTEX_DATA(graphics_push_vertex_data);
@@ -129,7 +142,13 @@ typedef GRAPHICS_ON_WINDOW_RESIZE(graphics_on_window_resize);
 RENDER_API
 GRAPHICS_ON_WINDOW_RESIZE(OnWindowResize);
 
-#define GRAPHICS_CREATE_MATERIAL_PIPELINE(name) pipeline_creation_result name(i32 VertexShaderIndex, i32 FragmentShaderIndex)
+enum polygon_mode
+{
+    polygon_mode_fill,
+    polygon_mode_line
+};
+
+#define GRAPHICS_CREATE_MATERIAL_PIPELINE(name) pipeline_creation_result name(i32 VertexShaderIndex, i32 FragmentShaderIndex, polygon_mode PolygonMode)
 typedef GRAPHICS_CREATE_MATERIAL_PIPELINE(graphics_create_material_pipeline);
 RENDER_API
 GRAPHICS_CREATE_MATERIAL_PIPELINE(CreatePipeline);
@@ -151,6 +170,7 @@ struct graphics_api
     graphics_begin_render                 * GraphicsBeginRenderPass;
     graphics_end_render                   * GraphicsEndRenderPass;
     graphics_push_vertex_data             * GraphicsPushVertexData;
+    graphics_push_vertex_data_temp        * GraphicsPushVertexDataTemp;
     graphics_push_texture_data            * GraphicsPushTextureData;
     graphics_initialize_api               * GraphicsInitializeApi;
     graphics_close_api                    * GraphicsShutdownAPI;

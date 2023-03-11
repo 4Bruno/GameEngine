@@ -91,22 +91,22 @@ CreateWorld2(world * World)
 
     world_pos WC = MapIntoCell(World,WorldPosition(0,0,0),V3(0,0.f,0));
     entity * Entity = AddEntity(World, WC);
-    EntityAddTranslation(Entity,0,V3(0), V3(5.0f),3.0f);
+    EntityAddTranslation(Entity,0,V3(0), V3(5.0f));
     EntityAddMesh(Entity,game_asset_mesh_quad,V3(0.0f,0.0f,0.75f), 0.25f);
 
     WC = WorldPosition(0,0,-2);
     Entity = AddEntity(World, WC);
-    EntityAddTranslation(Entity,0,V3(0), V3(5.0f),3.0f);
+    EntityAddTranslation(Entity,0,V3(0), V3(5.0f));
     EntityAddMesh(Entity,game_asset_mesh_quad, V3(1.0f,1.0f,0.0f),0.25f);
 
     WC = WorldPosition(0,0,-4);
     Entity = AddEntity(World, WC);
-    EntityAddTranslation(Entity,0,V3(0), V3(5.0f),3.0f);
+    EntityAddTranslation(Entity,0,V3(0), V3(5.0f));
     EntityAddMesh(Entity,game_asset_mesh_quad,V3(1.0f,0.0f,0.0f),0.25f);
 
     WC = WorldPosition(0,0,-6);
     Entity = AddEntity(World, WC);
-    EntityAddTranslation(Entity,0,V3(0), V3(10.0f),3.0f);
+    EntityAddTranslation(Entity,0,V3(0), V3(10.0f));
     EntityAddMesh(Entity,game_asset_mesh_quad,V3(0.75f,0.75f,0.75f),0.f);
 
 }
@@ -118,34 +118,59 @@ CreateWorld(world * World)
     // Sun == white
     world_pos WC = MapIntoCell(World,WorldPosition(0,0,0),V3(0,10.f,0));
     entity * Entity = AddEntity(World, WC);
-    EntityAddTranslation(Entity,0,V3(0), V3(1.0f),3.0f);
+    EntityAddTranslation(Entity,0,V3(0), V3(1.0f),V3(-1.0f,0,0),3.0f);
     Entity->Color = V3(1.0f,1.0f,1.0f);
     EntityAddMesh(Entity,game_asset_mesh_cube);
+    EntityAddCollision(Entity, bounding_volume_sphere);
 
     WC = WorldPosition(0,0,0);
     Entity = AddEntity(World, WC);
-    EntityAddTranslation(Entity,0,V3(0), V3(1.0f),3.0f);
+    EntityAddTranslation(Entity,0,V3(0), V3(1.0f),V3(-0.5f, -1.2f,0.0f),3.0f);
     EntityAddMesh(Entity,game_asset_mesh_cube, V3(0.5f,0.5f,0.5f));
+    EntityAddCollision(Entity, bounding_volume_sphere);
 
     WC = WorldPosition(2,0,0);
     Entity = AddEntity(World, WC);
-    EntityAddTranslation(Entity,0,V3(0), V3(1.0f),3.0f);
+    EntityAddTranslation(Entity,0,V3(0), V3(1.0f), V3(-2,0,0),3.0f);
     EntityAddMesh(Entity,game_asset_mesh_cube,V3(1.0f,0.0f,0.0f));
+    EntityAddCollision(Entity, bounding_volume_sphere);
 
-    WC = WorldPosition(0,0,-2);
+    WC = WorldPosition(-2,0,0);
     Entity = AddEntity(World, WC);
-    EntityAddTranslation(Entity,0,V3(0), V3(1.0f),3.0f);
+    EntityAddTranslation(Entity,0,V3(0), V3(1.0f), V3(2,0,0), 3.0f);
     EntityAddMesh(Entity,game_asset_mesh_cube,V3(0.0f,0.0f,1.0f));
+    EntityAddCollision(Entity, bounding_volume_sphere);
 
     WC = WorldPosition(0,2,0);
     Entity = AddEntity(World, WC);
-    EntityAddTranslation(Entity,0,V3(0), V3(1.0f),3.0f);
+    EntityAddTranslation(Entity,0,V3(0), V3(1.0f));
     EntityAddMesh(Entity,game_asset_mesh_cube,V3(0.0f,1.0f,0.0f));
+    EntityAddCollision(Entity, bounding_volume_sphere);
+
+#if 0 // flat ground
+    WC = WorldPosition(0,-5,0);
+    Entity = AddEntity(World, WC);
+    EntityAddTranslation(Entity,0,V3(0), V3(15.0f,0.3f,15.0f),V3(0),0.0f);
+    EntityAddMesh(Entity,game_asset_mesh_cube,V3(15.0f,0.3f,15.0f));
+    EntityAddCollision(Entity, bounding_volume_aabb);
+#endif
+
+    // trees
+    WC = WorldPosition(5,0,0);
+    Entity = AddEntity(World, WC);
+    EntityAddTranslation(Entity,0,V3(0), V3(1.0f));
+    EntityAddMesh(Entity,game_asset_mesh_tree_001,V3(0.0f,1.0f,0.0f));
+    EntityAddCollision(Entity, bounding_volume_sphere);
+    WC = WorldPosition(8,0,0);
+    Entity = AddEntity(World, WC);
+    EntityAddTranslation(Entity,0,V3(0), V3(1.0f));
+    EntityAddMesh(Entity,game_asset_mesh_tree_001,V3(0.0f,1.0f,0.0f));
+    EntityAddCollision(Entity, bounding_volume_sphere);
 
 #if 1
     WC = WorldPosition(-5,0,0);
     Entity = AddEntity(World, WC);
-    EntityAddTranslation(Entity,0,V3(0), V3(2.0f),3.0f);
+    EntityAddTranslation(Entity,0,V3(0), V3(5.0f));
     Entity->Color = V3(0.0f,0.0f,0.5f);
     EntityAddMesh(Entity,game_asset_mesh_quad);
     Entity->TextureID = game_asset_texture_test;
@@ -327,7 +352,7 @@ UI_PushRect(render_controller * Renderer,
     v3 Scale  = V3(Width,Height,0);
     v3 LocalP = V3(Scale.x, Scale.y, 0);
 
-    EntityAddTranslation(&E,0, LocalP, Scale,0);
+    EntityAddTranslation(&E,0, LocalP, Scale);
     EntityAddMesh(&E, game_asset_mesh_quad, Color);
     if (TextureID >= game_asset_texture_test)
     {
@@ -379,7 +404,7 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
         InitializeArena(&GameState->PermanentArena,Base, AvailablePermanentMemory);
 
         u32 MaxRenderUnits = 4096;
-        u32 RenderMemorySize = 2 * MaxRenderUnits * sizeof(render_unit);
+        u32 RenderMemorySize = 4 * MaxRenderUnits * sizeof(render_unit);
         Base = PushSize(&GameState->PermanentArena,RenderMemorySize);
         InitializeArena(&GameState->RenderArena, Base, RenderMemorySize);
 
@@ -453,6 +478,14 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
             MeshGroup->Loaded = false;
         }
 #endif
+        // Renderer depends on assets
+        GameState->Assets = NewGameAssets(
+                &GameState->TemporaryArena,
+                GameState->ThreadArena,
+                GameState->LimitThreadArenas);
+
+        GlobalAssets = &GameState->Assets;
+
 
         v3 WorldCenterV3 = V3(0,0,0);
 
@@ -464,7 +497,7 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
                                 projection_perspective);
 
         GameState->RendererUI = 
-            NewRenderController(&GameState->RenderArena,MaxRenderUnits,
+            NewRenderController(&GameState->RenderArena,100,
                                 WorldUp, ToRadians(70.0f), ScreenWidth,ScreenHeight, 0.1f, FarView, WorldCenterV3,
                                 projection_orthographic);
 
@@ -480,12 +513,8 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
         EndTempArena(TempArena,2);
 #endif
 
-        GameState->Assets = NewGameAssets(
-                &GameState->TemporaryArena,
-                GameState->ThreadArena,
-                GameState->LimitThreadArenas);
-
-        GlobalAssets = &GameState->Assets;
+        // TODO: this is just hack to allow rendering spheres for collision
+        GameState->Renderer.Sphere = GetMesh(&GameState->Assets, game_asset_mesh_sphere, 1);
 
         for (u32 ParticleIndex = 0;
                 ParticleIndex < ArrayCount(GameState->Particles);
@@ -571,7 +600,6 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
 
     // TODO: where should speed go?
     r32 Speed = 30.0f * Input->DtFrame;
-    r32 Gravity = 0.0f;//9.8f;
 
     /* ------------------------- GAME BEGIN RENDER ------------------------- */
 
@@ -638,10 +666,135 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
     /* -------------- INPUT ---------------------------- */
 
     /* -------------- COLLISION ------------------------ */
+    u32 TotalEntities = World->ActiveEntitiesCount;
+
+    for (u32 EntityIndex = 0;
+             EntityIndex < TotalEntities;
+             ++EntityIndex)
+    {
+        entity * Entity = GameState->World.ActiveEntities + EntityIndex;
+        //v3 Gravity = V3(0,-3.0f,0);
+        v3 Gravity = V3(0,0.0f,0);
+        v3 dP = Entity->Transform.dP * Entity->Transform.Speed + Gravity;
+        if (Entity->Transform.Speed == 0)
+        {
+            dP = V3(0);
+        }
+        r32 DirMagnitude = LengthSqr(dP);
+
+        if (DirMagnitude > 0.0f)
+        { 
+            mesh_group * MeshGroup = GetMesh(&GameState->Assets,Entity->MeshID);
+            v3 EntityP = Entity->Transform.LocalP;
+            // initial movement assume no collision
+            v3 EntityNewP = EntityP + Input->DtFrame * dP;
+
+            if (EntityHasFlag(Entity,component_collision))
+            {
+
+                if (MeshGroup)
+                {
+                    r32 EntityRadius = 0;
+                    {
+                        v3 Scale = Entity->Transform.LocalS;
+                        EntityRadius = (Scale.y > Scale.x) ? Scale.y : Scale.x;
+                        if (Scale.z > Scale.y)
+                        {
+                            EntityRadius = Scale.z;
+                        }
+                    }
+
+                    EntityRadius *= MeshGroup->Sphere.r;
+                    sphere EntitySphere = { EntityP, EntityRadius };
+
+                    r32 EarliestCollision = Input->DtFrame;
+                    entity * CollisionEntity = 0;
+                    r32 CollisionEntityRadius = 0.0f;
+
+                    for (u32 TestEntityIndex = 0;
+                            TestEntityIndex < TotalEntities;
+                            ++TestEntityIndex)
+                    {
+                        entity * TestEntity = GameState->World.ActiveEntities + TestEntityIndex;
+                        if (TestEntity != Entity)
+                        {
+                            mesh_group * TestMeshGroup = GetMesh(&GameState->Assets,TestEntity->MeshID);
+                            v3 TestEntityP = TestEntity->Transform.LocalP;
+                            v3 Scale = TestEntity->Transform.LocalS;
+                            r32 TestEntityRadius = (Scale.y > Scale.x) ? Scale.y : Scale.x;
+                            if (Scale.z > Scale.y)
+                            {
+                                TestEntityRadius = Scale.z;
+                            }
+                            TestEntityRadius *= TestMeshGroup->Sphere.r;
+                            sphere TestEntitySphere = { TestEntityP, TestEntityRadius };
+                            v3 TestEntitydP = 
+                                TestEntity->Transform.dP * TestEntity->Transform.Speed + Gravity;
+                            if (TestEntity->Transform.Speed == 0)
+                            {
+                                TestEntitydP  = V3(0);
+                            }
+                            //TestEntitydP += (SQR(dt) * TestEntity->Transform.ddP * 0.5f);
+                            if (TestMeshGroup)
+                            {
+                                r32 dtCollision = 0.0f;
+                                b32 Collides = 
+                                    TestCollisionSpheres(EntitySphere, TestEntitySphere, dP, TestEntitydP, dtCollision);
+                                if (Collides && (dtCollision < EarliestCollision))
+                                {
+                                    CollisionEntity = TestEntity;
+                                    EarliestCollision = dtCollision;
+                                    CollisionEntityRadius = TestEntityRadius;
+                                }
+                            }
+                        } // Test entity is itself
+                    } // for each entity
+
+                    if (CollisionEntity)
+                    {
+                        EntityNewP = EntityP + EarliestCollision * dP; 
+
+                        v3 TestEntityNewP = 
+                            CollisionEntity->Transform.LocalP + 
+                            EarliestCollision * CollisionEntity->Transform.dP; 
+
+                        v3 s = Normalize(EntityNewP - TestEntityNewP);
+                        v3 v0 = Entity->Transform.dP; // normalized
+                        r32 x0 = Inner(s,v0);
+                        v3 v0x = s * x0;
+                        v3 v0y = v0 - v0x;
+                        r32 m0 = EntityRadius;
+
+                        s *= -1;
+                        v3 v1 = CollisionEntity->Transform.dP; // normalized
+                        r32 x1 = Inner(s,v1);
+                        v3 v1x = s * x1;
+                        v3 v1y = v1 - v1x;
+                        //r32 m1 = 1.0f;
+                        r32 m1 = CollisionEntityRadius;
+
+                        r32 OneOverSumMasses = 1.0f / (m0 + m1);
+                        Entity->Transform.dP = ( v0x * (m0 - m1) * OneOverSumMasses + 
+                                v1x * 2 * m1 * OneOverSumMasses +
+                                v0y);
+
+                        CollisionEntity->Transform.dP = ( v1x * (m1 - m0) * OneOverSumMasses + 
+                                v0x * 2 * m0 * OneOverSumMasses +
+                                v1y);
+
+                        CollisionEntity->Transform.LocalP = TestEntityNewP;
+                    }
+
+                } // mesh loaded
+            } // entity collides
+
+            Entity->Transform.LocalP = EntityNewP;
+        }
+    }
+
 
     /* ----------------------- Model Transform ------------------------------- */
 #if 1
-    u32 TotalEntities = World->ActiveEntitiesCount;
     u32 MaxThreads;
 
     b32 Threads[4] = {
@@ -761,7 +914,7 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
         Cell->VelocityTimesDensity += Density * Particle->dP;
     }
 
-#if 0
+#if 0 // density cubes
     r32 OneOverMaxCellDensity = 1.0f / MaxDensityCell;
     for (u32 X = 0;
                 X < PARTICLE_CELL_DIM;
@@ -938,7 +1091,7 @@ GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
         GameState->ParticlesMesh.Meshes = PushStruct(&GameState->TemporaryArena, mesh);
         GameState->ParticlesMesh.Meshes[0].VertexSize = sizeof(vertex_point)*TotalParticlePoints;
     }
-    PushDrawParticle(Renderer, &ParticleModelT, &GameState->ParticlesMesh, game_asset_texture_particle_01_small, V3(1.0f,0,0), 0);
+    //PushDrawParticle(Renderer, &ParticleModelT, &GameState->ParticlesMesh, game_asset_texture_particle_01_small, V3(1.0f,0,0), 0);
 
 #else
     for (u32 ParticleIndex = 0;

@@ -56,6 +56,8 @@ enum game_asset_id
 
     game_asset_mesh_cube,
     game_asset_mesh_quad,
+    game_asset_mesh_sphere,
+    game_asset_mesh_tree_001,
 
     game_asset_mesh_end,
 
@@ -77,6 +79,7 @@ enum game_asset_id
 
     game_asset_material_default_no_light,
     game_asset_material_default_light,
+    game_asset_material_default_light_wireframe,
     game_asset_material_texture_no_light,
     game_asset_material_texture,
     game_asset_material_transparent,
@@ -99,6 +102,18 @@ struct vertex_point
     v2 UV;
 };
 
+struct AABB
+{
+    v3 c; // center
+    v3 r; // radius (halfway)
+};
+
+struct sphere 
+{
+    v3 c; // center
+    r32 r; // radius (halfway)
+};
+
 
 struct mesh
 {
@@ -117,6 +132,7 @@ struct mesh_group
     u32 TotalMeshObjects;
     u32 GPUVertexBufferBeginOffset;
     game_asset_id AssetID;
+    sphere Sphere;
 };
 
 #if 0
@@ -178,10 +194,10 @@ struct game_assets
 
 
 asset_material *
-GetMaterial(game_assets * Assets, game_asset_id MaterialID);
+GetMaterial(game_assets * Assets, game_asset_id MaterialID, b32 WaitUntilLoaded = 0);
 
 mesh_group *
-GetMesh(game_assets * Assets, game_asset_id ID);
+GetMesh(game_assets * Assets, game_asset_id ID, b32 WaitUntilLoaded = 0);
 
 asset_texture *
 GetTexture(game_assets * Assets, game_asset_id ID);

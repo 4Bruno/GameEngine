@@ -33,13 +33,6 @@ extern "C" debug_cycle * DebugCycles;
 
 #define LOG_P(P) Log("x: %f y: %f z: %f \n", P.x, P.y, P.z);
 
-struct sphere
-{
-    v3 c;
-    r32 r;
-};
-
-
 struct scene;
 
 #define SCENE_LOADER(name) void name(game_state * GameState, i32 ScreenX, i32 ScreenY)
@@ -160,6 +153,7 @@ extern graphics_render_draw * GraphicsRenderDraw ;
 extern graphics_begin_render * GraphicsBeginRenderPass ;
 extern graphics_end_render * GraphicsEndRenderPass ;
 extern graphics_push_vertex_data * GraphicsPushVertexData ;
+extern graphics_push_vertex_data_temp * GraphicsPushVertexDataTemp;
 extern graphics_push_texture_data * GraphicsPushTextureData ;
 extern graphics_initialize_api * GraphicsInitializeApi ;
 extern graphics_close_api * GraphicsShutdownAPI ;

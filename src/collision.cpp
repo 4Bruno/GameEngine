@@ -1,6 +1,59 @@
 #include "collision.h"
 #include <float.h>
+#include "game_math.h"
 
+#define EPSILON 0.00001f
+
+// Compute indices to the two most separated points of the (up to) six points
+// defining the AABB encompassing the point set. Return these as min and max.
+void MostSeparatedPointsOnAABB(int &min, int &max, vertex_point * pt, int numPts)
+{
+    // First find most extreme points along principal axes
+    int minx = 0, maxx = 0, miny = 0, maxy = 0, minz = 0, maxz = 0;
+    for (int i = 1; i < numPts; i++) {
+        if (pt[i].P.x < pt[minx].P.x) minx = i;
+        if (pt[i].P.x > pt[maxx].P.x) maxx = i;
+        if (pt[i].P.y < pt[miny].P.y) miny = i;
+        if (pt[i].P.y > pt[maxy].P.y) maxy = i;
+        if (pt[i].P.z < pt[minz].P.z) minz = i;
+        if (pt[i].P.z > pt[maxz].P.z) maxz = i;
+    }
+    // Compute the squared distances for the three pairs of points
+    r32 dist2x = Inner(pt[maxx].P - pt[minx].P, pt[maxx].P - pt[minx].P);
+    r32 dist2y = Inner(pt[maxy].P - pt[miny].P, pt[maxy].P - pt[miny].P);
+    r32 dist2z = Inner(pt[maxz].P - pt[minz].P, pt[maxz].P - pt[minz].P);
+    // Pick the pair (min,max) of points most distant
+    min = minx;
+    max = maxx;
+    if (dist2y > dist2x && dist2y > dist2z) {
+        max = maxy;
+        min = miny;
+    }
+    if (dist2z > dist2x && dist2z > dist2y) {
+        max = maxz;
+        min = minz;
+    }
+}
+void SphereFromDistantPoints(sphere * s, vertex_point * pt, u32 VertexCount)
+{
+    // Find the most separated point pair defining the encompassing AABB
+    int min, max;
+    MostSeparatedPointsOnAABB(min, max, pt, VertexCount);
+    // Set up sphere to just encompass these two points
+    s->c = (pt[min].P + pt[max].P) * 0.5f;
+    s->r = Inner(pt[max].P - s->c, pt[max].P - s->c);
+    s->r = sqrtf(s->r);
+}
+#if 0
+void
+SphereFromDistantPoints(sphere * S, vertex_point * Vertices, u32 VertexCount)
+{
+    u32 Min,Max;
+    FindPointsFarthestApart(Vertices, VertexCount, &Min, &Max);
+    S->c = (Vertices[Min].P + Vertices[Max].P) * 0.5f;
+    S->r = Length(Vertices[Max].P - S->c);
+}
+#endif
 
 inline b32 
 TestSphereSphere(sphere a, sphere b)
@@ -54,14 +107,6 @@ FindPointsFarthestApart(vertex_point * Vertices, u32 VertexCount, u32 * Min, u32
     }
 }
 
-void
-SphereFromDistantPoints(sphere * S, vertex_point * Vertices, u32 VertexCount)
-{
-    u32 Min,Max;
-    FindPointsFarthestApart(Vertices, VertexCount, &Min, &Max);
-    S->c = (Vertices[Min].P + Vertices[Max].P) * 0.5f;
-    S->r = Length(Vertices[Max].P - S->c);
-}
 
 void
 SphereOfSphereAndPoint(sphere * S, v3 * P)
@@ -117,4 +162,49 @@ ExtremePointsAlongDirection(v3 dir, vertex_point * pt, int n, int *imin, int *im
             *imax = i;
         }
     }
+}
+
+b32
+TestCollisionSpheres(sphere s0, sphere s1, v3 dP0, v3 dP1, r32 & t)
+{
+    v3 s = s0.c - s1.c;
+    v3 v = dP0 - dP1;
+    r32 dist = LengthSqr(s);
+    r32 r = s0.r + s1.r;
+    r32 c = dist - SQR(r);
+
+    if (c < 0.0f) 
+    {
+        // overlaps
+        t = 0.0f;
+        return true;
+    }
+
+    r32 a = LengthSqr(v);
+
+    if (a < EPSILON)
+    {
+        // not moving relative
+        return false;
+    }
+    
+    r32 b = Inner(v,s);
+
+    if (b >= 0.0f)
+    {
+        // moving opp direc
+        return false;
+    }
+
+    r32 d = SQR(b) - (a * c);
+
+    if (d < 0.0f)
+    {
+        // no real value root
+        return false;
+    }
+
+    t = (-b - sqrtf(d)) / a;
+
+    return true;
 }

@@ -11,6 +11,7 @@
 #include "game_mesh.h"
 #include <stddef.h>
 #include "game_assets.h"
+#include "collision.h"
 
 #define MAX_WORLD_ENTITY_COUNT (1 << 14)
 #define MAX_WORLD_ENTITY_COUNT_MINUS_ONE (MAX_WORLD_ENTITY_COUNT - 1)
@@ -23,6 +24,7 @@
 #define FP(P) P.x, P.y, P.z
 
 // game_entity.h
+enum bounding_volume_type;
 
 enum component_flags
 {
@@ -74,6 +76,10 @@ struct entity_transform
     Quaternion WorldR; // 122
 
     m4 WorldT; // 122 + 48 = 170
+
+    v3 dP;
+    v3 ddP;
+    r32 Speed;
 };
 
 struct entity_id
@@ -89,6 +95,7 @@ struct entity
     world_pos WorldP; // 28
 
     component_flags Flags; // 32
+    bounding_volume_type BoundingVolume;
 
     u32 Height;
 

@@ -8,6 +8,7 @@
 #include "graphics_api.h"
 // TODO: memcpy. How can we avoid this?
 #include <memory.h>
+#include "hierarchy_tree.h"
 
 
 #define VK_FAILS(result) (result != VK_SUCCESS)
@@ -27,7 +28,7 @@
  * - 1.1.0+ you can pass negative height to surface to use bottom-left coord system
  * - 1.3.+ query image requirements without creating images
  */
-#define VULKAN_API_VERSION  VK_MAKE_VERSION(1,3,0)
+#define VULKAN_API_VERSION  VK_MAKE_API_VERSION(0,1,3,0)
 
 #define VK_MEMORY_GPU                       (VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT)
 #define VK_MEMORY_CPU_TO_GPU_PREFERRED      (VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT)
@@ -153,7 +154,8 @@ struct vk_version
 
 enum vulkan_destructor_type
 {
-    vulkan_destructor_type_vkDestroySurfaceKHR = 0,
+    vulkan_destructor_type_vkDestroyUnknown = 0,
+    vulkan_destructor_type_vkDestroySurfaceKHR,
     vulkan_destructor_type_vkDestroySwapchainKHR,
     vulkan_destructor_type_vkDestroyInstance,
     vulkan_destructor_type_vkDestroyCommandPool,
@@ -172,22 +174,13 @@ enum vulkan_destructor_type
     vulkan_destructor_type_vkDestroyBuffer,
     vulkan_destructor_type_vkDestroyImage,
     vulkan_destructor_type_vkDestroyDebugUtilsMessengerEXT,
+    vulkan_destructor_type_vkFreeCommandBuffers,
 
     // CUSTOM DESTRUCTORS
     vulkan_destructor_type_vkDestroyArenaCustom,
     vulkan_destructor_type_vkDestroyMemoryPoolCustom,
-};
 
-struct vulkan_destroy_queue_item
-{
-    vulkan_destructor_type DestructorType;
-    void * Params[5];
-    u32 CountParams;
-};
-struct vulkan_destroy_queue
-{
-    vulkan_destroy_queue_item Items[100];
-    u32 ItemsCount;
+    vulkan_destructortype_LAST
 };
 
 struct vulkan_pipeline
@@ -253,6 +246,7 @@ enum gpu_arena_type
 
 struct gpu_arena
 {
+    void * Owner;
     i32 MemoryIndexType;
     VkPhysicalDevice GPU;
     VkDevice Device;
@@ -364,6 +358,8 @@ struct device_memory_pools
 struct vulkan
 {
     b32 Initialized;
+    memory_arena InitArena;
+    hierarchy_tree * HTree;
 
     VkInstance       Instance;
 
@@ -371,8 +367,10 @@ struct vulkan
     VkPhysicalDevice PrimaryGPU;
     VkDevice         PrimaryDevice;
 
+    const char * DeviceMemoryPoolsLabel;
     device_memory_pools DeviceMemoryPools;
 
+    const char * MemoryArenasLabel;
     gpu_arena MemoryArenas[10];
     u32 MemoryArenaCount;
 
@@ -396,6 +394,7 @@ struct vulkan
     u32  TransferOnlyQueueFamilyIndex;
     VkQueue TransferOnlyQueue;
 
+    const char * StagingBufferLabel;
     VkCommandPool   CommandPoolTransferBit;
     VkCommandBuffer TransferBitCommandBuffer;
 
@@ -406,11 +405,13 @@ struct vulkan
     gpu_arena * VertexArena;
     gpu_arena * IndexArena;
 
+    const char * RenderPassLabel;
     VkRenderPass  RenderPass;
     VkRenderPass  RenderPassTransparency;
     VkFramebuffer Framebuffers[3];
     VkFramebuffer FramebuffersTransparency[3];
 
+    const char * DescriptorSetLayoutLabel;
     VkDescriptorSetLayout _GlobalSetLayout;
     VkDescriptorSetLayout _ObjectsSetLayout;
     VkDescriptorSetLayout _DebugTextureSetLayout;
@@ -421,6 +422,7 @@ struct vulkan
 
     gpu_arena * SimulationArena;
 
+    const char * FrameDataLabel;
     frame_data FrameData[FRAME_OVERLAP];
     i32 _CurrentFrameData;
 
@@ -442,10 +444,12 @@ struct vulkan
     VkPipelineLayout CurrentPipelineLayout;
 
 
+    const char * PipelinesLabel;
     VkPipeline      Pipelines[ASSETS_TOTAL_MATERIALS];
     vulkan_pipeline PipelinesDefinition[ASSETS_TOTAL_MATERIALS];
     u32          PipelinesCount;
 
+    const char * ShaderModulesLabel;
     VkShaderModule ShaderModules[16];
     u32         ShaderModulesCount;
 
@@ -605,7 +609,7 @@ VH_CreateUnAllocArenaBuffer(VkPhysicalDevice PhysicalDevice,
 inline VkDeviceMemory
 GetDeviceMemory(i32 MemoryTypeIndex)
 {
-    Assert(MemoryTypeIndex >= 0 && MemoryTypeIndex <= VK_MAX_MEMORY_TYPES);
+    Assert(MemoryTypeIndex >= 0 && MemoryTypeIndex <= (i32)VK_MAX_MEMORY_TYPES);
     device_memory_pool * Pool = GlobalVulkan.DeviceMemoryPools.DeviceMemoryPool + MemoryTypeIndex;
     Assert(VK_VALID_HANDLE(Pool->DeviceMemory));
     Assert(Pool->Size > 0);

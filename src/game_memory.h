@@ -1,5 +1,6 @@
 #ifndef GAME_MEMORY_H
 #include "game_platform.h"
+#include <string.h>
 
 struct memory_arena
 {
@@ -34,6 +35,7 @@ struct memory_aligned_result
 #define EndTempArena(Arena,ID) --Arena->StackTemporaryMemory;\
                                Arena->CurrentSize = Arena##SizeBegin##ID;
 #define TempArenaSanityCheck(Arena) Assert(Arena->StackTemporaryMemory == 0)
+#define RtlZeroMemory(Destination,Length) memset((Destination),0,(Length))
 
 GAME_API inline u8 *
 _PushSize(memory_arena * Arena,u32 Size)
@@ -42,6 +44,16 @@ _PushSize(memory_arena * Arena,u32 Size)
     u8 * BaseAddr = Arena->Base + Arena->CurrentSize;
     Arena->CurrentSize += Size;
     return BaseAddr;
+}
+
+GAME_API inline u8 *
+PushString(memory_arena * Arena, const char * s)
+{
+    i32 Len = (i32)strlen(s);
+    u8 * str = (u8 *)PushSize(Arena, Len + 1);
+    strcpy_s((char *)str, Len+1, s);
+
+    return str;
 }
 
 GAME_API memory_arena *

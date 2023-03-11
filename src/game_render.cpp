@@ -96,6 +96,19 @@ NewRenderController(memory_arena * Arena,
     Renderer.UnitsTransparent.Units = PushArray(Arena,RenderUnitLimitsPerQueue,render_unit);
     Renderer.UnitsTransparent.UnitsCount = 0;
 
+#if DEBUG
+    b32 WaitUntilLoaded = true;
+    asset_material * WireframePipeline = 
+        GetMaterial(GlobalAssets,game_asset_material_default_light_wireframe, WaitUntilLoaded);
+    Assert(WireframePipeline);
+    Assert(WireframePipeline->Pipeline[0].Success);
+    Renderer.DebugWireframeMaterialPipelineIndex =  WireframePipeline->Pipeline[0].Pipeline;
+
+    Renderer.UnitsBBV.UnitsLimit = RenderUnitLimitsPerQueue;
+    Renderer.UnitsBBV.Units = PushArray(Arena,RenderUnitLimitsPerQueue,render_unit);
+    Renderer.UnitsBBV.UnitsCount = 0;
+#endif
+
     return Renderer;
 }
 
@@ -167,6 +180,20 @@ RenderDrawGround(game_state * GameState,render_controller * Renderer, simulation
 }
 #endif
 
+#if DEBUG
+#define PushDrawBBV PushDrawBBV_
+void
+PushDrawBBV_(render_controller * Renderer, m4 * ModelT)
+{
+    render_unit * Unit = 0;
+    Assert(Renderer->UnitsBBV.UnitsCount <= Renderer->UnitsBBV.UnitsLimit);
+    Unit = Renderer->UnitsBBV.Units + Renderer->UnitsBBV.UnitsCount++;
+
+    Unit->ModelTransform = *ModelT;
+}
+#else
+#define PushDrawBBV
+#endif
 
 void
 PushDraw_(render_controller * Renderer, asset_material * Material, m4 * ModelT, mesh_group * MeshGroup, asset_texture * Texture, game_asset_id TextureID, v3 Color, r32 Transparency)

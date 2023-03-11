@@ -853,56 +853,6 @@ VH_PaddedUniformBuffer(VkDeviceSize Size)
     return AlignedSize;
 }
 
-i32
-VH_CreateUnAllocArenaBuffer(VkPhysicalDevice PhysicalDevice,
-                      VkDevice Device, VkDeviceSize Size, 
-                      VkSharingMode SharingMode, VkMemoryPropertyFlags PropertyFlags, VkBufferUsageFlags Usage,
-                      gpu_arena * Arena,
-                      u32 SharedBufferQueueFamilyIndexCount,
-                      u32 * SharedBufferQueueFamilyIndexArray)
-{
-
-    VkBufferCreateInfo BufferCreateInfo;
-
-    BufferCreateInfo.sType                 = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO; // VkStructureType sType;
-    BufferCreateInfo.pNext                 = 0;           // Void * pNext;
-    BufferCreateInfo.flags                 = 0;           // VkBufferCreateFlags flags;
-    BufferCreateInfo.size                  = Size;        // VkDeviceSize size;
-    BufferCreateInfo.usage                 = Usage;       // VkBufferUsageFlags usage;
-    BufferCreateInfo.sharingMode           = SharingMode; // VkSharingMode sharingMode;
-
-    if ( SharingMode == VK_SHARING_MODE_CONCURRENT )
-    {
-        if ( SharedBufferQueueFamilyIndexCount == 0 )
-        {
-            Log("Error buffer creation. Shared buffer requires family queue indexes and count\n");
-            return 1;
-        }
-        BufferCreateInfo.queueFamilyIndexCount = SharedBufferQueueFamilyIndexCount; // u32_t queueFamilyIndexCount;
-        BufferCreateInfo.pQueueFamilyIndices   = SharedBufferQueueFamilyIndexArray; // Typedef * pQueueFamilyIndices;
-    }
-    else
-    {
-        BufferCreateInfo.queueFamilyIndexCount = 0;           // u32_t queueFamilyIndexCount;
-        BufferCreateInfo.pQueueFamilyIndices   = 0;           // Typedef * pQueueFamilyIndices;
-    }
-
-    VK_CHECK(vkCreateBuffer(Device, &BufferCreateInfo,0, &Arena->Buffer));
-
-    VkMemoryRequirements MemoryRequirements;
-    vkGetBufferMemoryRequirements(Device, Arena->Buffer, &MemoryRequirements);
-    i32 MemoryTypeIndex = VH_FindSuitableMemoryIndex(PhysicalDevice,MemoryRequirements,PropertyFlags);
-
-    Assert(MemoryRequirements.size == Size);
-    Arena->MemoryIndexType = MemoryTypeIndex;
-    Arena->MaxSize = (u32)MemoryRequirements.size;
-    Arena->Alignment = (u32)MemoryRequirements.alignment;
-    Arena->CurrentSize = 0;
-    Arena->Device = Device; 
-    Arena->Type = gpu_arena_type_buffer;
-
-    return 0;
-}
 
 #if 0
 i32
@@ -993,6 +943,20 @@ VH_PipelineBuilder(vulkan_pipeline * VulkanPipeline,VkDevice Device, VkRenderPas
     ColorBlending.pAttachments    = &VulkanPipeline->ColorBlendAttachment[0]; // Typedef * pAttachments;
     //ColorBlending.blendConstants  = 0;// CONSTANTARRAY blendConstants;
 
+    VkDynamicState DynamicStates[] = {
+        VK_DYNAMIC_STATE_VIEWPORT, 
+        VK_DYNAMIC_STATE_SCISSOR
+    };
+
+    // Dynamic vw/sci saves from having to resize pipelines every time window is resized
+    // but you need to use vkCmdSetViewport, vkCmdSetScissor
+    // you only call them for the first time or after a static pipeline
+    VkPipelineDynamicStateCreateInfo DynamicStatesInfo = {};
+    DynamicStatesInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
+    DynamicStatesInfo.flags = 0;
+    DynamicStatesInfo.dynamicStateCount = ArrayCount(DynamicStates);
+    DynamicStatesInfo.pDynamicStates =  DynamicStates;
+
     VkGraphicsPipelineCreateInfo PipelineInfo = {};
     PipelineInfo.sType               = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO; // VkStructureType sType;
     PipelineInfo.pNext               = 0;                                 // Void * pNext;
@@ -1007,7 +971,7 @@ VH_PipelineBuilder(vulkan_pipeline * VulkanPipeline,VkDevice Device, VkRenderPas
     PipelineInfo.pMultisampleState   = &VulkanPipeline->Multisampling;    // Typedef * pMultisampleState;
     PipelineInfo.pDepthStencilState  = &VulkanPipeline->DepthStencil;     // Typedef * pDepthStencilState;
     PipelineInfo.pColorBlendState    = &ColorBlending;                    // Typedef * pColorBlendState;
-    PipelineInfo.pDynamicState       = 0;                                 // Typedef * pDynamicState;
+    PipelineInfo.pDynamicState       = &DynamicStatesInfo;                                 // Typedef * pDynamicState;
     PipelineInfo.layout              = VulkanPipeline->PipelineLayout;    // VkPipelineLayout layout;
     PipelineInfo.renderPass          = RenderPass;                        // VkRenderPass renderPass;
     PipelineInfo.subpass             = Subpass;                                 // u32_t subpass;

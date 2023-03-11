@@ -64,7 +64,7 @@ if "%BuildThis%"=="Y"  (
 
     cl /nologo ^
      /LD !WarningLevel! !IgnoreWarnings! !GenerateCompleteDebuggingInfo! !CompilationFlags! !IncludePaths! ^
-     ..\!dllname!.cpp  ..\vulkan_helpers.cpp   ^
+     ..\!dllname!.cpp  ..\vulkan_helpers.cpp   ..\hierarchy_tree.cpp ..\game_memory.cpp ^
      /Fe:!graphicsOutput!.dll ^
      /link /DLL ^
       /incremental:no /opt:ref /PDB:!graphicsOutput!_!random!.pdb ^
@@ -109,7 +109,7 @@ if "%BuildThis%"=="Y" (
     cl /nologo ^
       /LD /MTd ^
      /Fm!dllname!.map !WarningLevel! !IgnoreWarnings! !GenerateCompleteDebuggingInfo! !CompilationFlags! !IncludePaths! ..\!dllname!.cpp ^
-      ..\game_memory.cpp ..\game_entity.cpp ..\Quaternion.cpp ..\game_render.cpp  ..\game_world.cpp  ..\game_assets.cpp ^
+      ..\game_memory.cpp ..\game_entity.cpp ..\Quaternion.cpp ..\game_render.cpp  ..\game_world.cpp  ..\game_assets.cpp ..\collision.cpp ^
       /Fe:!dllnameOutput!.dll ^
       /link ^
       /DLL ^

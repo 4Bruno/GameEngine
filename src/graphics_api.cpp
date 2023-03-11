@@ -15,6 +15,62 @@ GRAPHICS_INITIALIZE_API(InitializeAPI)
     return ErrorCode;
 }
 
+#if DEBUG
+#define RenderBoundingBoxes RenderBoundingBoxes_
+void
+RenderBoundingBoxes_(render_controller * Renderer)
+{
+    gpu_memory_mapping_result ObjectsMapResult = 
+        BeginObjectMapping(Renderer->UnitsOpaque.UnitsCount);
+
+    if (!ObjectsMapResult.Success)
+    {
+        Assert(0);
+        return;
+    }
+
+    GPUObjectData * ObjectData = (GPUObjectData *)ObjectsMapResult.BeginAddress;
+
+    for (u32 UnitIndex = 0;
+            UnitIndex < Renderer->UnitsOpaque.UnitsCount;
+            ++UnitIndex)
+    {
+        render_unit * Unit = Renderer->UnitsOpaque.Units + UnitIndex;
+
+        m4 MVP = Renderer->Projection * Renderer->ViewTransform * Unit->ModelTransform;
+
+        ObjectData->ModelMatrix = Unit->ModelTransform;
+        ObjectData->MVP = MVP;
+        ObjectData->Color = V4(1.0f,1.0f,1.0f,0);
+        ObjectData->ViewMatrix = Renderer->ViewTransform;
+
+        ++ObjectData;
+    }
+
+    EndObjectsArena();
+
+    u32 ObjectInstance = ObjectsMapResult.Instance;
+
+    u32 outVertexBufferBeginOffset = 0;
+    void * Data = Renderer->DebugBoundingBoxVertexBuffer;
+    u32 DataSize = Renderer->DebugBoundingBoxVertexBufferSize;
+    PushVertexDataTemp(Data, DataSize, &outVertexBufferBeginOffset);
+
+    if (Renderer->UnitsOpaque.UnitsCount)
+    {
+        RenderSetPipeline(Renderer->DebugWireframeMaterialPipelineIndex);
+        // spheres
+        u32 MeshSize = DataSize / sizeof(vertex_point);
+        RenderBindMesh(outVertexBufferBeginOffset);
+        //RenderBindTexture(Unit->TextureID);
+        //RenderSetPipeline(MaterialPipelineIndex);
+        RenderDrawObjectNTimes(MeshSize,Renderer->UnitsOpaque.UnitsCount,ObjectInstance);
+    }
+}
+#else
+#define RenderBoundingBoxes
+#endif
+
 GRAPHICS_RENDER_DRAW(RenderOpaqueUnits)
 {
     START_CYCLE_COUNT(render_entities);
@@ -48,13 +104,13 @@ GRAPHICS_RENDER_DRAW(RenderOpaqueUnits)
 
     EndObjectsArena();
 
+    u32 ObjectInstance = ObjectsMapResult.Instance;
+
     i32 LastMaterialPipelineIndex = -1;
     mesh_group * LastMeshGroup = 0;
     i32 CountMeshInstances = 0;
     u32 MeshSize = 0;
     i32 LastTextureID = -1;
-
-    u32 ObjectInstance = ObjectsMapResult.Instance;
 
     for (u32 UnitIndex = 0;
             UnitIndex < Renderer->UnitsOpaque.UnitsCount;
@@ -63,20 +119,6 @@ GRAPHICS_RENDER_DRAW(RenderOpaqueUnits)
         render_unit * Unit = Renderer->UnitsOpaque.Units + UnitIndex;
 
         mesh_group * MeshGroup = Unit->MeshGroup;
-
-        if (LastMeshGroup != MeshGroup)
-        {
-            if (CountMeshInstances > 0)
-            {
-                RenderDrawObjectNTimes(MeshSize,CountMeshInstances,ObjectInstance);
-                ObjectInstance += CountMeshInstances;
-            }
-            // hardcoded only first mesh
-            MeshSize = MeshGroup->Meshes[0].VertexSize / sizeof(vertex_point);
-            RenderBindMesh(MeshSize, MeshGroup->GPUVertexBufferBeginOffset);
-            LastMeshGroup = MeshGroup;
-            CountMeshInstances = 0;
-        }
 
         if (LastTextureID != Unit->TextureID && Unit->TextureID >= 0)
         {
@@ -93,12 +135,27 @@ GRAPHICS_RENDER_DRAW(RenderOpaqueUnits)
             LastMaterialPipelineIndex = MaterialPipelineIndex;
         }
 
+        if (LastMeshGroup != MeshGroup)
+        {
+            if (CountMeshInstances > 0)
+            {
+                RenderDrawObjectNTimes(MeshSize,CountMeshInstances,ObjectInstance);
+                ObjectInstance += CountMeshInstances;
+            }
+            // hardcoded only first mesh
+            MeshSize = MeshGroup->Meshes[0].VertexSize / sizeof(vertex_point);
+            RenderBindMesh(MeshGroup->GPUVertexBufferBeginOffset);
+            LastMeshGroup = MeshGroup;
+            CountMeshInstances = 0;
+        }
+
         ++CountMeshInstances;
     }
 
     if (CountMeshInstances > 0)
     {
         RenderDrawObjectNTimes(MeshSize,CountMeshInstances,ObjectInstance);
+        ObjectInstance += CountMeshInstances;
     }
 
     END_CYCLE_COUNT(render_entities);
@@ -164,7 +221,7 @@ GRAPHICS_RENDER_DRAW(RenderTransparentUnits)
 
             // hardcoded only first mesh
             MeshSize = MeshGroup->Meshes[0].VertexSize / sizeof(vertex_point);
-            RenderBindMesh(MeshSize, MeshGroup->GPUVertexBufferBeginOffset);
+            RenderBindMesh(MeshGroup->GPUVertexBufferBeginOffset);
             LastMeshGroup = MeshGroup;
             CountMeshInstances = 0;
         }
@@ -192,68 +249,71 @@ GRAPHICS_RENDER_DRAW(RenderDraw)
 
     VkCommandBuffer cmd = GetCurrentFrame()->PrimaryCommandBuffer;
 
-    RenderOpaqueUnits(Renderer);
-
-    if (Renderer->UnitsTransparent.UnitsCount > 0)
+    if (cmd)
     {
-        vkCmdEndRenderPass(cmd);
+        RenderOpaqueUnits(Renderer);
 
-        u32 SwapchainImageIndex = GlobalVulkan.CurrentSwapchainImageIndex;
+        if (Renderer->UnitsTransparent.UnitsCount > 0)
+        {
+            vkCmdEndRenderPass(cmd);
+
+            u32 SwapchainImageIndex = GlobalVulkan.CurrentSwapchainImageIndex;
 
 #if 0
-        VH_TranstionTo(cmd, 
-                       GlobalVulkan.SwapchainImages[SwapchainImageIndex], 
-                       VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, 
-                       VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT);
+            VH_TranstionTo(cmd, 
+                    GlobalVulkan.SwapchainImages[SwapchainImageIndex], 
+                    VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, 
+                    VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT);
 #endif
 
-        VkClearValue ColorClear = {};
-        ColorClear.color.float32[0] = 0; // VkClearColorValue color;
-        ColorClear.color.float32[1] = 0; // VkClearColorValue color;
-        ColorClear.color.float32[2] = 0; // VkClearColorValue color;
-        ColorClear.color.float32[3] = 0;
+            VkClearValue ColorClear = {};
+            ColorClear.color.float32[0] = 0; // VkClearColorValue color;
+            ColorClear.color.float32[1] = 0; // VkClearColorValue color;
+            ColorClear.color.float32[2] = 0; // VkClearColorValue color;
+            ColorClear.color.float32[3] = 0;
 
-        VkClearValue DepthClear;
-        DepthClear.depthStencil = {1.0f,0};
+            VkClearValue DepthClear;
+            DepthClear.depthStencil = {1.0f,0};
 
-        VkClearValue ClearAttachments[2] = {
-            ColorClear,
-            DepthClear
-        };
+            VkClearValue ClearAttachments[2] = {
+                ColorClear,
+                DepthClear
+            };
 
 
-        VkRenderPassBeginInfo RenderPassBeginInfo = {};
-        RenderPassBeginInfo.sType             = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;       // VkStructureType   sType;
-        RenderPassBeginInfo.pNext             = 0;                                              // Void * pNext;
-        RenderPassBeginInfo.renderPass        = GlobalVulkan.RenderPassTransparency;                        // VkRenderPass renderPass;
-        RenderPassBeginInfo.framebuffer       = GlobalVulkan.FramebuffersTransparency[SwapchainImageIndex]; // VkFramebuffer framebuffer;
-        RenderPassBeginInfo.renderArea.extent = GlobalVulkan.WindowExtension;                   // VkRect2D renderArea;
-        RenderPassBeginInfo.clearValueCount   = ArrayCount(ClearAttachments);                   // u32_t clearValueCount;
-        RenderPassBeginInfo.pClearValues      = &ClearAttachments[0];                           // Typedef * pClearValues;
+            VkRenderPassBeginInfo RenderPassBeginInfo = {};
+            RenderPassBeginInfo.sType             = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;       // VkStructureType   sType;
+            RenderPassBeginInfo.pNext             = 0;                                              // Void * pNext;
+            RenderPassBeginInfo.renderPass        = GlobalVulkan.RenderPassTransparency;                        // VkRenderPass renderPass;
+            RenderPassBeginInfo.framebuffer       = GlobalVulkan.FramebuffersTransparency[SwapchainImageIndex]; // VkFramebuffer framebuffer;
+            RenderPassBeginInfo.renderArea.extent = GlobalVulkan.WindowExtension;                   // VkRect2D renderArea;
+            RenderPassBeginInfo.clearValueCount   = ArrayCount(ClearAttachments);                   // u32_t clearValueCount;
+            RenderPassBeginInfo.pClearValues      = &ClearAttachments[0];                           // Typedef * pClearValues;
 
-        vkCmdBeginRenderPass(cmd, &RenderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
+            vkCmdBeginRenderPass(cmd, &RenderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
 
-        VkDescriptorSet oitWeightDescriptors[] = {
-            GlobalVulkan._oit_WeightedColorSet,
-            GlobalVulkan._oit_WeightedRevealSet,
-        };
+            VkDescriptorSet oitWeightDescriptors[] = {
+                GlobalVulkan._oit_WeightedColorSet,
+                GlobalVulkan._oit_WeightedRevealSet,
+            };
 
-        vkCmdBindDescriptorSets(cmd, 
-                VK_PIPELINE_BIND_POINT_GRAPHICS, 
-                GlobalVulkan.CurrentPipelineLayout, 
-                3, 2, 
-                &oitWeightDescriptors[0], 
-                0, nullptr);
+            vkCmdBindDescriptorSets(cmd, 
+                    VK_PIPELINE_BIND_POINT_GRAPHICS, 
+                    GlobalVulkan.CurrentPipelineLayout, 
+                    3, 2, 
+                    &oitWeightDescriptors[0], 
+                    0, nullptr);
 
-        GetCurrentFrame()->ObjectsCount = 0;
+            GetCurrentFrame()->ObjectsCount = 0;
 
-        RenderTransparentUnits(Renderer);
+            RenderTransparentUnits(Renderer);
 
-        vkCmdNextSubpass(cmd, VK_SUBPASS_CONTENTS_INLINE);
+            vkCmdNextSubpass(cmd, VK_SUBPASS_CONTENTS_INLINE);
 
-        // Full screen triangle
-        RenderSetPipeline(Renderer->UnitsTransparent.Units[0].MaterialPipelineIndex[1]);
-        RenderDrawObject(3, 0);
+            // Full screen triangle
+            RenderSetPipeline(Renderer->UnitsTransparent.Units[0].MaterialPipelineIndex[1]);
+            RenderDrawObject(3, 0);
+        }
     }
 
     END_CYCLE_COUNT(render_entities);
@@ -269,75 +329,78 @@ GRAPHICS_BEGIN_RENDER(BeginRenderPass)
 
     gpu_arena * Arena = GetCurrentFrame()->ObjectsArena;
     Arena->CurrentSize = 0;
-
 }
 
 GRAPHICS_END_RENDER(EndRenderPass)
 {
     VkCommandBuffer cmd = GetCurrentFrame()->PrimaryCommandBuffer;
-    u32 SwapchainImageIndex = GlobalVulkan.CurrentSwapchainImageIndex;
 
-    vkCmdEndRenderPass(cmd);
+    if (cmd)
+    {
+        u32 SwapchainImageIndex = GlobalVulkan.CurrentSwapchainImageIndex;
+
+        vkCmdEndRenderPass(cmd);
 
 #if 1
-    VkImageSubresourceRange Range;
-    Range.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT;
-    Range.baseMipLevel   = 0; // uint32_t baseMipLevel;
-    Range.levelCount     = 1; // uint32_t levelCount;
-    Range.baseArrayLayer = 0; // uint32_t baseArrayLayer;
-    Range.layerCount     = 1; // uint32_t layerCount;
+        VkImageSubresourceRange Range;
+        Range.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT;
+        Range.baseMipLevel   = 0; // uint32_t baseMipLevel;
+        Range.levelCount     = 1; // uint32_t levelCount;
+        Range.baseArrayLayer = 0; // uint32_t baseArrayLayer;
+        Range.layerCount     = 1; // uint32_t layerCount;
 
-    VkImageMemoryBarrier MemoryBarrierPresent;
-    MemoryBarrierPresent.sType               = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER; // sType   sType
-    MemoryBarrierPresent.pNext               = 0; // Void * pNext
-    MemoryBarrierPresent.srcAccessMask       = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT; // srcAccessMask   srcAccessMask
-    MemoryBarrierPresent.dstAccessMask       = VK_ACCESS_COLOR_ATTACHMENT_READ_BIT; // dstAccessMask   dstAccessMask
-    MemoryBarrierPresent.oldLayout           = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL; // oldLayout   oldLayout
-    MemoryBarrierPresent.newLayout           = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR; // newLayout   newLayout
-    MemoryBarrierPresent.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED; // srcQueueFamilyIndex   srcQueueFamilyIndex
-    MemoryBarrierPresent.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED; // dstQueueFamilyIndex   dstQueueFamilyIndex
-    MemoryBarrierPresent.subresourceRange    = Range; // subresourceRange   subresourceRange
+        VkImageMemoryBarrier MemoryBarrierPresent;
+        MemoryBarrierPresent.sType               = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER; // sType   sType
+        MemoryBarrierPresent.pNext               = 0; // Void * pNext
+        MemoryBarrierPresent.srcAccessMask       = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT; // srcAccessMask   srcAccessMask
+        MemoryBarrierPresent.dstAccessMask       = VK_ACCESS_COLOR_ATTACHMENT_READ_BIT; // dstAccessMask   dstAccessMask
+        MemoryBarrierPresent.oldLayout           = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL; // oldLayout   oldLayout
+        MemoryBarrierPresent.newLayout           = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR; // newLayout   newLayout
+        MemoryBarrierPresent.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED; // srcQueueFamilyIndex   srcQueueFamilyIndex
+        MemoryBarrierPresent.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED; // dstQueueFamilyIndex   dstQueueFamilyIndex
+        MemoryBarrierPresent.subresourceRange    = Range; // subresourceRange   subresourceRange
 
-    MemoryBarrierPresent.image               = GlobalVulkan.SwapchainImages[SwapchainImageIndex];
-    vkCmdPipelineBarrier(cmd, 
-                            VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, 
-                            VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, 0, 0, nullptr, 0, nullptr, 1, &MemoryBarrierPresent);
+        MemoryBarrierPresent.image               = GlobalVulkan.SwapchainImages[SwapchainImageIndex];
+        vkCmdPipelineBarrier(cmd, 
+                VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, 
+                VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, 0, 0, nullptr, 0, nullptr, 1, &MemoryBarrierPresent);
 #else
-    VH_TranstionTo(cmd, 
-            GlobalVulkan.SwapchainImages[SwapchainImageIndex], 
-            VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, 
-            VK_ACCESS_COLOR_ATTACHMENT_READ_BIT);
+        VH_TranstionTo(cmd, 
+                GlobalVulkan.SwapchainImages[SwapchainImageIndex], 
+                VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, 
+                VK_ACCESS_COLOR_ATTACHMENT_READ_BIT);
 
 #endif
 
-    VK_CHECK(vkEndCommandBuffer(cmd));
+        VK_CHECK(vkEndCommandBuffer(cmd));
 
-    VkPipelineStageFlags WaitStage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+        VkPipelineStageFlags WaitStage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
 
-    VkSubmitInfo SubmitInfo     = {};
-    SubmitInfo.sType                = VK_STRUCTURE_TYPE_SUBMIT_INFO;         // VkStructureType   sType;
-    SubmitInfo.pNext                = 0;                                     // Void * pNext;
-    SubmitInfo.waitSemaphoreCount   = 1;                                     // u32_t   waitSemaphoreCount;
-    SubmitInfo.pWaitSemaphores      = &GetCurrentFrame()->ImageAvailableSemaphore; // Typedef * pWaitSemaphores;
-    SubmitInfo.pWaitDstStageMask    = &WaitStage;                            // Typedef * pWaitDstStageMask;
-    SubmitInfo.commandBufferCount   = 1;                                     // u32_t   commandBufferCount;
-    SubmitInfo.pCommandBuffers      = &cmd;                                  // Typedef * pCommandBuffers;
-    SubmitInfo.signalSemaphoreCount = 1;                                     // u32_t   signalSemaphoreCount;
-    SubmitInfo.pSignalSemaphores    = &GetCurrentFrame()->RenderSemaphore;         // Typedef * pSignalSemaphores;
+        VkSubmitInfo SubmitInfo     = {};
+        SubmitInfo.sType                = VK_STRUCTURE_TYPE_SUBMIT_INFO;         // VkStructureType   sType;
+        SubmitInfo.pNext                = 0;                                     // Void * pNext;
+        SubmitInfo.waitSemaphoreCount   = 1;                                     // u32_t   waitSemaphoreCount;
+        SubmitInfo.pWaitSemaphores      = &GetCurrentFrame()->ImageAvailableSemaphore; // Typedef * pWaitSemaphores;
+        SubmitInfo.pWaitDstStageMask    = &WaitStage;                            // Typedef * pWaitDstStageMask;
+        SubmitInfo.commandBufferCount   = 1;                                     // u32_t   commandBufferCount;
+        SubmitInfo.pCommandBuffers      = &cmd;                                  // Typedef * pCommandBuffers;
+        SubmitInfo.signalSemaphoreCount = 1;                                     // u32_t   signalSemaphoreCount;
+        SubmitInfo.pSignalSemaphores    = &GetCurrentFrame()->RenderSemaphore;         // Typedef * pSignalSemaphores;
 
-    VK_CHECK(vkQueueSubmit(GlobalVulkan.GraphicsQueue, 1, &SubmitInfo, GetCurrentFrame()->RenderFence));
+        VK_CHECK(vkQueueSubmit(GlobalVulkan.GraphicsQueue, 1, &SubmitInfo, GetCurrentFrame()->RenderFence));
 
-    VkPresentInfoKHR PresentInfo;
-    PresentInfo.sType              = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR; // VkStructureType   sType;
-    PresentInfo.pNext              = 0; // Void * pNext;
-    PresentInfo.waitSemaphoreCount = 1; // u32_t   waitSemaphoreCount;
-    PresentInfo.pWaitSemaphores    = &GetCurrentFrame()->RenderSemaphore; // Typedef * pWaitSemaphores;
-    PresentInfo.swapchainCount     = 1; // u32_t   swapchainCount;
-    PresentInfo.pSwapchains        = &GlobalVulkan.Swapchain; // Typedef * pSwapchains;
-    PresentInfo.pImageIndices      = &SwapchainImageIndex; // Typedef * pImageIndices;
-    PresentInfo.pResults           = 0; // Typedef * pResults;
+        VkPresentInfoKHR PresentInfo;
+        PresentInfo.sType              = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR; // VkStructureType   sType;
+        PresentInfo.pNext              = 0; // Void * pNext;
+        PresentInfo.waitSemaphoreCount = 1; // u32_t   waitSemaphoreCount;
+        PresentInfo.pWaitSemaphores    = &GetCurrentFrame()->RenderSemaphore; // Typedef * pWaitSemaphores;
+        PresentInfo.swapchainCount     = 1; // u32_t   swapchainCount;
+        PresentInfo.pSwapchains        = &GlobalVulkan.Swapchain; // Typedef * pSwapchains;
+        PresentInfo.pImageIndices      = &SwapchainImageIndex; // Typedef * pImageIndices;
+        PresentInfo.pResults           = 0; // Typedef * pResults;
 
-    VK_CHECK(vkQueuePresentKHR(GlobalVulkan.GraphicsQueue, &PresentInfo));
+        VK_CHECK(vkQueuePresentKHR(GlobalVulkan.GraphicsQueue, &PresentInfo));
+    }
 
     ++GlobalVulkan._CurrentFrameData;
 

@@ -267,6 +267,7 @@ LoadGraphicsLib(graphics_handler * Graphics)
         API->GraphicsBeginRenderPass            = (graphics_begin_render *) GetProcAddress(Graphics->InitializerLib,"BeginRenderPass");
         API->GraphicsEndRenderPass              = (graphics_end_render *) GetProcAddress(Graphics->InitializerLib,"EndRenderPass");
         API->GraphicsPushVertexData             = (graphics_push_vertex_data *) GetProcAddress(Graphics->InitializerLib,"PushVertexData");
+        API->GraphicsPushVertexDataTemp         = (graphics_push_vertex_data_temp *) GetProcAddress(Graphics->InitializerLib,"PushVertexDataTemp");
         API->GraphicsPushTextureData            = (graphics_push_texture_data *) GetProcAddress(Graphics->InitializerLib,"PushTextureData");
         API->GraphicsInitializeApi              = (graphics_initialize_api *) GetProcAddress(Graphics->InitializerLib,"InitializeAPI");
         API->GraphicsShutdownAPI                = (graphics_close_api *) GetProcAddress(Graphics->InitializerLib,"ShutdownAPI");
@@ -285,6 +286,7 @@ LoadGraphicsLib(graphics_handler * Graphics)
             Graphics->API.GraphicsBeginRenderPass           &&
             Graphics->API.GraphicsEndRenderPass             &&
             Graphics->API.GraphicsPushVertexData            &&
+            Graphics->API.GraphicsPushVertexDataTemp        &&
             Graphics->API.GraphicsPushTextureData           &&
             Graphics->API.GraphicsInitializeApi             &&
             Graphics->API.GraphicsShutdownAPI               &&
@@ -585,7 +587,7 @@ int main()
     VulkanWindowData.hInstance    = hInstance;    // HINSTANCE   hInstance;
     VulkanWindowData.WindowHandle = WindowHandle; // HWND   WindowHandle;
 
-    graphics_handler Graphics;
+    graphics_handler Graphics = {};
 
     if (!LoadGraphicsLib(&Graphics))
     {
@@ -616,6 +618,7 @@ int main()
         Log("Failed to initialize Vulkan\n");
         return 1;
     }
+
 #else
     if (Graphics.API.GraphicsInitializeApi(APP_WINDOW_WIDTH,APP_WINDOW_HEIGHT,
                          PlatformWindow,

@@ -261,7 +261,15 @@ InitializeTransform(entity_transform * T, v3 P, v3 Scale)
 }
 
 void
-EntityAddTranslation(entity * Entity, entity * Parent, v3 P, v3 Scale, r32 Speed)
+EntityAddCollision(entity * Entity, bounding_volume_type BoundingVolume)
+{
+    EntityAddFlag(Entity,component_collision);
+    Entity->BoundingVolume = BoundingVolume;
+
+}
+
+void
+EntityAddTranslation(entity * Entity, entity * Parent, v3 P, v3 Scale, v3 dP, r32 Speed)
 {
     
     entity_transform * T = &Entity->Transform;
@@ -272,6 +280,18 @@ EntityAddTranslation(entity * Entity, entity * Parent, v3 P, v3 Scale, r32 Speed
     T->WorldS = Scale;
     T->WorldR = T->LocalR;
     T->WorldT = {};
+
+    dP = Normalize(dP);
+    switch (fpclassify(dP.x))
+    {
+        case FP_INFINITE:
+        case FP_SUBNORMAL:
+        case FP_NAN:
+            dP = V3(0.0f);
+    };
+
+    T->dP = dP;
+    T->Speed = Speed;
 
     EntityAddFlag(Entity,component_transform);
 }
