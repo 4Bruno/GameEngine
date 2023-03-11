@@ -8,6 +8,7 @@
 #include "stb_image.h"
 
 
+
 #define PLATFORM_OPEN_HANDLE(name) platform_open_file_result name(const char * Filepath)
 typedef PLATFORM_OPEN_HANDLE(platform_open_handle);
 
