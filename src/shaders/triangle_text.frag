@@ -1,21 +1,20 @@
-#version 450
+#version 460
+#extension GL_ARB_separate_shader_objects : enable
 
 #include "shader_common.h"
 
-layout (location = 0) in interpolants IN;
+INTERPOLANTS_IN
 
 layout (location = 0) out vec4 outFragColor;
 
-layout (set = 0, binding = 0) uniform SimulationBuffer
-{
-    simulation_data Data;
+SIMULATION_BUFFER
 
-} Simulation;
-
-layout (set = 2, binding = 0) uniform sampler2D text1;
+layout (set = 2, binding = 0) uniform sampler samp;
+layout (set = 2, binding = 1) uniform texture2D textures[10];
 
 void main()
 {
-    vec4 Color = texture(text1,IN.UV);
-    outFragColor = Color * IN.Color;
+    vec4 Color = texture(sampler2D(textures[ImageIndex], samp),IN.UV);
+    //outFragColor = vec4(1.0f);//Color * IN.Color;
+    outFragColor = Color;
 }

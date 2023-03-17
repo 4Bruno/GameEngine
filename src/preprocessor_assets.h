@@ -2,72 +2,84 @@
 #define PREPROCESSOR_H
 
 #include <windows.h>
-#include <stdint.h>
-#include <stdio.h> // printf
+#include "game_platform.h"
+#include "game_memory.h"
+#include "game_math.h"
+#include "game_assets.h"
 
-typedef int16_t  i16;
-typedef int32_t  i32;
-typedef uint8_t  u8;
-typedef uint16_t u16;
-typedef uint32_t u32;
-typedef uint64_t u64;
-typedef int32_t  b32;
-typedef float    r32;
-typedef double   r64;
-
-#define Log(format, ...) printf(format, __VA_ARGS__)
-#define Logn(format, ...) printf(format "\n", __VA_ARGS__)
-#define Assert(exp) if (!(exp)) { Logn("------------- FAILED ASSERTION -------------\nFile:%s\nLine: %i\nExpc:%s",__FILE__,__LINE__,#exp);*(volatile int *)0 = 0; } 
-
-#define Kilobytes(x) x*1024
-#define Megabytes(x) x*1024*Kilobytes(1)
-#define Gigabytes(x) x*1024*Megabytes(1)
-
-
-#define ArrayCount(a) (sizeof(a) / sizeof(a[0]))
-
-struct memory_arena
+enum asset_file_type
 {
-    u8 * Base;
-    u32 MaxSize;
-    u32 CurrentSize;
-
-    // Arena might or not be used as temp memory
-    // this will be used by begin/end temparena
-    u32 StackTemporaryMemory;
+    asset_file_type_unknown,
+    asset_file_type_mesh,
+    asset_file_type_sound,
+    asset_file_type_shader,
+    asset_file_type_shader_vertex,
+    asset_file_type_shader_fragment,
+    asset_file_type_shader_geometry,
+    asset_file_type_texture,
+    asset_file_type_mesh_material
 };
 
-struct thread_memory_arena
+struct file_header
 {
-    b32 InUse;
+    u32 CountHeaders;
+};
+
+struct asset_data
+{
+    u32 Size;
+    void * Begin;
+};
+
+struct asset_header
+{
+    u32 Size;                     // 4
+    asset_file_type FileType;     // 4  8
+    u32 LengthName;               // 4  12
+    u32 DataBeginOffset;          // 4  16
+    char Filename[52];            // 52 68
+};
+
+struct assets_handler
+{
+    u32 CountAssets;
+    asset_header * Headers;
+
+    void * PlatformHandle;
     memory_arena Arena;
 };
 
-struct memory_aligned_result
+
+struct bucket
 {
-    uintptr_t AddressAligned;
-    u32 Delta;
+    i16 Coord[3];
+    u32 Index;
 };
 
-
-#define PushSize(Arena,Size) _PushSize(Arena,Size*sizeof(char))
-#define PushArray(Arena,Count,Struct) (Struct *)_PushSize(Arena,Count*sizeof(Struct))
-#define PushStruct(Arena,Struct) (Struct *)PushArray(Arena,1,Struct)
-
-#define BeginTempArena(Arena,ID) u32 Arena##SizeBegin##ID = (Arena)->CurrentSize;\
-                                 ++Arena->StackTemporaryMemory;
-#define EndTempArena(Arena,ID) --Arena->StackTemporaryMemory;\
-                               Arena->CurrentSize = Arena##SizeBegin##ID;
-#define TempArenaSanityCheck(Arena) Assert(Arena->StackTemporaryMemory == 0)
-
-inline u8 *
-_PushSize(memory_arena * Arena,u32 Size)
+struct hash_table
 {
-    Assert((Arena->CurrentSize + Size) <= Arena->MaxSize);
-    u8 * BaseAddr = Arena->Base + Arena->CurrentSize;
-    Arena->CurrentSize += Size;
-    return BaseAddr;
-}
+    bucket * Bucket;
+    u64 * Occupancy;
+    u32 BucketCount;
+
+    u32 CountLookups;
+    u32 CostFinding;
+};
+
+struct mesh_header
+{
+    u32 SizeVertices;
+    u32 SizeIndices;
+};
+
+struct mesh_result
+{
+    b32 Success;
+    vertex_point * Vertices;
+    i16 * Indices;
+    mesh_header Header;
+};
+
 
 inline void
 InitializeArena(memory_arena * Arena,u8 * BaseAddr, u32 MaxSize)
@@ -76,5 +88,12 @@ InitializeArena(memory_arena * Arena,u8 * BaseAddr, u32 MaxSize)
     Arena->CurrentSize = 0;
     Arena->Base = BaseAddr;
 }
+inline u32
+Win32RewindFile(HANDLE handle, u32 Offset = 0)
+{
+    DWORD Result = SetFilePointer(handle, Offset, NULL,FILE_BEGIN);
+    return Result;
+}
+
 
 #endif

@@ -22,62 +22,6 @@ struct graphics_platform_window
     const char *            OSSurfaceFuncName;
 };
 
-struct render_unit
-{
-    m4 ModelTransform;
-    v4 Color;
-    i32 TextureID;
-    u32 MaterialPipelineIndex[2];
-    mesh_group * MeshGroup;
-};
-
-struct render_units
-{
-    render_unit  * Units;
-    u32 UnitsLimit;
-    u32 UnitsCount;
-};
-
-struct render_controller
-{
-    v3 WorldUp;
-    m4 ViewMoveMatrix;
-    m4 ViewRotationMatrix;
-    m4 ViewTransform;
-    m4 Projection;
-
-    u32 ScreenWidth;
-    u32 ScreenHeight;
-    r32 WidthOverHeight;
-    r32 OneOverWidthOverHeight;
-
-    mesh_group * Sphere;
-#if DEBUG
-    i32 DebugWireframeMaterialPipelineIndex;
-    void * DebugBoundingBoxVertexBuffer;
-    u32 DebugBoundingBoxVertexBufferSize;
-    render_units UnitsBBV;
-#endif
-
-    render_units UnitsOpaque;
-    render_units UnitsTransparent;
-};
-
-struct GPUSimulationData
-{
-    v4 AmbientLight;
-    v4 SunlightDirection;
-    v4 SunlightColor;
-};
-
-struct GPUObjectData
-{
-    m4 MVP;
-    m4 ModelMatrix;
-    m4 ViewMatrix;
-    v4 Color;
-};
-
 #define GRAPHICS_RENDER_DRAW(name) void name(render_controller * Renderer)
 typedef GRAPHICS_RENDER_DRAW(graphics_render_draw);
 RENDER_API
@@ -142,11 +86,6 @@ typedef GRAPHICS_ON_WINDOW_RESIZE(graphics_on_window_resize);
 RENDER_API
 GRAPHICS_ON_WINDOW_RESIZE(OnWindowResize);
 
-enum polygon_mode
-{
-    polygon_mode_fill,
-    polygon_mode_line
-};
 
 #define GRAPHICS_CREATE_MATERIAL_PIPELINE(name) pipeline_creation_result name(i32 VertexShaderIndex, i32 FragmentShaderIndex, polygon_mode PolygonMode)
 typedef GRAPHICS_CREATE_MATERIAL_PIPELINE(graphics_create_material_pipeline);

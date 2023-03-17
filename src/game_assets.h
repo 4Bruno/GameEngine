@@ -3,7 +3,6 @@
 
 #include "game_platform.h"
 #include "game_memory.h"
-#include "game_mesh.h"
 #include "game_math.h"
 
 

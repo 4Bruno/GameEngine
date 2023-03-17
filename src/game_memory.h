@@ -64,6 +64,8 @@ ThreadEndArena(thread_memory_arena * ThreadArena);
 
 GAME_API void
 InitializeArena(memory_arena * Arena,u8 * BaseAddr, u32 MaxSize);
+GAME_API void
+InitializeArena(memory_arena * Arena,void * BaseAddr, u32 MaxSize);
 
 GAME_API void
 SubArena(memory_arena * ParentArena,memory_arena * Arena, u32 Size);

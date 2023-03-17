@@ -26,6 +26,11 @@ InitializeArena(memory_arena * Arena,u8 * BaseAddr, u32 MaxSize)
     Arena->CurrentSize = 0;
     Arena->Base = BaseAddr;
 }
+void
+InitializeArena(memory_arena * Arena,void * BaseAddr, u32 MaxSize)
+{
+    InitializeArena(Arena,(void *)BaseAddr, MaxSize);
+}
 
 void
 SubArena(memory_arena * ParentArena,memory_arena * Arena, u32 Size)

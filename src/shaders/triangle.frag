@@ -2,7 +2,7 @@
 
 #include "shader_common.h"
 
-layout (location = 0) in interpolants IN;
+layout (location = 0) flat in interpolants IN;
 
 layout (location = 0) out vec4 outFragColor;
 

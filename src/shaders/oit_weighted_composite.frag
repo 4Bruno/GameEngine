@@ -41,11 +41,7 @@
 
 #include "shader_common.h"
 
-layout (set = 0, binding = 0) uniform SimulationBuffer
-{
-    simulation_data Data;
-
-} Simulation;
+SIMULATION_BUFFER
 
 #define IMG_WEIGHTED_COLOR 3
 #define IMG_WEIGHTED_REVEAL 4

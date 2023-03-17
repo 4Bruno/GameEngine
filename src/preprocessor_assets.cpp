@@ -1,73 +1,17 @@
 #include "preprocessor_assets.h"
 
 #include "win32_io.cpp"
-#include "game_math.h"
-#include "game_assets.h"
 #include <inttypes.h>
-#define STB_IMAGE_IMPLEMENTATION
-#include "stb_image.h"
 
-
-
-#define PLATFORM_OPEN_HANDLE(name) platform_open_file_result name(const char * Filepath)
-typedef PLATFORM_OPEN_HANDLE(platform_open_handle);
-
-#define PLATFORM_CLOSE_HANDLE(name) void name(platform_open_file_result OpenFileResult)
-typedef PLATFORM_CLOSE_HANDLE(platform_close_handle);
-
-#define PLATFORM_READ_HANDLE(name) b32 name(platform_open_file_result OpenFileResult, void * Buffer)
-typedef PLATFORM_READ_HANDLE(platform_read_handle);
-
-
-enum asset_file_type
-{
-    asset_file_type_unknown,
-    asset_file_type_mesh,
-    asset_file_type_sound,
-    asset_file_type_shader,
-    asset_file_type_shader_vertex,
-    asset_file_type_shader_fragment,
-    asset_file_type_shader_geometry,
-    asset_file_type_texture,
-    asset_file_type_mesh_material
-};
-
-struct file_header
-{
-    u32 CountHeaders;
-};
-
-struct asset_header
-{
-    u32 Size;                     // 4
-    asset_file_type FileType;     // 4  8
-    u32 LengthName;               // 4  12
-    u32 DataBeginOffset;          // 4  16
-    char Filename[52];            // 52 68
-};
-
-struct bucket
-{
-    i16 Coord[3];
-    u32 Index;
-};
-
-struct hash_table
-{
-    bucket * Bucket;
-    u64 * Occupancy;
-    u32 BucketCount;
-
-    u32 CountLookups;
-    u32 CostFinding;
-};
+#define STB_TRUETYPE_IMPLEMENTATION
+#include "stb_truetype.h"
 
 void
 SetOccupancy(hash_table * Map, bucket ** Bucket)
 {
     u64 Index = ((size_t)*Bucket - (size_t)Map->Bucket) / sizeof(bucket);
-    u32 OccupancyIndex = Index / 64;
-    u32 OccupancyOffset = Index % 64; 
+    u64 OccupancyIndex = Index / 64;
+    u64 OccupancyOffset = Index % 64; 
     u64 * Bit = (Map->Occupancy + OccupancyIndex);
     *Bit = *Bit | ((u64)0x01 << OccupancyOffset);
 }
@@ -156,13 +100,6 @@ strcpy(char * dest, char * src)
     dest[i] = 0;
 }
 
-u32
-Win32RewindFile(HANDLE handle, u32 Offset = 0)
-{
-    DWORD Result = SetFilePointer(handle, Offset, NULL,FILE_BEGIN);
-    return Result;
-}
-
 asset_header
 CreateHeaderFromFile(const char * dir, WIN32_FIND_DATA ffd, LARGE_INTEGER filesize)
 {
@@ -173,7 +110,7 @@ CreateHeaderFromFile(const char * dir, WIN32_FIND_DATA ffd, LARGE_INTEGER filesi
     //Logn("  %s   %llu bytes", ffd.cFileName, filesize.QuadPart);
     u32 len = (u32)strlen(ffd.cFileName) - 1;
     char FileExt[12];
-    int CountChars = 0;
+    u32 CountChars = 0;
     for (u32 i = len; 
             (i > 0) || (CountChars < ArrayCount(FileExt)); 
             i--)
@@ -185,7 +122,7 @@ CreateHeaderFromFile(const char * dir, WIN32_FIND_DATA ffd, LARGE_INTEGER filesi
 
     Assert(CountChars < ArrayCount(FileExt));
 
-    for (int i = 0; i < (CountChars / 2);++i)
+    for (u32 i = 0; i < (CountChars / 2);++i)
     {
         char c = FileExt[i];
         int swap = CountChars - i - 1;
@@ -216,6 +153,23 @@ CreateHeaderFromFile(const char * dir, WIN32_FIND_DATA ffd, LARGE_INTEGER filesi
     {
         FileType = asset_file_type_shader;
     }
+    else if (strcmp(FileExt, "vert")  == 0)
+    {
+        FileType = asset_file_type_unknown;
+    }
+    else if (strcmp(FileExt, "frag")  == 0)
+    {
+        FileType = asset_file_type_unknown;
+    }
+    else if (strcmp(FileExt, "h")  == 0)
+    {
+        FileType = asset_file_type_unknown;
+    }
+    else
+    {
+        Logn("No handler for %s", FileExt);
+        Assert(0);
+    }
 
     if (FileType != asset_file_type_unknown)
     {
@@ -225,8 +179,8 @@ CreateHeaderFromFile(const char * dir, WIN32_FIND_DATA ffd, LARGE_INTEGER filesi
         header.DataBeginOffset = 0;
         header.Size = (u32)filesize.LowPart;
 
-        strcpy(header.Filename, dir);
-        int DirLen = strlen(dir);
+        strcpy_s(header.Filename, dir);
+        i32 DirLen = (i32)strlen(dir);
         if (header.Filename[DirLen -1] != '\\')
         {
             header.Filename[DirLen] = '\\';
@@ -259,7 +213,7 @@ CreateHeaders(const char ** dir,int NumberOfDirs, HANDLE blob)
     {
         const char * Path = dir[i];
         char PathWildChar[MAX_PATH];
-        strcpy(PathWildChar, Path);
+        strcpy_s(PathWildChar, Path);
         int PathLen = strlen(Path);
         PathWildChar[PathLen+0] = '\\';
         PathWildChar[PathLen+1] = '*';
@@ -269,7 +223,7 @@ CreateHeaders(const char ** dir,int NumberOfDirs, HANDLE blob)
 
         if (INVALID_HANDLE_VALUE == hFind) 
         {
-            Logn("Invalid dir %s",dir);
+            Logn("Invalid dir %s",Path);
         } 
 
         do
@@ -391,20 +345,6 @@ FreeHashTable(hash_table * Map)
     }
 }
 
-struct mesh_header
-{
-    u32 SizeVertices;
-    u32 SizeIndices;
-};
-
-struct mesh_result
-{
-    b32 Success;
-    vertex_point * Vertices;
-    i16 * Indices;
-    mesh_header Header;
-};
-
 mesh_result
 PreprocessMesh(const char * Data, u32 Size)
 {
@@ -419,16 +359,12 @@ PreprocessMesh(const char * Data, u32 Size)
 
     SkipLine(Data, Size, &ci);
 
-    i32 VerticesBegin = 0;
     u32 VerticesCount = 0;
 
-    i32 TrianglesBegin = 0;
     u32 TrianglesCount = 0;
 
-    i32 VerticesNormalBegin = 0;
     u32 VerticesNormalCount = 0;
 
-    i32 TextureUVBegin = 0;
     u32 TextureUVCount = 0;
 
     u32 DummyLineCounter = 0;
@@ -444,26 +380,21 @@ PreprocessMesh(const char * Data, u32 Size)
     for (; ci < Size;)
     {
         char LineTypeNext[10];
-        int start_c = ci;
 
         if      (strcmp("v",LineType) == 0)
         {
-            VerticesBegin = start_c;
             LineCounter = &VerticesCount;
         }
         else if (strcmp("vt",LineType) == 0)
         {
-            TextureUVBegin = start_c;
             LineCounter = &TextureUVCount;
         }
         else if (strcmp("vn",LineType) == 0)
         {
-            VerticesNormalBegin = start_c;
             LineCounter = &VerticesNormalCount;
         }
         else if (strcmp("f",LineType) == 0)
         {
-            TrianglesBegin = start_c;
             LineCounter = &TrianglesCount;
         }
         else
@@ -543,9 +474,9 @@ PreprocessMesh(const char * Data, u32 Size)
         else if (strcmp("vt",LineType) == 0)
         {
             v2 * uv = UV + TextureUVCount++;
-            uv->x = (r32)atof(Data + start_c);
+            uv->x = 1.0f * (r32)atof(Data + start_c);
             AdvanceAfterWs(Data, Size, &start_c);
-            uv->y = (r32)atof(Data + start_c);
+            uv->y = -1.0f * (r32)atof(Data + start_c);
         }
         else if (strcmp("vn",LineType) == 0)
         {
@@ -688,7 +619,7 @@ Win32ReadFile(const char * Filename)
     void * data = malloc(FileSizeLow);
 
     DWORD BytesRead = 0;
-    BOOL bResult = ReadFile(blob, data, FileSizeLow, &BytesRead, NULL);
+    ReadFile(blob, data, FileSizeLow, &BytesRead, NULL);
 
     if (BytesRead != FileSizeLow)
     {
@@ -706,92 +637,57 @@ Win32ReadFile(const char * Filename)
     return Result;
 }
 
-void
-TestReadFileAfterUpdate()
+platform_open_file_result
+Win32OpenFileReadOnly(const char * file)
 {
-    HANDLE blob = 
-        CreateFile("assets.bin", 
-                    GENERIC_READ, 
-                    FILE_SHARE_READ | FILE_SHARE_WRITE,NULL,
-                    OPEN_EXISTING, 
-                    FILE_ATTRIBUTE_NORMAL, NULL);      
+    platform_open_file_result Result = {};
 
-    file_header FileHeader;
+    HANDLE FileHandle = CreateFileA(file,GENERIC_READ,FILE_SHARE_READ,0,OPEN_EXISTING,FILE_ATTRIBUTE_NORMAL,0);
+
+    if (!FileHandle) return Result;
+
+    LARGE_INTEGER Size;
+    if (!GetFileSizeEx(FileHandle, &Size))
+    {
+        CloseHandle(FileHandle);
+        return Result;
+    }
+    
+    Result.Success = true;
+    Result.Size    = Size.LowPart;
+    Result.Handle  = FileHandle;
+       
+    return Result;
+}
+
+void
+CreateFontTexture()
+{
 
     DWORD BytesRead = 0;
-    DWORD BytesWritten = 0;
+    platform_open_file_result file_ttf = Win32OpenFileReadOnly("c:/windows/fonts/times.ttf");
 
-    BOOL bResult = ReadFile(blob, &FileHeader, sizeof(file_header), &BytesRead, NULL);
-    Assert(BytesRead == sizeof(file_header));
-    Logn("Total header %i",FileHeader.CountHeaders); 
+    if (!file_ttf.Success) return;
 
-    u32 SizeAssetsHeaders = sizeof(asset_header) * FileHeader.CountHeaders;
-    asset_header * Headers = (asset_header *)malloc(SizeAssetsHeaders);
-    bResult = ReadFile(blob, Headers, SizeAssetsHeaders, &BytesRead, NULL);
-    Assert(BytesRead == SizeAssetsHeaders);
+    void * buffer = malloc(file_ttf.Size);
 
-    u32 FileBufferOffset = sizeof(file_header) + 
-                           SizeAssetsHeaders;
+    ReadFile(file_ttf.Handle, buffer, file_ttf.Size, &BytesRead, NULL);
+    Assert(BytesRead == file_ttf.Size);
 
-    for (u32 i = 0;
-             i < FileHeader.CountHeaders;
-             ++i)
+    stbtt_fontinfo Font;
+    stbtt_InitFont(&Font, (u8 *)buffer, stbtt_GetFontOffsetForIndex((u8 *)buffer,0));
+
+    r32 ScaleY = 40.0f;
+    i32 Width ,Height ,XOffset ,YOffset;
+    for (i32 c = 'A'; c <= 'Z'; ++c)
     {
-        asset_header * header = Headers + i;
-        Logn("File: %-50s FileType:%i Size: %i", header->Filename, header->FileType, header->Size);
-
-        Win32RewindFile(blob, header->DataBeginOffset);
-
-        switch (header->FileType)
-        {
-            case asset_file_type_mesh:
-            {
-                mesh_header MeshHeader;
-                ReadFile(blob, &MeshHeader, sizeof(mesh_header), &BytesRead, NULL);
-
-                vertex_point * Vertices = (vertex_point *)malloc(MeshHeader.SizeVertices);
-                ReadFile(blob, Vertices, MeshHeader.SizeVertices, &BytesRead, NULL);
-                Assert(MeshHeader.SizeVertices == BytesRead);
-
-                u32 CountVertices = MeshHeader.SizeVertices / sizeof(vertex_point);
-#if 0
-                for (int i = 0; i < CountVertices;++i)
-                {
-                    vertex_point * vertex = Vertices + i;
-                    Logn("x:%f y:%f z:%f u:%f v:%f nx:%f ny:%f nz:%f",
-                          vertex->P.x,vertex->P.y,vertex->P.z,
-                          vertex->UV.x,vertex->UV.y,
-                          vertex->N.x,vertex->N.y,vertex->N.z);
-                }
-#endif
-                
-                free(Vertices);
-
-            } break;
-
-            case asset_file_type_texture:
-            {
-                void * Raw = malloc(header->Size);
-                bResult = ReadFile(blob, Raw, header->Size, &BytesRead, NULL);
-                Assert(header->Size == BytesRead);
-                int x,y,n;
-                int desired_channels = 4;
-                stbi_uc * Image = stbi_load_from_memory((const unsigned char *)Raw, header->Size, &x, &y, &n, desired_channels);
-                if (!Image)
-                {
-                    Logn("Error loading image %s",header->Filename);
-                }
-                else
-                {
-                    Logn("Image loaded with size %i %i %i (Offset:%i)", x,y,n, header->DataBeginOffset);
-                }
-                free(Raw);
-            } break;
-        };
+        u8 * bitmap = stbtt_GetCodepointBitmap(&Font, 
+                                           0,stbtt_ScaleForPixelHeight(&Font, ScaleY), 
+                                           c, &Width , &Height , &XOffset,&YOffset);
+        stbtt_FreeBitmap(bitmap, 0);
     }
 
-    free(Headers);
-    CloseHandle(blob);
+    free(buffer);
 }
 
 
@@ -800,10 +696,6 @@ main()
 {
 #if 0
     TestHashTable();
-    return 0;
-#endif
-#if 0
-    TestReadFileAfterUpdate();
     return 0;
 #endif
     const char * path[2] = 
@@ -831,13 +723,13 @@ main()
         Logn("Failed to set file pointer");
         return 1;
     }
-    BOOL bResult = ReadFile(blob, &FileHeader, sizeof(file_header), &BytesRead, NULL);
+    ReadFile(blob, &FileHeader, sizeof(file_header), &BytesRead, NULL);
     Assert(BytesRead == sizeof(file_header));
     Logn("Total header %i",FileHeader.CountHeaders); 
 
     u32 SizeAssetsHeaders = sizeof(asset_header) * FileHeader.CountHeaders;
     asset_header * Headers = (asset_header *)malloc(SizeAssetsHeaders);
-    bResult = ReadFile(blob, Headers, SizeAssetsHeaders, &BytesRead, NULL);
+    ReadFile(blob, Headers, SizeAssetsHeaders, &BytesRead, NULL);
     Assert(BytesRead == SizeAssetsHeaders);
 
     u32 FileBufferOffset = sizeof(file_header) + 
@@ -891,6 +783,13 @@ main()
                     header->DataBeginOffset = FileBufferOffset;
                     FileBufferOffset += ReadResult.Size;
                 } break;
+
+                case asset_file_type_unknown: break;
+                case asset_file_type_sound: break;
+                case asset_file_type_shader_vertex: break;
+                case asset_file_type_shader_fragment: break;
+                case asset_file_type_shader_geometry: break;
+                case asset_file_type_mesh_material: break;
             };
 
             int NameLen = strlen(header->Filename);

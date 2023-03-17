@@ -41,16 +41,12 @@
 
 #include "shader_common.h"
 
+INTERPOLANTS_IN
 
-layout (set = 0, binding = 0) uniform SimulationBuffer
-{
-    simulation_data Data;
+SIMULATION_BUFFER
 
-} Simulation;
-
-layout (set = 2, binding = 0) uniform sampler2D text1;
-
-layout(location = 0) in interpolants IN;
+layout (set = 2, binding = 0) uniform sampler samp;
+layout (set = 2, binding = 1) uniform texture2D textures[10];
 
 layout(location = 0) out vec4 outColor;
 layout(location = 1) out float outReveal;
@@ -73,7 +69,8 @@ vec3 goochLighting(vec3 normal)
 vec4 shading(const interpolants its)
 {
   //vec3 colorRGB = its.Color.rgb * goochLighting(its.Normal);
-  vec4 Color = texture(text1,its.UV);
+  vec4 Color = texture(sampler2D(textures[ImageIndex], samp),IN.UV);
+  //vec4 Color = texture(text1,its.UV);
   vec3 colorRGB = Color.rgb * goochLighting(its.Normal);
 
   // Calculate transparency in [alphaMin, alphaMin+alphaWidth]
