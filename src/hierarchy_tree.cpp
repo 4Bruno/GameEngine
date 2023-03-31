@@ -251,8 +251,8 @@ HierarchyTreeDropBranch(hierarchy_tree * Tree, void * ID, b32 KeepNodeByIDAlive)
         VisitDepth(Tree, Child, 0, &S);
 
         //PrintStack(&S);
-
-        while ( (Child = (tree_node **)PopStack(&S)) )
+        Child = (tree_node **)PopStack(&S);
+        while ( Child )
         {
             Assert((*Child)->LeftMostChild == 0);
 
@@ -271,6 +271,8 @@ HierarchyTreeDropBranch(hierarchy_tree * Tree, void * ID, b32 KeepNodeByIDAlive)
                 Child = ParentNewLeftMost;
                 VisitDepth(Tree, Child, 0, &S);
             }
+
+            Child = (tree_node **)PopStack(&S);
         }
 
         if (!KeepNodeByIDAlive)

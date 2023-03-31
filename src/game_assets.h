@@ -4,205 +4,94 @@
 #include "game_platform.h"
 #include "game_memory.h"
 #include "game_math.h"
-
-
-struct pipeline_creation_result
-{
-    b32 Success;
-    i32 Pipeline;
-    i32 PipelineLayout;
-};
-
-struct transparency_pipeline_creation_result
-{
-    pipeline_creation_result PipelineCreationResult[2];
-};
+#include "preprocessor_assets.h"
+#include "heap.h"
 
 
 enum asset_state
 {
-    asset_unloaded,
-    asset_load_error,
+    asset_unloaded        = 0,
     asset_load_inprogress,
-    asset_loaded_on_cpu,
-    asset_transfer_to_gpu_inprogress,
-    asset_loaded_on_gpu,
     asset_loaded,
-    asset_loaded_locked
+    asset_load_error,
+
+
+    // high word mask
+    asset_loaded_on_cpu               = 0b10000000,
+    asset_transfer_to_gpu_inprogress  = 0b01000000,
+    asset_loaded_on_gpu               = 0b00100000,
+    asset_loaded_locked               = 0b00010000
 };
 
-struct asset_slot
+struct assets_handler
 {
-    asset_state State;    
-    void * Data;
-    size_t Size;
+    u32 TagsCount;
+    u32 AssetTypeCount;
+    u32 AssetsCount;
+
+    bin_tag         * Tags;
+    bin_asset_type  * AssetType;
+    bin_asset       * Assets;
+
+    // address of the heap block
+    uintptr_t   * AssetsMemory;
+    asset_state * States;
+    i32         * GPUAssetID;
+
+    platform_open_file_result PlatformHandle;
+
+    heap Heap_;
+    heap * Heap;
+    // to hold asset header info
+    memory_arena * Arena;
+    // to hold asset data read from the file
+    memory_arena * HeapArena;
+    thread_memory_arena ThreadArenas[10];
+
+    render_commands_buffer CommandBuffer;
+    volatile u32 CommandBufferEntry;
 };
 
 
-#define ASSETS_DEFAULT_MESH     (game_asset_id)(game_asset_mesh_begin + 1)
-#define ASSETS_DEFAULT_MATERIAL (game_asset_id)(game_asset_material_begin + 2)
-#define ASSETS_NULL_TEXTURE     ((game_asset_id)-1)
-#define ASSETS_TOTAL_MESHES     (game_asset_mesh_end - game_asset_mesh_begin - 1)
-#define ASSETS_TOTAL_MATERIALS  (game_asset_material_end - game_asset_material_begin - 1)
-#define ASSETS_TOTAL_SHADERS    (game_asset_shader_end - game_asset_shader_begin - 1)
-#define ASSETS_TOTAL_TEXTURES   (game_asset_texture_end - game_asset_texture_begin - 1)
-#define ASSETS_TOTAL_COUNT (ASSETS_TOTAL_MESHES + ASSETS_TOTAL_MATERIALS + ASSETS_TOTAL_SHADERS + ASSETS_TOTAL_TEXTURES)
-
-enum game_asset_id
+struct game_asset
 {
-    /* MESHES */
-    game_asset_mesh_begin,
-
-    game_asset_mesh_cube,
-    game_asset_mesh_quad,
-    game_asset_mesh_sphere,
-    game_asset_mesh_tree_001,
-
-    game_asset_mesh_end,
-
-    /* SHADERS */
-    game_asset_shader_begin,
-
-    game_asset_shader_vertex_default_no_light,
-    game_asset_shader_vertex_default_light,
-    game_asset_shader_vertex_fullscreen_triangle,
-    game_asset_shader_fragment_default,
-    game_asset_shader_fragment_texture,
-    game_asset_shader_fragment_oit_weighted_color,
-    game_asset_shader_fragment_oit_weighted_composite,
-
-    game_asset_shader_end,
-
-    /* MATERIALS */
-    game_asset_material_begin,
-
-    game_asset_material_default_no_light,
-    game_asset_material_default_light,
-    game_asset_material_default_light_wireframe,
-    game_asset_material_texture_no_light,
-    game_asset_material_texture,
-    game_asset_material_transparent,
-
-    game_asset_material_end,
-
-    /* TEXTURES */
-    game_asset_texture_begin,
-    game_asset_texture_test,
-    game_asset_texture_particle_01_small,
-    game_asset_texture_end,
-
+    bin_asset   * Asset;
+    asset_state * State;
+    uintptr_t   * Memory;
 };
 
-struct vertex_point 
+game_asset
+GetMesh(assets_handler * Assets, game_asset_type AssetType ,asset_tag Tag);
+game_asset
+GetFont(assets_handler * Assets,font_type FontType);
+i32
+GetShaderVertex(assets_handler * Assets, asset_tag Tag);
+i32
+GetShaderFragment(assets_handler * Assets, asset_tag Tag);
+
+i32
+LoadAsset(assets_handler * Assets, game_asset * Asset, b32 Async);
+
+void
+ReleaseAsset(assets_handler * Assets, game_asset * Asset);
+
+inline b32
+AssetHasState(game_asset * Asset, asset_state CheckState)
 {
-    v3 P;
-    v3 N;
-    v4 Color;
-    v2 UV;
-};
+    asset_state State = (asset_state)((*Asset->State) & 0x0F);
 
-struct AABB
+    return (State == CheckState);
+}
+
+inline asset_state
+GetAssetStateFlag(game_asset * Asset)
 {
-    v3 c; // center
-    v3 r; // radius (halfway)
-};
+    asset_state State = (asset_state)((*Asset->State) & 0xFFF0);
 
-struct sphere 
-{
-    v3 c; // center
-    r32 r; // radius (halfway)
-};
+    return State;
+}
 
-
-struct mesh
-{
-    //vertex_point * Vertices;
-    //u16       * Indices;
-    u32 VertexSize;
-    u32 IndicesSize;
-    
-    u32 OffsetVertices;
-    u32 OffsetIndices;
-};
-
-struct mesh_group
-{
-    mesh * Meshes;
-    u32 TotalMeshObjects;
-    u32 GPUVertexBufferBeginOffset;
-    game_asset_id AssetID;
-    sphere Sphere;
-};
-
-#if 0
-struct platform_api
-{
-        
-};
-#endif
-
-struct asset_shader
-{
-    i32 GPUID;    
-    game_asset_id AssetID;
-};
-
-struct asset_texture
-{
-    i32 GPUID;    
-    i32 Width, Height, Channels;
-    game_asset_id AssetID;
-};
-
-struct asset_material
-{
-    pipeline_creation_result Pipeline[2];
-    u32 PipelinesCount;
-    game_asset_id AssetID;
-};
-
-struct game_assets
-{
-    memory_arena SoundArena;
-
-    memory_arena ShaderArena;
-    u32 ShaderLoadInProgress;
-
-    memory_arena MeshArena;
-    u32 MeshArenaPermanentSize;
-    u32 MeshLoadInProgress;
-
-    // power of 2
-    asset_shader CachedShaders[16];
-    u32 CachedShadersIndex;
-
-    mesh_group CachedMeshGroups[256];
-    u32 CachedMeshGroupIndex;
-
-    asset_texture CachedTextures[256];
-    u32 CachedTexturesIndex;
-
-    asset_material CachedMaterials[16];
-    u32 CachedMaterialIndex;
-
-    thread_memory_arena * ThreadArena;
-    i32 LimitThreadArenas;
-
-    asset_slot * AssetSlots;   
-};
-
-
-asset_material *
-GetMaterial(game_assets * Assets, game_asset_id MaterialID, b32 WaitUntilLoaded = 0);
-
-mesh_group *
-GetMesh(game_assets * Assets, game_asset_id ID, b32 WaitUntilLoaded = 0);
-
-asset_texture *
-GetTexture(game_assets * Assets, game_asset_id ID);
-
-game_assets
-NewGameAssets(memory_arena * Arena, thread_memory_arena * ThreadArenas, i32 LimitThreadArenas);
-
+assets_handler *
+InitializeAssets(assets_handler * GameAssets, memory_arena * Arena, memory_arena * HeapArena);
 
 #endif

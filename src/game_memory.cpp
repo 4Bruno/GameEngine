@@ -29,8 +29,19 @@ InitializeArena(memory_arena * Arena,u8 * BaseAddr, u32 MaxSize)
 void
 InitializeArena(memory_arena * Arena,void * BaseAddr, u32 MaxSize)
 {
-    InitializeArena(Arena,(void *)BaseAddr, MaxSize);
+    InitializeArena(Arena,(u8 *)BaseAddr, MaxSize);
 }
+
+memory_arena *
+AllocateSubArena(memory_arena * ParentArena, u32 Size)
+{
+    memory_arena * SubArena = PushStruct(ParentArena, memory_arena);
+    void * Addr = PushSize(ParentArena, Size);
+    InitializeArena(SubArena, Addr , Size);
+ 
+    return SubArena;
+}
+
 
 void
 SubArena(memory_arena * ParentArena,memory_arena * Arena, u32 Size)

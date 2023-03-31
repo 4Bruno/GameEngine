@@ -1,2 +1,4 @@
 @echo off
-call ..\shaders.py d
+
+SET d=%~dp0
+call %d%\shaders.py d

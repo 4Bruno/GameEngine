@@ -64,7 +64,7 @@ if "%BuildThis%"=="Y"  (
 
     cl /nologo ^
      /LD !WarningLevel! !IgnoreWarnings! !GenerateCompleteDebuggingInfo! !CompilationFlags! !IncludePaths! ^
-     ..\!dllname!.cpp  ..\vulkan_helpers.cpp   ..\hierarchy_tree.cpp ..\game_memory.cpp ^
+     ..\!dllname!.cpp   ..\hierarchy_tree.cpp ..\game_memory.cpp ^
      /Fe:!graphicsOutput!.dll ^
      /link /DLL ^
       /incremental:no /opt:ref /PDB:!graphicsOutput!_!random!.pdb ^

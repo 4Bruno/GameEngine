@@ -3,10 +3,15 @@
 #include "stb_image.h"
 #include "vulkan\vulkan_win32.h"
 #include "vulkan_initializer.cpp"
-//#include "vulkan_initializer.h"
+#include "Quaternion.cpp"
+#include "game_world.h"
 
 #define STB_TRUETYPE_IMPLEMENTATION
 #include "stb_truetype.h"
+
+#define MINIAUDIO_IMPLEMENTATION
+#include "miniaudio.h"
+
 
 #define APP_NAME "preprocessor_test"
 #define APP_WINDOW_WIDTH  980
@@ -18,7 +23,10 @@
 #define GET_Y_LPARAM(lp)                        ((int)(short)HIWORD(lp))
 #define QUAD_TO_MS(Q) Q.QuadPart * (1.0f / 1000.0f)
 
-static b32 GlobalAppRunning = true;
+global_variable b32 GlobalAppRunning      = true;
+global_variable r32 GlobalFontPixelSize   = 14.0f;
+global_variable platform_api PlatformAPI  = {};
+
 
 struct vulkan_window_data
 {
@@ -57,6 +65,13 @@ UpdateGameButton(game_button * Button, b32 IsPressed)
     ++Button->Transitions;
 }
 
+global_variable char LastKeyCharPressed = 'b';
+
+inline b32 
+IsLetter(char c)
+{
+    return (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z');
+}
 void
 HandleInput(game_controller * Controller,HWND WindowHandle, i32 Width, i32 Height)
 {
@@ -123,6 +138,11 @@ HandleInput(game_controller * Controller,HWND WindowHandle, i32 Width, i32 Heigh
                     else if (VKCode >= '0' && VKCode <= '9')
                     {
                         UpdateGameButton(&Controller->Numbers[VKCode - '0'], IsPressed);
+                    }
+
+                    if (IsLetter((char)VKCode))
+                    {
+                        LastKeyCharPressed = VKCode - ('A' - 'a');
                     }
                 }
             } break;
@@ -301,6 +321,9 @@ struct win32_frame_timer
     LARGE_INTEGER BeginningOfTime;
 
     LARGE_INTEGER FrameStartTime;
+    r32 LastFrames[100];
+    i32 LastFramesIndex;
+    r32 AvgFrameRate;
 };
 
 
@@ -341,6 +364,20 @@ WaitForFrameTimer(win32_frame_timer * FrameTimer, r32 ExpectedMillisecondsPerFra
         Win32QueryPerformanceDiff(Win32QueryPerformance(), FrameTimer->FrameStartTime, FrameTimer->PerfFreq);
 
     r32 TimeFrameRemaining = ExpectedMillisecondsPerFrame - QUAD_TO_MS(TimeFrameElapsed);
+
+    FrameTimer->LastFrames[++FrameTimer->LastFramesIndex % ArrayCount(FrameTimer->LastFrames)] = QUAD_TO_MS(TimeFrameElapsed);
+
+    r32 AvgFrameTime = 0.0f;
+    u32 TotalFramesRecorded = ArrayCount(FrameTimer->LastFrames);
+    for (u32 i = 15;
+             i > 0;
+             --i)
+    {
+        u32 Index = (FrameTimer->LastFramesIndex - i) % TotalFramesRecorded;
+        AvgFrameTime += FrameTimer->LastFrames[Index];
+    }
+
+    FrameTimer->AvgFrameRate = (AvgFrameTime * (1.0f / 15.0f));
 
     //Log("Time frame remaining %f\n",TimeFrameRemaining);
 
@@ -392,140 +429,81 @@ Win32GetWindowSize(HWND WindowHandle)
 
 }
 
-platform_open_file_result
-Win32OpenFileReadOnly(const char * file)
+internal u32
+Win32RewindFile(HANDLE handle, u32 Offset = 0)
 {
-    platform_open_file_result Result = {};
-
-    HANDLE FileHandle = CreateFileA(file,GENERIC_READ,FILE_SHARE_READ,0,OPEN_EXISTING,FILE_ATTRIBUTE_NORMAL,0);
-
-    if (!FileHandle) return Result;
-
-    LARGE_INTEGER Size;
-    if (!GetFileSizeEx(FileHandle, &Size))
-    {
-        CloseHandle(FileHandle);
-        return Result;
-    }
-    
-    Result.Success = true;
-    Result.Size    = Size.LowPart;
-    Result.Handle  = FileHandle;
-       
+    DWORD Result = SetFilePointer(handle, Offset, NULL,FILE_BEGIN);
     return Result;
 }
 
-
-assets_handler
-ProcessAssetsFile(memory_arena * Arena, u32 MaxAssetsArenaSize)
+void
+TestAssetsImport(assets_handler * Assets)
 {
-    assets_handler GameAssets = {};
-    GameAssets.Arena.Base = Arena->Base + Arena->CurrentSize;
-    GameAssets.Arena.MaxSize = MaxAssetsArenaSize;
-
-    platform_open_file_result File = Win32OpenFileReadOnly("assets.bin");
-
-    file_header FileHeader;
-
-    DWORD BytesRead = 0;
-
-    ReadFile(File.Handle, &FileHeader, sizeof(file_header), &BytesRead, NULL);
-    Assert(BytesRead == sizeof(file_header));
-    Logn("Total header %i",FileHeader.CountHeaders); 
-
-    u32 SizeAssetsHeaders = sizeof(asset_header) * FileHeader.CountHeaders;
-    asset_header * Headers = PushArray(Arena, FileHeader.CountHeaders, asset_header);
-    PushArray(&GameAssets.Arena, FileHeader.CountHeaders, asset_header);
-
-    ReadFile(File.Handle, Headers, SizeAssetsHeaders, &BytesRead, NULL);
-    Assert(BytesRead == SizeAssetsHeaders);
-
-    for (u32 i = 0;
-             i < FileHeader.CountHeaders;
-             ++i)
+    for (u32 AssetTypeIndex = 0;
+             AssetTypeIndex < Assets->AssetTypeCount;
+             ++AssetTypeIndex)
     {
-        asset_header * header = Headers + i;
-        Logn("File: %-50s FileType:%i Size: %i", header->Filename, header->FileType, header->Size);
+        bin_asset_type * AssetType = Assets->AssetType + AssetTypeIndex;
 
-        Win32RewindFile(File.Handle, header->DataBeginOffset);
-
-        switch (header->FileType)
+        for (u32 AssetIndex = AssetType->Begin;
+                AssetIndex < AssetType->End;
+                ++AssetIndex)
         {
-            case asset_file_type_mesh:
+            bin_asset * Asset = Assets->Assets + AssetIndex;
+
+            switch (Asset->FileType)
             {
-                mesh_header MeshHeader;
-                ReadFile(File.Handle, &MeshHeader, sizeof(mesh_header), &BytesRead, NULL);
+                case asset_file_type_mesh:
+                    {
+                        vertex_point * Vertices = (vertex_point *)malloc(Asset->Mesh.SizeVertices);
+                        PlatformAPI.ReadHandle(Assets->PlatformHandle, Vertices, Asset->Mesh.SizeVertices, Asset->DataBeginOffset);
 
-                vertex_point * Vertices = (vertex_point *)malloc(MeshHeader.SizeVertices);
-                ReadFile(File.Handle, Vertices, MeshHeader.SizeVertices, &BytesRead, NULL);
-                Assert(MeshHeader.SizeVertices == BytesRead);
-
-                u32 CountVertices = MeshHeader.SizeVertices / sizeof(vertex_point);
+                        u32 CountVertices = Asset->Mesh.SizeVertices / sizeof(vertex_point);
 #if 1
-                //for (int i = 0; i < CountVertices;++i)
-                for (u32 vertex_index = 0; vertex_index < min(CountVertices, 5);++vertex_index)
-                {
-                    vertex_point * vertex = Vertices + vertex_index;
-                    Logn("x:%f y:%f z:%f u:%f v:%f nx:%f ny:%f nz:%f",
-                          vertex->P.x,vertex->P.y,vertex->P.z,
-                          vertex->UV.x,vertex->UV.y,
-                          vertex->N.x,vertex->N.y,vertex->N.z);
-                }
+                        //for (int i = 0; i < CountVertices;++i)
+                        for (u32 vertex_index = 0; vertex_index < min(CountVertices, 5);++vertex_index)
+                        {
+                            vertex_point * vertex = Vertices + vertex_index;
+                            Logn("x:%f y:%f z:%f u:%f v:%f nx:%f ny:%f nz:%f",
+                                    vertex->P.x,vertex->P.y,vertex->P.z,
+                                    vertex->UV.x,vertex->UV.y,
+                                    vertex->N.x,vertex->N.y,vertex->N.z);
+                        }
 #endif
-                
-                free(Vertices);
 
-            } break;
+                        free(Vertices);
 
-            case asset_file_type_texture:
-            {
-                void * Raw = malloc(header->Size);
-                ReadFile(File.Handle, Raw, header->Size, &BytesRead, NULL);
-                Assert(header->Size == BytesRead);
-                int x,y,n;
-                int desired_channels = 4;
-                stbi_uc * Image = stbi_load_from_memory((const unsigned char *)Raw, header->Size, &x, &y, &n, desired_channels);
-                if (!Image)
-                {
-                    Logn("Error loading image %s",header->Filename);
-                }
-                else
-                {
-                    Logn("Image loaded with size %i %i %i (Offset:%i)", x,y,n, header->DataBeginOffset);
-                }
-                free(Raw);
-            } break;
+                    } break;
 
-            case asset_file_type_unknown: break;
-            case asset_file_type_sound: break;
-            case asset_file_type_shader: 
-            {
-                void * Raw = malloc(header->Size);
-                ReadFile(File.Handle, Raw, header->Size, &BytesRead, NULL);
-                Assert(header->Size == BytesRead);
-                i32 Shader = CreateShaderModule(Raw, header->Size);
-                if (Shader < 0)
+                case asset_file_type_texture:
+                    {
+#if 0
+                        bin_text * Text = &Asset->Text;
+                        u32 TextSize = Text->Height * Text->Width * Text->Channels;
+                        void * Raw = malloc(TextSize);
+                        ReadFromFile(Assets->PlatformHandle, Raw, TextSize);
+                        free(Raw);
+#endif
+                    } break;
+
+                case asset_file_type_unknown: break;
+                case asset_file_type_sound: break;
+                case asset_file_type_shader: 
                 {
-                    Logn("Unable to load shader %s", header->Filename);
-                }
-                else
-                {
-                    Logn("Shader loaded succesful %s", header->Filename);
-                }
-                free(Raw);
-            } break;
-            case asset_file_type_shader_vertex: break;
-            case asset_file_type_shader_fragment: break;
-            case asset_file_type_shader_geometry: break;
-            case asset_file_type_mesh_material: break;
-        };
+                    void * Raw = malloc(Asset->Size);
+                    PlatformAPI.ReadHandle(Assets->PlatformHandle, Raw, Asset->Size, Asset->DataBeginOffset);
+                    i32 Shader = CreateShaderModule(Raw, Asset->Size);
+                    Logn("%s to load shader %i", (Shader >= 0) ? "Success" : "Unsuccessful",AssetIndex);
+
+                    free(Raw);
+                } break;
+                case asset_file_type_shader_vertex: break;
+                case asset_file_type_shader_fragment: break;
+                case asset_file_type_shader_geometry: break;
+                case asset_file_type_mesh_material: break;
+            };
+        }
     }
-
-    GameAssets.CountAssets = FileHeader.CountHeaders;
-    GameAssets.Headers = Headers;
-    GameAssets.PlatformHandle = File.Handle;
-
-    return GameAssets;
 }
 
 inline void
@@ -543,64 +521,80 @@ InitArena(memory_arena * Arena,void * BaseAddr, u32 MaxSize)
 }
 global_variable i32 ttf_tex  = 0;
 
-i32
-my_stbtt_initfont(void)
+
+inline b32
+IsEOF(char c)
 {
+    return (c == 10 || c == 13);
+}
 
-    DWORD BytesRead = 0;
-    platform_open_file_result file_ttf = Win32OpenFileReadOnly("c:/windows/fonts/times.ttf");
+struct char_render_info
+{
+    char c;
+    r32 OffsetY;
+};
+struct font_texture_info
+{
+    i32 GPUTextureIndex;
+    char_render_info CharRenderInfo['~' - ' ' + 1];
+    r32 Ascent;
+    i32 PixelSize;
+};
 
-    if (!file_ttf.Success) return -1;
-
-    void * buffer = malloc(file_ttf.Size);
-
-    ReadFile(file_ttf.Handle, buffer, file_ttf.Size, &BytesRead, NULL);
-    Assert(BytesRead == file_ttf.Size);
-
-    stbtt_fontinfo Font;
-    stbtt_InitFont(&Font, (u8 *)buffer, stbtt_GetFontOffsetForIndex((u8 *)buffer,0));
-
-    r32 ScaleY = 300.0f;
-    i32 codepoint;
-    i32 Width ,Height ,XOffset ,YOffset;
-    i32 ix0, iy0, ix1, iy1;
-    u8 * bitmap = stbtt_GetCodepointBitmap(&Font, 
-                                           stbtt_ScaleForPixelHeight(&Font, ScaleY),stbtt_ScaleForPixelHeight(&Font, ScaleY), 
-                                           'A', &Width , &Height , &XOffset,&YOffset);
-    
-    ttf_tex = PushTextureData(bitmap, Width, Height, 1);
-
-#if 0
-    glBindTexture(GL_TEXTURE_2D, ftex);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_ALPHA, 512,512, 0, GL_ALPHA, GL_UNSIGNED_BYTE, temp_bitmap);
-    // can free temp_bitmap at this point
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-#endif
+#define LOAD_ASSET_POST_PROCESS(name) void name(void * Data)
+typedef LOAD_ASSET_POST_PROCESS(load_asset_post_process);
 
 
-    stbtt_FreeBitmap(bitmap, 0);
-    free(buffer);
 
-    return ttf_tex;
+void
+PushDraw_(renderer * Renderer, game_asset * Mesh, m4 * Model, i32 Text, i32 SampleOffsetX, i32 SampleOffsetY)
+{
+    if (Renderer->Capacity > Renderer->Ocuppancy)
+    {
+        render_command * Command = Renderer->Commands + Renderer->Ocuppancy++;
+        Command->Mesh.OffsetVertices  = 0;
+        Command->Mesh.OffsetIndices   = 0;
+        Command->Text.ID = Text;
+        Command->Text.SampleOffsetX = SampleOffsetX;
+        Command->Text.SampleOffsetY = SampleOffsetY;
+        Command->Model = *Model;
+    }
 }
 
 void
-DrawText(i32 Pipeline, i32 Texture,  const char * text, u32 OffsetVertex, u32 OffsetIndices, r32 TimeElapsed)
+PushDrawText(renderer * Renderer, assets_handler * Assets, font_type FontType, r32 X, r32 Y, char * Text)
 {
-    WaitForRender();
+    game_asset Quad = GetMesh(Assets,game_asset_type_mesh_shape , asset_tag_quad);
+    game_asset Font = GetFont(Assets,FontType);
 
-    v4 ClearColor = V4(0,0,0,1);
+    if (!Quad.Asset) LoadAsset(Assets, &Quad, false);
+    if (!Font.Asset) LoadAsset(Assets, &Font, false);
 
-    RenderBeginPass(ClearColor);
+    if (Quad.Asset && Font.Asset)
+    {
+        i32 len = strlen(Text);
 
-#if 0
-    mesh_push_constant PushConstant = {};
-    PushConstant.ImageIndex = Texture;
-    RenderPushVertexConstant(sizeof(mesh_push_constant),&PushConstant);
-#endif
+        m4 Model {};
+        r32 OffsetX = 0.0f;
+        for (char * c = Text; *c != 0; ++c)
+        {
+            i32 TextSample = *c  - ' ';
+            i32 TextOffsetX = (r32)(TextSample % 10);
+            i32 TextOffsetY = (r32)(TextSample / 10);
+            Translate(Model, V3(X + OffsetX, Y, 0.0f));
+            PushDraw_(Renderer, &Quad, &Model, 0, TextOffsetX, TextOffsetY);
+            OffsetX += Font.Asset->Font.Height;
+        }
+    }
+}
+
+void
+RenderScene(renderer * Renderer, assets_handler * Assets)
+{
+    u32 InstanceCount = Renderer->Ocuppancy;
 
     gpu_memory_mapping_result ObjectsMapResult = 
-        BeginObjectMapping(1);
+        BeginObjectMapping(InstanceCount);
 
     if (!ObjectsMapResult.Success)
     {
@@ -610,73 +604,63 @@ DrawText(i32 Pipeline, i32 Texture,  const char * text, u32 OffsetVertex, u32 Of
 
     GPUObjectData * ObjectData = (GPUObjectData *)ObjectsMapResult.BeginAddress;
 
-    //m4 Scale = M4(V3(0.5f));
-    ObjectData->ModelMatrix = M4();
-    r32 Z = (sinf(TimeElapsed / 2.0f) * 5.0f);
-    //Logn("Z: %f", Z);
-    ObjectData->ModelMatrix[0][2] = Z;
-    ObjectData->Color = V4(1.0f,1.0f,1.0f,0);
-    ObjectData->ImageIndex = Texture;
+    for (u32 ObjectIndex = 0;
+            ObjectIndex < InstanceCount;
+            ++ObjectIndex)
+    {
+        render_command * Command = Renderer->Commands + ObjectIndex;
+        *ObjectData = {};
+        ObjectData->Color = V4(1.0f,1.0f,1.0f,0);
+        ObjectData->TextSample = { (r32)Command->Text.SampleOffsetX, (r32)Command->Text.SampleOffsetY };
+        ObjectData->ImageIndex = Command->Text.ID;
+
+        ++ObjectData;
+    }
 
     EndObjectsArena();
 
-    RenderSetPipeline(Pipeline);
-    //RenderBindTexture(Texture);
-    //RenderDrawObjectNTimes(8,1,0);
-    RenderPushMeshIndexed(1, 6, OffsetVertex, OffsetIndices);
-
 #if 0
-    while (*text) {
-        if ((*text) >= 32 && (*text) < 128) {
-            stbtt_aligned_quad q;
-            stbtt_GetBakedQuad(cdata, 512,512, *text-32, &x,&y,&q,1);//1=opengl & d3d10+,0=d3d9
-            
-            glTexCoord2f(q.s0,q.t0); glVertex2f(q.x0,q.y0);
-            glTexCoord2f(q.s1,q.t0); glVertex2f(q.x1,q.y0);
-            glTexCoord2f(q.s1,q.t1); glVertex2f(q.x1,q.y1);
-            glTexCoord2f(q.s0,q.t1); glVertex2f(q.x0,q.y1);
-        }
-        ++text;
-    }
-#endif
-
-    EndRenderPass();
-}
-
-asset_data
-GetAsset(assets_handler * Assets, const char * Name)
-{
-    asset_data AssetData = {};
-
-    for (i32 i = 0; 
-             i < Assets->CountAssets; 
-             ++i)
+    for (u32 ObjectIndex = 0;
+            ObjectIndex < InstanceCount;
+            ++ObjectIndex)
     {
-        asset_header * H = Assets->Headers + i;
-        if (strcmp(H->Filename,Name) == 0)
-        {
-            DWORD BytesRead = 0;
-            void * Buffer = (void *)PushSize(&Assets->Arena, H->Size);
-            Win32RewindFile(Assets->PlatformHandle, H->DataBeginOffset);
-            ReadFile(Assets->PlatformHandle,Buffer,H->Size, &BytesRead, NULL);
-            Assert(BytesRead == H->Size);
-            AssetData.Begin = Buffer;
-            AssetData.Size = H->Size;
-        }
+        render_command * Command = Renderer->Commands + ObjectIndex;
+        
+        if (mesh changes or pipeline changes...)
+        RenderPushMeshIndexed(InstanceCount, 6, Command->Mesh.OffsetVertices, Command->Mesh.OffsetIndices);
     }
-
-    return AssetData;
+#else
+    render_command * Command = Renderer->Commands + 0;
+    RenderPushMeshIndexed(InstanceCount, 6, Command->Mesh.OffsetVertices, Command->Mesh.OffsetIndices);
+#endif
 }
 
-i32
-CreateFontTexture()
+void
+GetDimBoxForCharInRange(stbtt_fontinfo * Font,r32 ScaleX, r32 ScaleY, i32 Start, i32 End, i32 * MaxW, i32 * MaxH)
 {
-    i32 TextIndex = -1;
+    Assert(End >= Start);
+    for (i32 c = Start; c <= End; ++c)
+    {
+        int ix0, iy0, ix1, iy1;
+        stbtt_GetCodepointBitmapBox(Font, c, ScaleX, ScaleY, &ix0, &iy0, &ix1, &iy1);
+        i32 W = (ix1 - ix0);
+        i32 H = (iy1 - iy0);
+        *MaxW = (W > *MaxW) ? W : *MaxW;
+        *MaxH = (W > *MaxH) ? W : *MaxH;
+    }
+}
+
+font_texture_info
+CreateFontTexture(r32 PixelHeight)
+{
+
+    font_texture_info FontTextureInfo = {};
+    FontTextureInfo.GPUTextureIndex = -1;
 
     DWORD BytesRead = 0;
-    platform_open_file_result file_ttf = Win32OpenFileReadOnly("c:/windows/fonts/times.ttf");
+    platform_open_file_result file_ttf = PlatformAPI.OpenFileReadOnly("c:/windows/fonts/times.ttf");
 
-    if (!file_ttf.Success) return - 1;
+    if (!file_ttf.Success) return FontTextureInfo;
 
     void * buffer = malloc(file_ttf.Size);
 
@@ -686,51 +670,115 @@ CreateFontTexture()
     stbtt_fontinfo Font;
     stbtt_InitFont(&Font, (u8 *)buffer, stbtt_GetFontOffsetForIndex((u8 *)buffer,0));
 
-    i32 LastLetter = 'A' + 10;
-    r32 ScaleY = stbtt_ScaleForPixelHeight(&Font, 150.0f);
-    i32 Width ,Height ,XOffset ,YOffset;
-
-#if 0
+    r32 TextHeight = PixelHeight;
+    r32 WidthOverHeight = (r32)GlobalVulkan.WindowExtension.width / (r32)GlobalVulkan.WindowExtension.height;
     i32 TotalWidth = 0;
     i32 TotalHeight = 0;
-    for (i32 c = 'A'; c <= LastLetter; ++c)
-    {
-        int ix0, iy0, ix1, iy1;
-        stbtt_GetCodepointBitmapBox(&Font, c, ScaleY, ScaleY, &ix0, &iy0, &ix1, &iy1);
-        TotalWidth += (ix1 - ix0);
-        TotalHeight += (iy1 - iy0);
-    }
-    void * Text = malloc(TotalWidth * TotalHeight * 1);
-    u8 * TextPtr = (u8 *) Text;
-    for (i32 c = 'A'; c <= LastLetter; ++c)
-    {
-#if 1
-        int ix0, iy0, ix1, iy1;
-        stbtt_GetCodepointBitmapBox(&Font, c, ScaleY, ScaleY, &ix0, &iy0, &ix1, &iy1);
-        i32 W = (ix1 - ix0);
-        i32 H = (iy1 - iy0);
-        //Logn("%c: %i %i",c, ix1 - ix0, iy1 - iy0);
-        stbtt_MakeCodepointBitmapSubpixel(&Font, TextPtr, W, H, W, ScaleY, ScaleY,0.0f, 0.0f, c);
-        TextPtr += (W * H * 1);
+
+    r32 ScaleY = stbtt_ScaleForPixelHeight(&Font, TextHeight);
+    r32 ScaleX = ScaleY;
+    i32 Width ,Height ,XOffset ,YOffset;
+
+    i32 MaxWidth = 0;
+    i32 MaxHeight = 0;
+
+
+#if 0
+    i32 CountChars = 0;
+    i32 CharsRanges[][2] = {
+        {'A','Z'},
+        {'a','z'},
+        {'0','9'}
+    };
 #else
-        u8 * bitmap = stbtt_GetCodepointBitmap(&Font, ScaleY,ScaleY, c, &Width , &Height , &XOffset,&YOffset);
-        Logn("%c: %i %i (%i %i)",c, Width, Height, XOffset, YOffset);
-        stbtt_FreeBitmap(bitmap, 0);
+    i32 CountChars = 0;
+    i32 CharsRanges[][2] = {
+        {' ','~'},
+    };
 #endif
+
+    for (u32 i = 0; i < ArrayCount(CharsRanges); ++i)
+    {
+        i32 Start = CharsRanges[i][0];
+        i32 End = CharsRanges[i][1];
+        GetDimBoxForCharInRange(&Font,ScaleX, ScaleY, Start, End, &MaxWidth, &MaxHeight);
+        ++CountChars;
     }
 
-    TextIndex = PushTextureData(Text, TotalWidth, TotalHeight, 1);
-#else
-    for (i32 c = 'A'; c <= LastLetter; ++c)
+    MaxWidth = NextPowerOf2(MaxWidth);
+    MaxHeight = NextPowerOf2(MaxHeight);
+
+    Logn("MaxWidth: %i MaxHeight:%i CountChars:%i PixelHeight:%f", MaxWidth, MaxHeight, CountChars, TextHeight);
+
+    i32 AtlasStride = 10;
+    TotalWidth = MaxWidth * AtlasStride;
+    TotalHeight = MaxHeight * AtlasStride;
+
+    Logn("TotalWidth: %i TotalHeight:%i CharsPerRow:%i", TotalWidth, TotalHeight, AtlasStride);
+
+    Assert(SQR(AtlasStride) >= CountChars);
+
+    u8 * AtlastBuffer = (u8 *)malloc(TotalWidth * TotalHeight * 1);
+    RtlZeroMemory(AtlastBuffer, TotalWidth * TotalHeight * 1);
+
+    u8 * Bitmap = (u8 *)malloc(MaxWidth * MaxHeight * 1);
+    i32 CopiedBitmapCount = 0;
+    for (u32 i = 0; i < ArrayCount(CharsRanges); ++i)
     {
-        u8 * bitmap = stbtt_GetCodepointBitmap(&Font, ScaleY,ScaleY, c , &Width , &Height , &XOffset,&YOffset);
-        TextIndex = PushTextureData(bitmap, Width, Height, 1);
-        stbtt_FreeBitmap(bitmap, 0);
+        i32 Start = CharsRanges[i][0];
+        i32 End = CharsRanges[i][1];
+        for (i32 c = Start; c <= End; ++c)
+        {
+            int ix0, iy0, ix1, iy1;
+            stbtt_GetCodepointBitmapBox(&Font, c, ScaleX, ScaleY, &ix0, &iy0, &ix1, &iy1);
+            i32 AdvanceWidth, LeftSideBearing;
+            stbtt_GetCodepointHMetrics(&Font, c, &AdvanceWidth, &LeftSideBearing);
+            i32 W = (ix1 - ix0);
+            i32 H = (iy1 - iy0);
+            FontTextureInfo.CharRenderInfo[c - ' '].c = c;
+            FontTextureInfo.CharRenderInfo[c - ' '].OffsetY = (r32)iy0 / (r32)H;
+            i32 PaddingX = (MaxWidth - W) / 2;
+            //i32 PaddingY = (MaxHeight - H) / 2;
+            i32 PaddingY = MaxHeight - H;
+            i32 Row = (CopiedBitmapCount / AtlasStride);
+            i32 Col = (CopiedBitmapCount % AtlasStride);
+            stbtt_MakeCodepointBitmapSubpixel(&Font, Bitmap, W, H, MaxWidth, ScaleX, ScaleY,0.0f, 0.0f, c);
+            u8 * Dst = AtlastBuffer + 
+                       (Row * AtlasStride * MaxWidth * MaxHeight) + 
+                       (Col * MaxWidth) + 
+                       PaddingX + 
+                       (PaddingY * AtlasStride * MaxWidth);
+            u8 * Src = Bitmap;
+            for (i32 Y = 0; Y < H; ++Y)
+            {
+                i32 OffsetY = Y * AtlasStride * MaxWidth;
+                memcpy(Dst + OffsetY, Src, W);
+                Src += MaxWidth;
+            }
+            CopiedBitmapCount += 1;
+        }
     }
-#endif
+    free(Bitmap);
+
+    FontTextureInfo.GPUTextureIndex = PushTextureData(AtlastBuffer, TotalWidth, TotalHeight, 1);
+    i32 Ascent, Descent, Linegap;
+    stbtt_GetFontVMetrics(&Font, &Ascent, &Descent, &Linegap);
+    FontTextureInfo.Ascent = (Ascent * ScaleY) / MaxWidth;
+    FontTextureInfo.PixelSize = MaxHeight;
+
     free(buffer);
+    free(AtlastBuffer);
 
-    return TextIndex;
+    return FontTextureInfo;
+}
+
+renderer * 
+NewRenderer(memory_arena * Arena, u32 MaxRenderUnits)
+{
+    renderer * R = PushStruct(Arena, renderer);
+    R->Commands = PushArray(Arena, MaxRenderUnits, render_command);
+    R->Capacity = MaxRenderUnits;
+    R->Ocuppancy = 0;
 }
 
 int
@@ -762,26 +810,27 @@ main()
     memory_arena Arena = {};
     InitArena(&Arena, PermanentMemory, PermanentMemorySize);
 
-    assets_handler Assets = ProcessAssetsFile(&Arena, Megabytes(10));
-    asset_data VertexShader = GetAsset(&Assets,"test.vert.spv");
-    asset_data FragmentShader = GetAsset(&Assets,"triangle_text.frag.spv");
+    memory_arena AssetsArena = {};
+    u32 AssetsArenaSize = Megabytes(10);
+    void * AssetsArenaBegin = PushSize(&Arena,AssetsArenaSize);
+    InitArena(&AssetsArena,AssetsArenaBegin,AssetsArenaSize);
 
-    i32 VS = CreateShaderModule(VertexShader.Begin,VertexShader.Size);
-    i32 FS = CreateShaderModule(FragmentShader.Begin,FragmentShader.Size);
+    memory_arena RenderArena = {};
+    u32 MaxRenderUnits = 2048;
+    u32 RenderArenaSize = sizeof(renderer) + 
+                          sizeof(render_command) * MaxRenderUnits;
+    void * RenderArenaBegin = PushSize(&Arena,RenderArenaSize);
+    InitArena(&RenderArena,RenderArenaBegin,RenderArenaSize);
+
+    renderer * Renderer = NewRenderer(&RenderArena, MaxRenderUnits);
+
+    i32 VS = LoadShaderVertex(Assets,asset_tag_noperspective);
+    i32 FS = LoadShaderFragment(Assets,asset_tag_texturesampling);
+
     pipeline_creation_result Pipeline = CreatePipeline(VS, FS, polygon_mode_fill);
 
-    asset_data SquareObj = GetAsset(&Assets,"quad.obj");
-    mesh_header * Mesh = (mesh_header *)SquareObj.Begin;
-    vertex_point * Vertices = (vertex_point *)((u8*)SquareObj.Begin + sizeof(mesh_header));
-    vertex_point * Indices = (vertex_point *)((u8*)SquareObj.Begin + sizeof(mesh_header) + Mesh->SizeVertices);
-    
-    u32 GPUVertexOffset = 0, GPUIndicesOffset = 0;
-    PushVertexData(Vertices, Mesh->SizeVertices, &GPUVertexOffset);
-    RenderPushIndexData(Indices, Mesh->SizeIndices, &GPUIndicesOffset);
-
 #if 1
-    //i32 Texture = my_stbtt_initfont();
-    i32 MaxTextures = CreateFontTexture();
+    font_texture_info FontTexture = CreateFontTexture(62.0f);
 #else
     i32 Texture = -1;
     asset_data Text = GetAsset(&Assets, "ground_stone_01.jpg");
@@ -799,6 +848,16 @@ main()
 
     win32_frame_timer FrameTimer = NewFrameTimer();
 
+    ma_result result;
+    ma_engine engine;
+
+    result = ma_engine_init(NULL, &engine);
+    if (result != MA_SUCCESS) {
+        Logn("Failed to initialize audio engine.");
+        return -1;
+    }
+
+    static char KeyPressed = LastKeyCharPressed;
     while (GlobalAppRunning)
     {
         BeginFrameTimer(&FrameTimer);
@@ -809,17 +868,62 @@ main()
 
         HandleInput(&Input.Controller,WindowHandle, WinDim.Width, WinDim.Height);
 
+        if (Input.Controller.Up.IsPressed) 
+        {
+            GlobalFontPixelSize += 0.03f;
+            Logn("GlobalFontPixelSize: %f", GlobalFontPixelSize);
+        }
+        if (Input.Controller.Down.IsPressed)
+        { 
+            GlobalFontPixelSize -= 0.03f;
+            Logn("GlobalFontPixelSize: %f", GlobalFontPixelSize);
+        }
+
         if (!GlobalWindowIsMinimized)
         {
-            i32 Texture = ((i32)Input.TimeElapsed % MaxTextures);
-            //Texture = 1;
-            DrawText(Pipeline.Pipeline, Texture, "THis is a test", GPUVertexOffset, GPUIndicesOffset, Input.TimeElapsed);
+            WaitForRender();
+
+            v4 ClearColor = V4(0,0,0,1);
+
+            RenderBeginPass(ClearColor);
+
+            RenderSetPipeline(Pipeline.Pipeline);
+
+            //DrawText(Pipeline.Pipeline,&FontTexture, "This is a test paco quality fernando, this and that. !!!", GPUVertexOffset, GPUIndicesOffset, Input.TimeElapsed);
+            
+            char buffer[30];
+            //snprintf(buffer,30,"FPS: %f",FrameTimer.AvgFrameRate);
+            if (LastKeyCharPressed != KeyPressed) 
+            {
+                static ma_sound SoundFiles['z' - 'a'] = {};
+
+                KeyPressed = LastKeyCharPressed;
+                snprintf(buffer,ArrayCount(buffer),"assets\\letter_%c.mp3",KeyPressed);
+                ma_sound Sound = SoundFiles[KeyPressed - 'a'];
+                if (!Sound.pDataSource)
+                {
+                    ma_sound_init_from_file(&engine, buffer, MA_SOUND_FLAG_DECODE, 0, 0, &Sound);
+                    SoundFiles[KeyPressed - 'a'] = Sound;
+                }
+                if (Sound.pDataSource)
+                {
+                    ma_sound_seek_to_pcm_frame(&Sound, 0);
+                    ma_sound_start(&Sound);
+                }
+            }
+            snprintf(buffer,30,"%c",LastKeyCharPressed);
+            PushDrawText(Renderer, Assets, font_type_times,  0.8f, 0.95f, buffer);
+
+            RenderScene(Renderer, Assets);
+
+            EndRenderPass();
         }
 
         WaitForFrameTimer(&FrameTimer, ExpectedMillisecondsPerFrame);
     }
 
+    ma_engine_uninit(&engine);
     EndFrameTimer();
-    CloseHandle(Assets.PlatformHandle);
+    CloseHandle(Assets->PlatformHandle);
     CloseVulkan();
 }

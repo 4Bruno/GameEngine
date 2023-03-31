@@ -1,5 +1,64 @@
-#include "game.h"
+#include "game_render.h"
 
+#define PushEntry(CommandBuffer, struct_type) (struct_type *)PushEntry_(CommandBuffer, sizeof(struct_type), entry_type_##struct_type)
+void *
+PushEntry_(render_commands_buffer * CommandBuffer, u32 SizeStructEntryType, entry_type EntryType)
+{
+    void * Entry = 0;
+
+    u32 ReqSize = CommandBuffer->CurrentSize + sizeof(entry_header) + SizeStructEntryType;
+    
+    if (CommandBuffer->MaximumSize > ReqSize)
+    {
+        entry_header * Header = (entry_header *)CommandBuffer->Buffer + CommandBuffer->CurrentSize;
+        CommandBuffer->CurrentSize += sizeof(entry_header);
+
+        Header->Type = EntryType;
+        Entry = (entry_header *)CommandBuffer->Buffer + CommandBuffer->CurrentSize;
+        CommandBuffer->CurrentSize += SizeStructEntryType;
+    }
+
+    return Entry;
+}
+
+void
+PushText(renderer * Renderer, const char * Text, font_type Font)
+{
+    game_asset FontAsset = GetFont(Renderer->AssetsManager,Font);
+    game_asset Quad = GetMesh(Renderer->AssetsManager, game_asset_type_mesh_shape, asset_tag_quad);
+
+    if (AssetHasState(&FontAsset, asset_unloaded))
+    {
+        LoadAsset(Renderer->AssetsManager, &FontAsset, false);
+    }
+
+    if (AssetHasState(&Quad, asset_unloaded))
+    {
+        LoadAsset(Renderer->AssetsManager, &Quad, false);
+    }
+
+    if (
+            AssetHasState(&FontAsset, asset_loaded) &&
+            AssetHasState(&Quad     , asset_loaded)
+       )
+    {
+        entry_push_mesh * Entry =  PushEntry(Renderer->CommandBuffer, entry_push_mesh);
+
+        Entry->MeshIndex = Quad.Asset->ID; 
+        Entry->IndicesSize        = Quad.Asset->Mesh.SizeIndices;
+        Entry->GPUTextureIndex    = FontAsset.Asset->Text.GPUTextureID;
+    }
+}
+
+void
+InitializeRenderer(renderer * Renderer, assets_handler * Assets, render_commands_buffer * CommandBuffer)
+{
+    Renderer->AssetsManager = Assets;
+    Renderer->CommandBuffer = CommandBuffer;
+}
+
+
+#if 0
 inline v3
 GetViewPos(render_controller * Renderer)
 {
@@ -667,5 +726,6 @@ EndRender()
 {
     GraphicsEndRenderPass();
 }
+#endif
 
 

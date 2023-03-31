@@ -1,22 +1,15 @@
 #include "game_platform.h"
 #include <windows.h>
 
-inline b32
-CompareAndExchangeIfMatches(volatile u32 * This, u32 UpdateTo, u32 IfMatchesThis)
-{
-    u32 OriginalValue = 
-        InterlockedCompareExchange(
-            (LONG volatile *)This,
-            UpdateTo,
-            IfMatchesThis);
 
-    b32 Result = (IfMatchesThis == OriginalValue);
+#ifndef PLATFORM_THREADING
+#define PLATFORM_THREADING
+#define THREAD_START_ROUTINE(name) DWORD WINAPI name(void * Data)
+typedef THREAD_START_ROUTINE(thread_start_routine);
+#endif
 
-    return Result;
-}
 
-b32
-DoWorkOnQueue(thread_work_queue * Queue)
+THREAD_DO_WORK_ON_QUEUE(DoWorkOnQueue)
 {
     b32 GoToSleep = false;
 
@@ -25,7 +18,7 @@ DoWorkOnQueue(thread_work_queue * Queue)
 
     if (CurrentRead != Queue->CurrentWrite)
     {
-        if (CompareAndExchangeIfMatches(&Queue->CurrentRead, NextReadEntry, CurrentRead))
+        if (CompareAndExchangeIfMatches(&Queue->CurrentRead, CurrentRead, NextReadEntry))
         {
             thread_work_queue_entry Entry = Queue->Entries[CurrentRead];
             Entry.Handler(Queue, Entry.Data);
@@ -41,8 +34,7 @@ DoWorkOnQueue(thread_work_queue * Queue)
     return GoToSleep;
 }
 
-void
-CompleteWorkQueue(thread_work_queue * Queue)
+THREAD_COMPLETE_QUEUE(CompleteWorkQueue)
 {
     while (Queue->ThingsToDo != Queue->ThingsDone)
     {
@@ -52,8 +44,8 @@ CompleteWorkQueue(thread_work_queue * Queue)
     Queue->ThingsDone = 0;
 }
 
-void
-AddWorkToQueue(thread_work_queue * Queue, thread_work_handler * Handler, void * Data)
+#ifdef GAME_MULTITHREAD
+THREAD_ADD_WORK_TO_QUEUE(AddWorkToQueue)
 {
     u32 NextWriteEntry = (Queue->CurrentWrite + 1) % ArrayCount(Queue->Entries);
     Assert(NextWriteEntry != Queue->CurrentRead);
@@ -68,14 +60,30 @@ AddWorkToQueue(thread_work_queue * Queue, thread_work_handler * Handler, void * 
 
     ReleaseSemaphore(Queue->Semaphore, 1, 0);
 }
-
-DWORD WINAPI 
-WorkQueueThreadLoop(void * Parameter)
+#else
+THREAD_ADD_WORK_TO_QUEUE(AddWorkToQueue)
 {
-    thread_work_queue * Queue = (thread_work_queue *)Parameter;
+    u32 NextWriteEntry = (Queue->CurrentWrite + 1) % ArrayCount(Queue->Entries);
+    Assert(NextWriteEntry != Queue->CurrentRead);
+
+    thread_work_queue_entry * Entry = (Queue->Entries + Queue->CurrentWrite);
+    Entry->Handler = Handler;
+    Entry->Data = Data;
+
+    MemoryBarrier();
+    Queue->CurrentWrite = NextWriteEntry;
+    ++Queue->ThingsToDo;
+
+    Queue->DoWorkOnQueue(Queue);
+}
+#endif
+
+THREAD_START_ROUTINE(WorkQueueThreadLoop)
+{
+    thread_work_queue * Queue = (thread_work_queue *)Data;
     for (;;)
     {
-        if (DoWorkOnQueue(Queue))
+        if (Queue->DoWorkOnQueue(Queue))
         {
             WaitForSingleObjectEx(Queue->Semaphore, INFINITE, FALSE);
         }
@@ -98,7 +106,7 @@ CleanWorkQueue(thread_work_queue * Queue)
 }
 
 void
-CreateWorkQueue(thread_work_queue * Queue, u32 CountThreads)
+CreateWorkQueue(thread_work_queue * Queue, u32 CountThreads, thread_do_work_on_queue * ThreadDoWorkOnQueue = DoWorkOnQueue)
 {
     SECURITY_ATTRIBUTES * NullSecAttrib = 0;
     const char * NullName               = 0;
@@ -113,6 +121,7 @@ CreateWorkQueue(thread_work_queue * Queue, u32 CountThreads)
     DWORD DesiredAccess = SEMAPHORE_ALL_ACCESS; 
     HANDLE Semaphore = CreateSemaphoreExA( NullSecAttrib, 0, CountThreads, NullName, NullReservedFlags, DesiredAccess);
     Queue->Semaphore = Semaphore;
+    Queue->DoWorkOnQueue = ThreadDoWorkOnQueue;
 
     for (u32 ThreadIndex = 0;
                 ThreadIndex < CountThreads;

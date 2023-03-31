@@ -531,5 +531,29 @@ VectorByMatrix(v3 A, m4 &M)
     return Result;
 }
 
+inline u32 
+NextPowerOf2(u32 N)
+{
+    if (!(N & (N - 1)))
+        return N;
+    // else set only the left bit of most significant bit
+    //return 0x8000000000000000 >> (__builtin_clzll(N) - 1); // gnu
+    //return 0x80000000 >> (__lzcnt(N) - 1); // 32 bit
+    return (u32)(0x8000000000000000 >> (__lzcnt64(N) - 1));
+}
+
+inline u32
+CeilDivide(u32 A, u32 B)
+{
+    u32 Result = (u32)(((r32)A / (r32)B) + 0.5f);
+
+    return Result;
+}
+
+struct rect_r32 
+{
+    r32 Width, Height;
+};
+
 #define GAME_MATH_H
 #endif

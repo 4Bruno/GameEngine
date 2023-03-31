@@ -38,7 +38,8 @@ const char * CTableDestructorDebugNames[] =
     "vulkan_destructor_type_vkFreeCommandBuffers",
 
     "vulkan_destructor_type_vkDestroyArenaCustom",
-    "vulkan_destructor_type_vkDestroyMemoryPoolCustom"
+    "vulkan_destructor_type_vkDestroyMemoryPoolCustom",
+    "vulkan_destructor_type_vkDestroyHeapCustom",
 };
 
 
@@ -159,14 +160,14 @@ PFN_vkCmdNextSubpass                          vkCmdNextSubpass                  
 void
 InitializeVulkanStruct(vulkan * V)
 {
-    V->MemoryArenasLabel = "MEM ARENAS";
-    V->DeviceMemoryPoolsLabel = "MEMORY POOLS";
-    V->StagingBufferLabel = "STAGING BUFFERS";
-    V->RenderPassLabel = "RENDER PASSES";
+    V->MemoryArenasLabel        = "MEM ARENAS";
+    V->DeviceMemoryPoolsLabel   = "MEMORY POOLS";
+    V->StagingBufferLabel       = "STAGING BUFFERS";
+    V->RenderPassLabel          = "RENDER PASSES";
     V->DescriptorSetLayoutLabel = "DESCRIPTOR SET LAYOUTS";
-    V->FrameDataLabel = "FRAME DATA";
-    V->PipelinesLabel = "PIPELINES";
-    V->ShaderModulesLabel = "SHADER MODULE";
+    V->FrameDataLabel           = "FRAME DATA";
+    V->PipelinesLabel           = "PIPELINES";
+    V->ShaderModulesLabel       = "SHADER MODULE";
 }
 
 vulkan                        GlobalVulkan = {};
@@ -456,7 +457,8 @@ VH_CreateImage(VkDevice Device, u32 Width, u32 Height, u32 Channels, vulkan_imag
     i32 MemoryTypeIndex = VH_FindSuitableMemoryIndex(GlobalVulkan.PrimaryGPU, Image->MemoryRequirements, PropertyFlags);
 
     // only 1 type for now
-    Assert(MemoryTypeIndex == GlobalVulkan.TextureArena->MemoryIndexType);
+    //Assert(MemoryTypeIndex == GlobalVulkan.TextureArena->MemoryIndexType);
+    Assert(MemoryTypeIndex == GlobalVulkan.TextureHeap->MemoryIndexType);
 
     Image->Format = Format;
     Image->UsageFlags = UsageFlags;
@@ -793,12 +795,11 @@ VH_PaddedUniformBuffer(VkDeviceSize Size)
     return AlignedSize;
 }
 
-transparency_pipeline_creation_result
+i32
 CreateTransparencyPipeline(i32 VertexShaderIndex, i32 WeightFragmentShaderIndex,i32 FullscreenTriangleVertexShaderIndex, i32 CompositeFragmentShaderIndex)
 {
-    transparency_pipeline_creation_result Result = {};
-    pipeline_creation_result * PipelineSubpass1 = Result.PipelineCreationResult + 0;
-    pipeline_creation_result * PipelineSubpass2 = Result.PipelineCreationResult + 1;
+    void * PipelineSubpass1 = 0;
+    void * PipelineSubpass2 = 0;
 
     Assert((VertexShaderIndex         >= 0) && (VertexShaderIndex         < (i32)ArrayCount(GlobalVulkan.ShaderModules)));
     Assert((WeightFragmentShaderIndex >= 0) && (WeightFragmentShaderIndex < (i32)ArrayCount(GlobalVulkan.ShaderModules)));
@@ -884,11 +885,6 @@ CreateTransparencyPipeline(i32 VertexShaderIndex, i32 WeightFragmentShaderIndex,
             GlobalVulkan.PipelinesDefinition[IndexPipeline] = *VulkanPipelineWeight;
             GlobalVulkan.Pipelines[IndexPipeline]= Pipeline;
 
-            PipelineSubpass1->Success        = true; // Success   Success
-            PipelineSubpass1->Pipeline       = IndexPipeline; // Pipeline   Pipeline
-            // only 1 for now, hardcoded as the first 
-            PipelineSubpass1->PipelineLayout = 0; // PipelineLayout   PipelineLayout
-
             VULKAN_TREE_APPEND(vkDestroyPipeline, GlobalVulkan.PipelinesLabel, GlobalVulkan.Pipelines[IndexPipeline]);
         }
     }
@@ -953,23 +949,17 @@ CreateTransparencyPipeline(i32 VertexShaderIndex, i32 WeightFragmentShaderIndex,
             GlobalVulkan.PipelinesDefinition[IndexPipeline] = *VulkanPipelineComposite;
             GlobalVulkan.Pipelines[IndexPipeline]= Pipeline;
 
-            PipelineSubpass2->Success        = true; // Success   Success
-            PipelineSubpass2->Pipeline       = IndexPipeline; // Pipeline   Pipeline
-            // only 1 for now, hardcoded as the first 
-            PipelineSubpass2->PipelineLayout = 0; // PipelineLayout   PipelineLayout
 
             VULKAN_TREE_APPEND(vkDestroyPipeline, GlobalVulkan.PipelinesLabel, GlobalVulkan.Pipelines[IndexPipeline]);
         }
     }
 
-    return Result;
+    return 0;
 }
 
-pipeline_creation_result 
+i32
 CreatePipeline(i32 VertexShaderIndex, i32 FragmentShaderIndex, polygon_mode PolygonMode)
 {
-    pipeline_creation_result Result = {};
-
     Assert((VertexShaderIndex >= 0) && ((i32)ArrayCount(GlobalVulkan.ShaderModules) > VertexShaderIndex));
     Assert((FragmentShaderIndex >= 0) && ((i32)ArrayCount(GlobalVulkan.ShaderModules) > FragmentShaderIndex));
 
@@ -1057,14 +1047,17 @@ CreatePipeline(i32 VertexShaderIndex, i32 FragmentShaderIndex, polygon_mode Poly
         GlobalVulkan.PipelinesDefinition[IndexPipeline] = VulkanPipeline;
         GlobalVulkan.Pipelines[IndexPipeline]= Pipeline;
 
+#if 0
         Result.Pipeline = IndexPipeline;
         Result.Success = true;
         Result.PipelineLayout = 0; // only 1 for now, hardcoded as the first 
+#endif
 
         VULKAN_TREE_APPEND(vkDestroyPipeline, GlobalVulkan.PipelinesLabel, GlobalVulkan.Pipelines[IndexPipeline]);
     }
 
-    return Result;
+    //return Result;
+    return 0;
 }
 
 struct vulkan_device_extensions
@@ -1140,7 +1133,7 @@ BeginObjectMapping(u32 Units)
     gpu_memory_mapping_result Result = {};
 
     gpu_arena * Arena = GetCurrentFrame()->ObjectsArena;
-    u32 BeginOffsetUnits = Arena->CurrentSize / sizeof(GPUObjectData);
+    u64 BeginOffsetUnits = Arena->CurrentSize / sizeof(GPUObjectData);
     u32 TotalUnitsSize = Units * sizeof(GPUObjectData);
     Assert((Arena->CurrentSize + TotalUnitsSize) <= Arena->MaxSize);
 
@@ -1902,7 +1895,7 @@ VH_AllocateDescriptor(VkDescriptorSetLayout  * SetLayout,
 
     return 0;
 }
-
+#if 0
 i32 
 PushTextureData(void * Data, u32 Width, u32 Height, u32 Channels)
 {
@@ -2065,87 +2058,229 @@ PushTextureData(void * Data, u32 Width, u32 Height, u32 Channels)
 
     return ResultImageIndex;
 }
-
+#endif
 
 i32 
-PushVertexData(void * Data, u32 DataSize, u32 * outVertexBufferBeginOffset)
+PushTextureData(void * Data, u32 Width, u32 Height, u32 Channels)
 {
 
-    gpu_arena * VertexArena = GlobalVulkan.VertexArena;
-    u32 Align = VertexArena->Alignment - 1;
-    u32 DataSizeAligned = (DataSize + Align) & ~Align;
+    i32 ResultImageIndex = -1;
 
-    VkDeviceSize Offset = 0;
+    gpu_heap * HeapAlloc = GlobalVulkan.TextureHeap;
 
-    if (*outVertexBufferBeginOffset == 0)
+    VkDeviceSize DataSize        = Width * Height * Channels;
+    VkDeviceSize Align           = HeapAlloc->Alignment - 1;
+    u32          DataSizeAligned = (u32)((DataSize + Align) & ~Align);
+
+    gpu_heap_block * Block = FindHeapBlock(HeapAlloc, DataSizeAligned);
+
+    vulkan_image * VulkanImage = &Block->Image;
+
+    // https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VkMemoryMapFlags.html
+
+    if (VH_CreateImage(GlobalVulkan.PrimaryDevice, Width,Height,Channels, VulkanImage)) 
+        return ResultImageIndex;
+
+    VkDeviceMemory   DeviceMemory     = GetDeviceMemory(HeapAlloc->MemoryIndexType);
+    VkDeviceSize     BindMemoryOffset = HeapAlloc->DeviceBindingOffsetBegin + Block->Begin;
+
+    if (VK_FAILS(vkBindImageMemory(GlobalVulkan.PrimaryDevice, VulkanImage->Image,DeviceMemory, BindMemoryOffset)))
     {
-        Offset = VertexArena->CurrentSize;
-        Assert((VertexArena->CurrentSize + DataSizeAligned) < VertexArena->MaxSize);
+        VH_DestroyImage(HeapAlloc->Device,VulkanImage);
+        return ResultImageIndex;
     }
-    else
-    {
-        // this is a hack to re-use vertex buffer for particles with known size
-        // i dont have a way to check i'm passing same buffer size
-        // expecting particle system to dont change buffer size
-        Offset = *outVertexBufferBeginOffset;
-    }
+
+    /*
+     * 1) Copy CPU to GPU visible memory
+     * 2) Transition Image as destination
+     * 3) Copy GPU temp memory to Image
+     * 4) Transition Image to readable by shaders
+     */
+    VulkanWriteDataToArena(GlobalVulkan.TransferBitArena, Data, (u32)DataSizeAligned);
+
+    /* TRANSITION LAYOUT */
+
+    VkImageSubresourceRange Range;
+    Range.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT;
+    Range.baseMipLevel   = 0; // uint32_t baseMipLevel;
+    Range.levelCount     = 1; // uint32_t levelCount;
+    Range.baseArrayLayer = 0; // uint32_t baseArrayLayer;
+    Range.layerCount     = 1; // uint32_t layerCount;
+
+    VkImageMemoryBarrier TransferBarrier = {};
+    TransferBarrier.sType               = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+    TransferBarrier.oldLayout           = VK_IMAGE_LAYOUT_UNDEFINED;
+    TransferBarrier.newLayout           = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+    TransferBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    TransferBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    TransferBarrier.image               = VulkanImage->Image;
+    TransferBarrier.subresourceRange    = Range;
+
+    TransferBarrier.srcAccessMask = 0;
+    TransferBarrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+
+    VkCommandBuffer SingleCmd = BeginSingleCommandBuffer();
+
+    Assert(VK_VALID_HANDLE(SingleCmd));
+
+    vkCmdPipelineBarrier(SingleCmd, 
+                            VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, 
+                            VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, nullptr, 0, nullptr, 1, &TransferBarrier);
+
+    EndSingleCommandBuffer(SingleCmd);
+
+    /* COPY IMAGE */
+    VkBufferImageCopy Copy;
+
+    VkImageSubresourceLayers   ImageSubresource;
+    ImageSubresource.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT; // VkImageAspectFlags   aspectMask;
+    ImageSubresource.mipLevel       = 0; // uint32_t   mipLevel;
+    ImageSubresource.baseArrayLayer = 0; // uint32_t   baseArrayLayer;
+    ImageSubresource.layerCount     = 1; // uint32_t   layerCount;
+
+    VkExtent3D   ImageExtent;
+    ImageExtent.width  = Width; // uint32_t   width;
+    ImageExtent.height = Height; // uint32_t   height;
+    ImageExtent.depth  = 1; // uint32_t   depth;
+
+    VkOffset3D ImageOffset;
+    ImageOffset.x = 0; // int32_t   x;
+    ImageOffset.y = 0; // int32_t   y;
+    ImageOffset.z = 0; // int32_t   z;
+
+    Copy.bufferOffset      = 0; // VkDeviceSize   bufferOffset;
+    Copy.bufferRowLength   = 0; // uint32_t   bufferRowLength;
+    Copy.bufferImageHeight = 0; // uint32_t   bufferImageHeight;
+    Copy.imageSubresource  = ImageSubresource; // VkImageSubresourceLayers   imageSubresource;
+    Copy.imageOffset       = ImageOffset; // VkOffset3D   imageOffset;
+    Copy.imageExtent       = ImageExtent; // VkExtent3D   imageExtent;
+
+    VH_BeginCommandBuffer(GlobalVulkan.TransferBitCommandBuffer);
+
+
+	vkCmdCopyBufferToImage(GlobalVulkan.TransferBitCommandBuffer, 
+                           GlobalVulkan.TransferBitArena->Buffer, 
+                           VulkanImage->Image, 
+                           VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &Copy);
+
+    VH_EndCommandBuffer(GlobalVulkan.TransferBitCommandBuffer, GlobalVulkan.TransferOnlyQueue);
+
+    /* TRANSITION LAYOUT */
+    VkImageMemoryBarrier ReadableBarrier = {};
+    ReadableBarrier.sType               = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+    ReadableBarrier.oldLayout           = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+    ReadableBarrier.newLayout           = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+    ReadableBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    ReadableBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    ReadableBarrier.image               = VulkanImage->Image;
+    ReadableBarrier.subresourceRange    = Range;
+
+    ReadableBarrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+    ReadableBarrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+
+    SingleCmd = BeginSingleCommandBuffer();
+
+    vkCmdPipelineBarrier(SingleCmd, 
+                            VK_PIPELINE_STAGE_TRANSFER_BIT, 
+                            VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0, nullptr, 0, nullptr, 1, &ReadableBarrier);
+
+    EndSingleCommandBuffer(SingleCmd);
+
+    VkImageViewCreateInfo ImageViewCreateInfo;
+
+    ImageViewCreateInfo.sType            = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO; // VkStructureType   sType;
+    ImageViewCreateInfo.pNext            = 0; // Void * pNext;
+    ImageViewCreateInfo.flags            = 0; // VkImageViewCreateFlags   flags;
+    ImageViewCreateInfo.image            = VulkanImage->Image; // VkImage   image;
+    ImageViewCreateInfo.viewType         = VK_IMAGE_VIEW_TYPE_2D; // VkImageViewType   viewType;
+    ImageViewCreateInfo.format           = VulkanImage->Format; // VkFormat   format;
+
+    VkComponentMapping   components;
+    components.r = VK_COMPONENT_SWIZZLE_IDENTITY; // VkComponentSwizzle   r;
+    components.g = VK_COMPONENT_SWIZZLE_IDENTITY; // VkComponentSwizzle   g;
+    components.b = VK_COMPONENT_SWIZZLE_IDENTITY; // VkComponentSwizzle   b;
+    components.a = VK_COMPONENT_SWIZZLE_IDENTITY; // VkComponentSwizzle   a;
+    ImageViewCreateInfo.components       = components; // VkComponentMapping   components;
+
+    VkImageSubresourceRange   subresourceRange;
+    subresourceRange.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT; // VkImageAspectFlags   aspectMask;
+    subresourceRange.baseMipLevel   = 0; // uint32_t   baseMipLevel;
+    subresourceRange.levelCount     = 1; // uint32_t   levelCount;
+    subresourceRange.baseArrayLayer = 0; // uint32_t   baseArrayLayer;
+    subresourceRange.layerCount     = 1; // uint32_t   layerCount;
+
+    ImageViewCreateInfo.subresourceRange = subresourceRange; // VkImageSubresourceRange   subresourceRange;
+
+    VK_CHECK(vkCreateImageView( GlobalVulkan.PrimaryDevice, &ImageViewCreateInfo, 0, &VulkanImage->ImageView));
+
+    ResultImageIndex = Block->ID;
+
+    GlobalVulkan.TextureArenaDirty = true;
+
+    return ResultImageIndex;
+}
+
+
+internal i32 
+PushVertexData(void * Data, u32 DataSize, i32 MeshID)
+{
+    gpu_heap       * HeapAlloc = GlobalVulkan.VertexHeap;
+    gpu_heap_block * Block     = FindHeapBlock(HeapAlloc, DataSize);
+
+    VkDeviceSize Offset = HeapAlloc->DeviceBindingOffsetBegin + Block->Begin;
+
+    Assert(GlobalVulkan.TransferBitArena->MaxSize <= Block->Size);
 
     VulkanWriteDataToArena(GlobalVulkan.TransferBitArena,Data, DataSize);
 
     if (VH_CopyBuffer(GlobalVulkan.TransferBitCommandBuffer, 
-                     GlobalVulkan.TransferBitArena->Buffer,VertexArena->Buffer, DataSize, Offset))
+                     GlobalVulkan.TransferBitArena->Buffer,HeapAlloc->Buffer, DataSize, Offset))
     {
         Log("Failed to copy data from buffer to gpu\n");
         return 1;
     }
 
-    if (*outVertexBufferBeginOffset == 0)
-    {
-        VertexArena->CurrentSize += DataSizeAligned;
-        *outVertexBufferBeginOffset = (u32)Offset;
-    }
+    Block->ID = MeshID;
 
     return 0;
 }
 
-i32 
-PushVertexDataTemp(void * Data, u32 DataSize, u32 * outVertexBufferBeginOffset)
+internal i32
+PushIndexData(void * Data,u32 DataSize, i32 MeshID)
 {
-    gpu_arena * VertexArena = GlobalVulkan.VertexArena;
-    u32 CurrentSize = VertexArena->CurrentSize;
-    i32 Success = PushVertexData(Data,DataSize, outVertexBufferBeginOffset);
-    VertexArena->CurrentSize = CurrentSize;
+    gpu_heap       * HeapAlloc = GlobalVulkan.VertexHeap;
+    gpu_heap_block * Block     = FindHeapBlock(HeapAlloc, DataSize);
 
-    return Success;
+    VkDeviceSize Offset = HeapAlloc->DeviceBindingOffsetBegin + Block->Begin;
+
+    Assert(GlobalVulkan.TransferBitArena->MaxSize <= Block->Size);
+
+    VulkanWriteDataToArena(GlobalVulkan.TransferBitArena,Data, DataSize);
+
+    if (VH_CopyBuffer(GlobalVulkan.TransferBitCommandBuffer, 
+                     GlobalVulkan.TransferBitArena->Buffer,HeapAlloc->Buffer, DataSize, Offset))
+    {
+        Log("Failed to copy data from buffer to gpu\n");
+        return 1;
+    }
+
+    Block->ID = MeshID;
+
+    return 0;
 }
-
 
 i32
-RenderPushIndexData(void * Data,u32 DataSize, u32 * outIndexBufferBeginOffset)
+PushMeshData(i32 CustomMeshID, void * VertexData, u32 VertexSize, void * IndicesData, u32 IndicesSize)
 {
-    gpu_arena * IndexArena = GlobalVulkan.IndexArena;
-    VkDeviceSize Offset = IndexArena->CurrentSize;
-
-    u32 Align = IndexArena->Alignment - 1;
-    DataSize = (DataSize + Align) & ~Align;
-
-    Assert((IndexArena->CurrentSize + DataSize) < IndexArena->MaxSize);
-
-    IndexArena->CurrentSize += DataSize;
-
-    VulkanWriteDataToArena(GlobalVulkan.TransferBitArena,Data, DataSize);
-
-    if (VH_CopyBuffer(GlobalVulkan.TransferBitCommandBuffer, 
-                     GlobalVulkan.TransferBitArena->Buffer,IndexArena->Buffer, DataSize, Offset))
+    i32 ErrorCode = PushVertexData(VertexData, VertexSize   , CustomMeshID);
+    if (ErrorCode == 0)
     {
-        Log("Failed to copy data from buffer to gpu\n");
-        return 1;
+        ErrorCode = PushIndexData(IndicesData, IndicesSize  , CustomMeshID);
     }
 
-    *outIndexBufferBeginOffset = (u32)Offset;
-
-    return 0;
+    return ErrorCode;
 }
+
 
 i32 
 CreateShaderModule(void * Buffer, size_t Size)
@@ -2198,24 +2333,24 @@ VulkanSetCurrentImageSwap()
 void
 UpdateTextureDescriptorBinding()
 {
-    vulkan_image * DefaultImage = GlobalVulkan.TextureArena->Images + 0;
+    u32 TextureCount = GlobalVulkan.TextureHeap->BlockCount;
 
-    for (i32 i = 0; i < GPU_TEXTURES_ARRAY_COUNT;++i)
+    for (u32 BlockIndex = 0; 
+             BlockIndex < TextureCount;
+             ++BlockIndex)
     {
-        VkDescriptorImageInfo * ImageInfo  = GlobalVulkan.ImageInfoArray + i;
-        vulkan_image * VulkanImage = GlobalVulkan.TextureArena->Images + i;
-        ImageInfo->sampler = 0;
+        VkDescriptorImageInfo * ImageInfo   = GlobalVulkan.ImageInfoArray + BlockIndex;
+        vulkan_image          * VulkanImage = &GlobalVulkan.TextureHeap->Blocks[BlockIndex].Image;
+
+        ImageInfo->sampler     = 0;
         ImageInfo->imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL; // VkImageLayout   imageLayout;
-        if (i < GlobalVulkan.TextureArena->ImageCount)
-        {
-            Assert(VulkanImage->ImageView != VK_NULL_HANDLE);
-            ImageInfo->imageView   = VulkanImage->ImageView;
-        }
-        else
-        {
-            ImageInfo->imageView   = DefaultImage->ImageView;
-        }
+        ImageInfo->imageView   = VulkanImage->ImageView;
+
+        Assert(VulkanImage->ImageView != VK_NULL_HANDLE);
     }
+
+    i32 UnusedImageInfoCount = GPU_TEXTURES_ARRAY_COUNT - TextureCount;
+    RtlZeroMemory(GlobalVulkan.ImageInfoArray + TextureCount, UnusedImageInfoCount * sizeof(VkDescriptorImageInfo));
 
     VkWriteDescriptorSet TextImageWriteSet[2]; 
     VkDescriptorImageInfo SamplerInfo = {};
@@ -2329,8 +2464,6 @@ RenderBeginPass(v4 ClearColor)
                             &GlobalVulkan._DebugTextureSet, 
                             0, nullptr);
 
-    //RenderBindTexture(0);
-
     return 0;
 }
 
@@ -2362,49 +2495,42 @@ RenderSetPipeline(i32 PipelineIndex)
     return 0;
 }
 
-#if 1
 i32
-RenderPushMeshIndexed(u32 TotalMeshInstances, u32 IndicesSize, VkDeviceSize OffsetVertex, VkDeviceSize OffsetIndices)
+RenderDrawMeshIndexed(u32 IndicesSize, u32 TotalMeshInstances)
 {
     VkCommandBuffer cmd = GetCurrentFrame()->PrimaryCommandBuffer;
 
-    vkCmdBindVertexBuffers(cmd, 0, 1, &GlobalVulkan.VertexArena->Buffer, &OffsetVertex);
-    vkCmdBindIndexBuffer(cmd, GlobalVulkan.IndexArena->Buffer, OffsetIndices, VK_INDEX_TYPE_UINT16);
-    vkCmdDrawIndexed(cmd,IndicesSize,1,0,0,0);
-
-    return 0;
-}
-#endif
-i32
-RenderDrawObject(u32 VertexSize,u32 FirstInstance)
-{
-    VkCommandBuffer cmd = GetCurrentFrame()->PrimaryCommandBuffer;
-
-    vkCmdDraw(cmd,VertexSize, 1, 0 , FirstInstance);
-
-    return 0;
-}
-i32
-RenderDrawObjectNTimes(u32 VertexSize, u32 NTimes, u32 FirstInstance)
-{
-    VkCommandBuffer cmd = GetCurrentFrame()->PrimaryCommandBuffer;
-
-    vkCmdDraw(cmd,VertexSize, NTimes, 0 , FirstInstance);
-    //vkCmdDraw(VkCommandBuffer commandBuffer, 
-    //          uint32_t vertexCount, uint32_t instanceCount, uint32_t firstVertex, uint32_t firstInstance);
+    vkCmdDrawIndexed(cmd,IndicesSize,TotalMeshInstances,0,0,0);
 
     return 0;
 }
 
 i32
-RenderBindMesh(u32 Offset)
+RenderPushMeshIndexed(i32 MeshID)
 {
     VkCommandBuffer cmd = GetCurrentFrame()->PrimaryCommandBuffer;
 
-    VkDeviceSize OffsetVertex = Offset;
-    vkCmdBindVertexBuffers(cmd, 0, 1, &GlobalVulkan.VertexArena->Buffer, &OffsetVertex);
+    gpu_heap_block * VertexBlock = FindHeapBlockByID(GlobalVulkan.VertexHeap  , MeshID);
+    gpu_heap_block * IndexBlock  = FindHeapBlockByID(GlobalVulkan.IndexHeap   , MeshID);
 
-    return 0;
+    VkDeviceSize   VertexOffset = GlobalVulkan.VertexHeap->DeviceBindingOffsetBegin + VertexBlock->Begin;
+    VkDeviceSize   IndexOffset  = GlobalVulkan.IndexHeap->DeviceBindingOffsetBegin  + IndexBlock->Begin;
+
+    u32 IndicesSize = IndexBlock->Size / sizeof(u16);
+
+    vkCmdBindVertexBuffers(cmd, 0, 1, &GlobalVulkan.VertexHeap->Buffer, &VertexOffset);
+    vkCmdBindIndexBuffer  (cmd, GlobalVulkan.IndexHeap->Buffer, IndexOffset, VK_INDEX_TYPE_UINT16);
+
+    return IndicesSize;
+}
+
+i32
+RenderPushMeshIndexedAndDraw(u32 TotalMeshInstances, i32 MeshID)
+{
+    i32 IndicesSize = RenderPushMeshIndexed(MeshID);
+    RenderDrawMeshIndexed(TotalMeshInstances, IndicesSize);
+
+    return !(IndicesSize > 0);
 }
 
 i32
@@ -2731,13 +2857,31 @@ VH_CreateDepthBuffer(gpu_arena * Arena, VkExtent3D Extent)
 
 i32
 VH_CreateUnAllocArenaImage(VkPhysicalDevice PhysicalDevice,
-                           VkDevice Device, u32 Size,
+                           VkDevice Device,
+                           VkImageCreateInfo * CreateInfo, VkImageAspectFlagBits PlaneAspect,
+                           VkMemoryPropertyFlags MemoryPropertyFlags,
                            gpu_arena * Arena)
 {
+
+    VkMemoryRequirements2 MemoryRequirements = {};
+    MemoryRequirements.sType                     = VK_STRUCTURE_TYPE_MEMORY_REQUIREMENTS_2; // sType   sType
+    MemoryRequirements.pNext                     = 0; // Void * pNext
+    MemoryRequirements.memoryRequirements        = {}; // memoryRequirements   memoryRequirements
+    
+    VkDeviceImageMemoryRequirements ReqImage;
+    ReqImage.sType       = VK_STRUCTURE_TYPE_DEVICE_IMAGE_MEMORY_REQUIREMENTS; // sType   sType
+    ReqImage.pNext       = 0; // Void * pNext
+    ReqImage.pCreateInfo = CreateInfo; // VkImageCreateInfo * pCreateInfo
+    ReqImage.planeAspect = PlaneAspect; // planeAspect   planeAspect
+
+    vkGetDeviceImageMemoryRequirements(GlobalVulkan.PrimaryDevice,&ReqImage,&MemoryRequirements);
+    VkMemoryPropertyFlags ImageMemoryPropertyFlags = MemoryPropertyFlags;
+    i32 MemoryTypeIndex = VH_FindSuitableMemoryIndex(GlobalVulkan.PrimaryGPU,MemoryRequirements,ImageMemoryPropertyFlags);
+
     Arena->MemoryIndexType = -1; // MemoryIndexType   MemoryIndexType
     Arena->GPU             = PhysicalDevice; // GPU   GPU
     Arena->Device          = Device; // Device   Device
-    Arena->MaxSize         = Size; // MaxSize   MaxSize
+    Arena->MaxSize         = MemoryRequirements.memoryRequirements.size; // MaxSize   MaxSize
     Arena->CurrentSize     = 0; // CurrentSize   CurrentSize
     Arena->Alignment       = 0; // Alignment   Alignment
     Arena->Type            = gpu_arena_type_image; // ENUM   Type
@@ -2754,6 +2898,9 @@ VH_CreateUnAllocArenaImage(VkPhysicalDevice PhysicalDevice,
         Image->Format                = {}; // Format   Format
         Image->MemoryRequirements    = {}; // MemoryRequirements   MemoryRequirements
     }
+
+    Arena->MemoryIndexType = MemoryTypeIndex;
+    Arena->Alignment = (u32)MemoryRequirements.memoryRequirements.alignment;
 
     return 0;
 }
@@ -3574,7 +3721,9 @@ CreateDescriptorSetTextures()
         VK_DESCRIPTOR_BINDING_UPDATE_UNUSED_WHILE_PENDING_BIT
         };
 
+#pragma warning( disable : 4127 )
     Assert(ArrayCount(BindingFlags) == ArrayCount(DescriptorSetLayoutBindings));
+#pragma warning( default : 4127 )
 
     VkDescriptorSetLayoutBindingFlagsCreateInfo  BindingFlagsCreateInfo;
     BindingFlagsCreateInfo.sType         = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO; // sType   sType
@@ -3673,11 +3822,95 @@ CreateUnAllocArenaBuffer(VkPhysicalDevice PhysicalDevice,
 
     Assert(MemoryRequirements.size == Size);
     Arena->MemoryIndexType = MemoryTypeIndex;
-    Arena->MaxSize = (u32)MemoryRequirements.size;
-    Arena->Alignment = (u32)MemoryRequirements.alignment;
-    Arena->CurrentSize = 0;
-    Arena->Device = Device; 
-    Arena->Type = gpu_arena_type_buffer;
+    Arena->MaxSize         = (u32)MemoryRequirements.size;
+    Arena->Alignment       = (u32)MemoryRequirements.alignment;
+    Arena->CurrentSize     = 0;
+    Arena->Device          = Device; 
+    Arena->Type            = gpu_arena_type_buffer;
+
+    return 0;
+}
+
+const char * CTableArenaNames[] = {
+    "SimulationArena (Global)",
+    "Frame Arena 0",
+    "Frame Arena 1",
+    "Depth buffer",
+    "Weight Color",
+    "Weight Reveal",
+    "Textures",
+    "Transfer CPU GPU",
+    "Vertex Buffer",
+    "Index buffer"
+};
+
+internal i32
+CreateUnallocatedHeaps(gpu_heap * Heaps, u32 MaxHeapCount, u32 * HeapsCreatedCount, memory_arena * HeapHeadersArena)
+{
+    u32 HeapCount = 0;
+
+    /* TEXTURE BUFFER */
+    // TODO query max dimensions
+    VkExtent3D MaxExtent3D = { 1920, 1080, 1};
+
+    // Query default image required memory and allocate
+    VkImageUsageFlags UsageFlags = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+    VkFormat Format = VK_FORMAT_R8G8B8A8_SRGB; // VkFormat   format;
+    VkImageCreateInfo DefaultTextureInfo = 
+        VH_CreateImageCreateInfo2D(MaxExtent3D, Format, UsageFlags);
+
+    u32 TextureArenaSize = Megabytes(128);
+    Assert(HeapCount < MaxHeapCount);
+    gpu_heap * TexturesHeap = Heaps + HeapCount++;
+    if ( InitializeUnallocHeapBuffer(TexturesHeap,HeapHeadersArena, 
+                                     GlobalVulkan.PrimaryGPU, GlobalVulkan.PrimaryDevice,
+                                     TextureArenaSize,
+                                     4096,
+                                     &DefaultTextureInfo, VK_IMAGE_ASPECT_COLOR_BIT,
+                                     VK_MEMORY_GPU))
+    {
+        return 1;
+    };
+    GlobalVulkan.TextureHeap = TexturesHeap;
+    TexturesHeap->Owner = &GlobalVulkan.TextureHeap;
+
+
+    /* VERTEX BUFFER */
+    VkDeviceSize VertexBufferSize = Megabytes(64);
+
+    Assert(HeapCount < MaxHeapCount);
+    gpu_heap * VertexHeap = Heaps + HeapCount++;
+    if ( InitializeUnallocHeapBuffer(VertexHeap, HeapHeadersArena,
+                                     GlobalVulkan.PrimaryGPU, GlobalVulkan.PrimaryDevice,
+                                     VertexBufferSize,
+                                     NextPowerOf2(sizeof(vertex_point) * 256),
+                                     VK_SHARING_MODE_EXCLUSIVE,
+                                     VK_MEMORY_GPU,
+                                     VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT))
+    {
+        return 1;
+    }
+    GlobalVulkan.VertexHeap = VertexHeap;
+    VertexHeap->Owner= &GlobalVulkan.VertexHeap;
+
+    /* INDEX BUFFER */
+    VkDeviceSize IndexBufferSize = Megabytes(16);
+    Assert(HeapCount < MaxHeapCount);
+    gpu_heap * IndexHeap = Heaps + HeapCount++;
+    if ( InitializeUnallocHeapBuffer(IndexHeap, HeapHeadersArena,
+                                     GlobalVulkan.PrimaryGPU, GlobalVulkan.PrimaryDevice,
+                                     IndexBufferSize,
+                                     NextPowerOf2(sizeof(i32) * 256),
+                                     VK_SHARING_MODE_EXCLUSIVE,
+                                     VK_MEMORY_GPU,
+                                     VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT))
+    {
+        return 1;
+    }
+    GlobalVulkan.IndexHeap =  IndexHeap;
+    IndexHeap->Owner = &GlobalVulkan.IndexHeap;
+
+    *HeapsCreatedCount = HeapCount;
 
     return 0;
 }
@@ -3733,39 +3966,20 @@ CreateUnallocatedMemoryArenas(gpu_arena * Arenas, i32 MaxArenas, u32 * ArenasCre
         FrameArena->Owner = &GlobalVulkan.FrameData[FrameIndex].ObjectsArena;
     }
 
-    VkMemoryRequirements2 TempMemReq = {};
-    TempMemReq.sType                     = VK_STRUCTURE_TYPE_MEMORY_REQUIREMENTS_2; // sType   sType
-    TempMemReq.pNext                     = 0; // Void * pNext
-    TempMemReq.memoryRequirements        = {}; // memoryRequirements   memoryRequirements
-    i32 TempMemoryTypeIndex = -1;
-
     // TODO query max dimensions
     VkExtent3D MaxExtent3D = { 1920, 1080, 1};
-
     VkImageCreateInfo DepthBufferImageInfo = VH_DepthBufferCreateInfo(MaxExtent3D);
-
-    VkDeviceImageMemoryRequirements ReqDepthBuffer;
-    ReqDepthBuffer.sType       = VK_STRUCTURE_TYPE_DEVICE_IMAGE_MEMORY_REQUIREMENTS; // sType   sType
-    ReqDepthBuffer.pNext       = 0; // Void * pNext
-    ReqDepthBuffer.pCreateInfo = &DepthBufferImageInfo; // VkImageCreateInfo * pCreateInfo
-    ReqDepthBuffer.planeAspect = VK_IMAGE_ASPECT_DEPTH_BIT; // planeAspect   planeAspect
-
-    vkGetDeviceImageMemoryRequirements(GlobalVulkan.PrimaryDevice,&ReqDepthBuffer,&TempMemReq);
-    VkMemoryPropertyFlags DepthBufferMemoryFlags = VK_MEMORY_GPU;
-    TempMemoryTypeIndex = VH_FindSuitableMemoryIndex(GlobalVulkan.PrimaryGPU,TempMemReq,DepthBufferMemoryFlags);
 
     Assert(ArenaCount < MaxArenas);
     gpu_arena * PrimDepthBufArena = Arenas + ArenaCount++;
-    u32 MaxDepthBufferSize = (u32)TempMemReq.memoryRequirements.size;
     if (VH_CreateUnAllocArenaImage(GlobalVulkan.PrimaryGPU,GlobalVulkan.PrimaryDevice,
-                                   MaxDepthBufferSize,
+                                   &DepthBufferImageInfo, VK_IMAGE_ASPECT_DEPTH_BIT,
+                                   VK_MEMORY_GPU,
                                    PrimDepthBufArena)
        )
     {
         return 1;
     };
-    PrimDepthBufArena->MemoryIndexType = TempMemoryTypeIndex;
-    PrimDepthBufArena->Alignment = (u32)TempMemReq.memoryRequirements.alignment;
     GlobalVulkan.PrimaryDepthBufferArena = PrimDepthBufArena;
     PrimDepthBufArena->Owner = &GlobalVulkan.PrimaryDepthBufferArena;
 
@@ -3777,28 +3991,16 @@ CreateUnallocatedMemoryArenas(gpu_arena * Arenas, i32 MaxArenas, u32 * ArenasCre
         VkImageCreateInfo DefaultWeightInfo = 
             VH_CreateImageCreateInfo2D(MaxExtent3D, Format, WeightUsageFlags);
 
-        VkDeviceImageMemoryRequirements ReqImage;
-        ReqImage.sType       = VK_STRUCTURE_TYPE_DEVICE_IMAGE_MEMORY_REQUIREMENTS; // sType   sType
-        ReqImage.pNext       = 0; // Void * pNext
-        ReqImage.pCreateInfo = &DefaultWeightInfo; // VkImageCreateInfo * pCreateInfo
-        ReqImage.planeAspect = VK_IMAGE_ASPECT_COLOR_BIT; // planeAspect   planeAspect
-
-        vkGetDeviceImageMemoryRequirements(GlobalVulkan.PrimaryDevice,&ReqImage,&TempMemReq);
-        VkMemoryPropertyFlags ImageMemoryPropertyFlags = VK_MEMORY_GPU;
-        TempMemoryTypeIndex = VH_FindSuitableMemoryIndex(GlobalVulkan.PrimaryGPU,TempMemReq,ImageMemoryPropertyFlags);
-
-        u32 WeightArenaSize = (u32)TempMemReq.memoryRequirements.size;
         Assert(ArenaCount < MaxArenas);
         gpu_arena * WeightColorArena = Arenas + ArenaCount++;
         if (VH_CreateUnAllocArenaImage(GlobalVulkan.PrimaryGPU,GlobalVulkan.PrimaryDevice,
-                    WeightArenaSize,
-                    WeightColorArena)
+                                       &DefaultWeightInfo, VK_IMAGE_ASPECT_COLOR_BIT, 
+                                       VK_MEMORY_GPU,
+                                       WeightColorArena)
            )
         {
             return 1;
         };
-        WeightColorArena->MemoryIndexType = TempMemoryTypeIndex;
-        WeightColorArena->Alignment = (u32)TempMemReq.memoryRequirements.alignment;
         GlobalVulkan.WeightedColorArena = WeightColorArena;
         WeightColorArena->Owner = &GlobalVulkan.WeightedColorArena;
     }
@@ -3811,62 +4013,42 @@ CreateUnallocatedMemoryArenas(gpu_arena * Arenas, i32 MaxArenas, u32 * ArenasCre
         VkImageCreateInfo DefaultWeightInfo = 
             VH_CreateImageCreateInfo2D(MaxExtent3D, Format, WeightUsageFlags);
 
-        VkDeviceImageMemoryRequirements ReqImage;
-        ReqImage.sType       = VK_STRUCTURE_TYPE_DEVICE_IMAGE_MEMORY_REQUIREMENTS; // sType   sType
-        ReqImage.pNext       = 0; // Void * pNext
-        ReqImage.pCreateInfo = &DefaultWeightInfo; // VkImageCreateInfo * pCreateInfo
-        ReqImage.planeAspect = VK_IMAGE_ASPECT_COLOR_BIT; // planeAspect   planeAspect
-
-        vkGetDeviceImageMemoryRequirements(GlobalVulkan.PrimaryDevice,&ReqImage,&TempMemReq);
-        VkMemoryPropertyFlags ImageMemoryPropertyFlags = VK_MEMORY_GPU;
-        TempMemoryTypeIndex = VH_FindSuitableMemoryIndex(GlobalVulkan.PrimaryGPU,TempMemReq,ImageMemoryPropertyFlags);
-
-        u32 WeightArenaSize = (u32)TempMemReq.memoryRequirements.size;
         Assert(ArenaCount < MaxArenas);
         gpu_arena * WeightRevealArena = Arenas + ArenaCount++;
         if (VH_CreateUnAllocArenaImage(GlobalVulkan.PrimaryGPU,GlobalVulkan.PrimaryDevice,
-                    WeightArenaSize,
-                    WeightRevealArena)
+                                       &DefaultWeightInfo,VK_IMAGE_ASPECT_COLOR_BIT,
+                                       VK_MEMORY_GPU, 
+                                       WeightRevealArena)
            )
         {
             return 1;
         };
-        WeightRevealArena->MemoryIndexType = TempMemoryTypeIndex;
-        WeightRevealArena->Alignment = (u32)TempMemReq.memoryRequirements.alignment;
         GlobalVulkan.WeightedRevealArena = WeightRevealArena;
         WeightRevealArena->Owner = &GlobalVulkan.WeightedRevealArena;
     }
 
+#if 0 // heap now
     // Query default image required memory and allocate
     VkImageUsageFlags UsageFlags = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
     VkFormat Format = VK_FORMAT_R8G8B8A8_SRGB; // VkFormat   format;
     VkImageCreateInfo DefaultTextureInfo = 
         VH_CreateImageCreateInfo2D(MaxExtent3D, Format, UsageFlags);
 
-    VkDeviceImageMemoryRequirements ReqImage;
-    ReqImage.sType       = VK_STRUCTURE_TYPE_DEVICE_IMAGE_MEMORY_REQUIREMENTS; // sType   sType
-    ReqImage.pNext       = 0; // Void * pNext
-    ReqImage.pCreateInfo = &DefaultTextureInfo; // VkImageCreateInfo * pCreateInfo
-    ReqImage.planeAspect = VK_IMAGE_ASPECT_COLOR_BIT; // planeAspect   planeAspect
-
-    vkGetDeviceImageMemoryRequirements(GlobalVulkan.PrimaryDevice,&ReqImage,&TempMemReq);
-    VkMemoryPropertyFlags ImageMemoryPropertyFlags = VK_MEMORY_GPU;
-    TempMemoryTypeIndex = VH_FindSuitableMemoryIndex(GlobalVulkan.PrimaryGPU,TempMemReq,ImageMemoryPropertyFlags);
-
     u32 TextureArenaSize = Megabytes(128);
     Assert(ArenaCount < MaxArenas);
     gpu_arena * TextureArena = Arenas + ArenaCount++;
     if (VH_CreateUnAllocArenaImage(GlobalVulkan.PrimaryGPU,GlobalVulkan.PrimaryDevice,
-                                   TextureArenaSize,
+                                   &DefaultTextureInfo,VK_IMAGE_ASPECT_COLOR_BIT,
+                                   VK_MEMORY_GPU,
                                    TextureArena)
        )
     {
         return 1;
     };
-    TextureArena->MemoryIndexType = TempMemoryTypeIndex;
-    TextureArena->Alignment = (u32)TempMemReq.memoryRequirements.alignment;
+    TextureArena->MaxSize = TextureArenaSize;
     GlobalVulkan.TextureArena = TextureArena;
     TextureArena->Owner = &GlobalVulkan.TextureArena;
+#endif
 
 
     VkDeviceSize TransferbitBufferSize = Megabytes(16);
@@ -3893,6 +4075,7 @@ CreateUnallocatedMemoryArenas(gpu_arena * Arenas, i32 MaxArenas, u32 * ArenasCre
     GlobalVulkan.TransferBitArena = TransferBitArena;
     TransferBitArena->Owner = &GlobalVulkan.TransferBitArena;
 
+#if 0 // heap now
     VkDeviceSize VertexBufferSize = Megabytes(50);
 
     Assert(ArenaCount < MaxArenas);
@@ -3928,6 +4111,7 @@ CreateUnallocatedMemoryArenas(gpu_arena * Arenas, i32 MaxArenas, u32 * ArenasCre
     }
     GlobalVulkan.IndexArena =  IndexArena;
     IndexArena->Owner = &GlobalVulkan.IndexArena;
+#endif
 
     *ArenasCreatedCount = (u32)ArenaCount;
 
@@ -3950,13 +4134,34 @@ CommitArenasToMemory(gpu_arena * Arenas, u32 ArenaCount, device_memory_pools * D
                 (Arena->Type == gpu_arena_type_buffer && VK_VALID_HANDLE(Arena->Buffer))
             );
         Assert(Arena->CurrentSize == 0);
-        Logn("GPU Arena required (%i): %d (Type: %i, Alignment: %i)",ArenaUnallocIndex,Arena->MaxSize, Arena->MemoryIndexType,Arena->Alignment);
+        Logn("GPU Arena required (%i): %llu (Type: %u, Alignment: %i)",ArenaUnallocIndex,Arena->MaxSize, Arena->MemoryIndexType,Arena->Alignment);
         
         i32 MemoryTypeIndex = Arena->MemoryIndexType;
         device_memory_pool * DeviceMemoryPool = DeviceMemoryPools->DeviceMemoryPool + MemoryTypeIndex;
         DeviceMemoryPool->Device                      = Arena->Device; // Device   Device
         DeviceMemoryPool->DeviceMemory                = VK_NULL_HANDLE; // DeviceMemory   DeviceMemory
         DeviceMemoryPool->Size                        += Arena->MaxSize; // Size   Size
+    }
+
+    for (   u32 HeapUnallocIndex = 0;
+                HeapUnallocIndex < GlobalVulkan.HeapAllocCount;
+                ++HeapUnallocIndex)
+    {
+        gpu_heap * Heap = GlobalVulkan.HeapAlloc + HeapUnallocIndex;
+        Assert(VK_VALID_HANDLE(Heap->Device));
+        Assert(Heap->MaxSize > 0);
+        Assert(Heap->MemoryIndexType >= 0 && Heap->MemoryIndexType <= (i32)VK_MAX_MEMORY_TYPES);
+        Assert(  Heap->Type == gpu_arena_type_image || 
+                (Heap->Type == gpu_arena_type_buffer && VK_VALID_HANDLE(Heap->Buffer))
+            );
+        Assert(Heap->BlockCount == 0);
+        Logn("GPU Heap required (%i): %llu (Type: %u, Alignment: %i)",HeapUnallocIndex,Heap->MaxSize, Heap->MemoryIndexType,Heap->Alignment);
+        
+        i32 MemoryTypeIndex = Heap->MemoryIndexType;
+        device_memory_pool * DeviceMemoryPool = DeviceMemoryPools->DeviceMemoryPool + MemoryTypeIndex;
+        DeviceMemoryPool->Device       = Heap->Device; // Device Device
+        DeviceMemoryPool->DeviceMemory = VK_NULL_HANDLE; // DeviceMemory DeviceMemory
+        DeviceMemoryPool->Size        += Heap->MaxSize; // Size Size
     }
 
     for (i32 MemoryTypeIndex = 0;
@@ -3966,7 +4171,7 @@ CommitArenasToMemory(gpu_arena * Arenas, u32 ArenaCount, device_memory_pools * D
         device_memory_pool * DeviceMemoryPool = DeviceMemoryPools->DeviceMemoryPool + MemoryTypeIndex;
         if (DeviceMemoryPool->Size > 0)
         {
-            Logn("Allocating memory pool index %i with size %i",MemoryTypeIndex, DeviceMemoryPool->Size);
+            Logn("Allocating memory pool index %i with size %llu",MemoryTypeIndex, DeviceMemoryPool->Size);
             VkMemoryAllocateInfo AllocateInfo;
 
             AllocateInfo.sType           = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO; // VkStructureType   sType;
@@ -3979,10 +4184,10 @@ CommitArenasToMemory(gpu_arena * Arenas, u32 ArenaCount, device_memory_pools * D
                 return 1;
             }
 
-            u32 SizeAllocated = 0;
+            u64 SizeAllocated = 0;
             for (u32 ArenaUnallocIndex = 0;
-                    ArenaUnallocIndex < ArenaCount;
-                    ++ArenaUnallocIndex)
+                     ArenaUnallocIndex < ArenaCount;
+                   ++ArenaUnallocIndex)
             {
                 gpu_arena * Arena = Arenas + ArenaUnallocIndex;
                 if (Arena->MemoryIndexType == MemoryTypeIndex)
@@ -3990,10 +4195,10 @@ CommitArenasToMemory(gpu_arena * Arenas, u32 ArenaCount, device_memory_pools * D
                     // buffer can be bind from start
                     // images on the contrary will be binded
                     // as they are created
-                    Assert(((SizeAllocated + Arena->Alignment - 1) & ~(Arena->Alignment - 1)) == SizeAllocated);
+                    Assert(((SizeAllocated + Arena->Alignment - 1) & ~((u64)Arena->Alignment - (u64)1)) == SizeAllocated);
                     if (Arena->Type == gpu_arena_type_buffer)
                     {
-                        Logn("Binding arena %i to pool %i (offset: %u)",ArenaUnallocIndex,MemoryTypeIndex,SizeAllocated);
+                        Logn("Binding arena %i to pool %i (offset: %llu)",ArenaUnallocIndex,MemoryTypeIndex,SizeAllocated);
                         VK_CHECK(vkBindBufferMemory(
                                     DeviceMemoryPool->Device,
                                     Arena->Buffer,
@@ -4004,6 +4209,34 @@ CommitArenasToMemory(gpu_arena * Arenas, u32 ArenaCount, device_memory_pools * D
                     Arena->DeviceBindingOffsetBegin = SizeAllocated;
                     SizeAllocated += Arena->MaxSize;
                 }
+            }
+
+            for (   u32 HeapUnallocIndex = 0;
+                    HeapUnallocIndex < GlobalVulkan.HeapAllocCount;
+                    ++HeapUnallocIndex)
+            {
+                gpu_heap * Heap = GlobalVulkan.HeapAlloc + HeapUnallocIndex;
+
+                if (Heap->MemoryIndexType == MemoryTypeIndex)
+                {
+                    // buffer can be bind from start
+                    // images on the contrary will be binded
+                    // as they are created
+                    Assert(((SizeAllocated + Heap->Alignment - 1) & ~((u64)Heap->Alignment - (u64)1)) == SizeAllocated);
+                    if (Heap->Type == gpu_arena_type_buffer)
+                    {
+                        Logn("Binding arena %i to pool %i (offset: %llu)",HeapUnallocIndex,MemoryTypeIndex,SizeAllocated);
+                        VK_CHECK(vkBindBufferMemory(
+                                    DeviceMemoryPool->Device,
+                                    Heap->Buffer,
+                                    DeviceMemoryPool->DeviceMemory,
+                                    SizeAllocated)
+                                );
+                    }
+                    Heap->DeviceBindingOffsetBegin = SizeAllocated;
+                    SizeAllocated += Heap->MaxSize;
+                }
+
             }
 
             VULKAN_TREE_APPEND(vkDestroyMemoryPoolCustom,GlobalVulkan.DeviceMemoryPoolsLabel , DeviceMemoryPools->DeviceMemoryPool[MemoryTypeIndex].DeviceMemory);
@@ -4094,6 +4327,41 @@ PFN_DELETE_NODE(VulkanOnTreeNodeDelete)
                 vkFreeMemory(GlobalVulkan.PrimaryDevice, *DeviceMemory, 0);
                 *DeviceMemory = VK_NULL_HANDLE;
             } break;
+        case vulkan_destructor_type_vkDestroyHeapCustom:
+            {
+                gpu_heap ** HeapOwnerPtr = (gpu_heap **)VulkanObj->ID;
+                gpu_heap  * Heap         = *HeapOwnerPtr;
+                if (Heap->Type == gpu_arena_type_buffer)
+                {
+                    if (VK_VALID_HANDLE(Heap->Buffer))
+                    {
+                        vkDestroyBuffer(Heap->Device,Heap->Buffer,0);
+                    } 
+                }
+                else
+                {
+                    u32 SanityCount = 0;
+                    gpu_heap_block * LastBlock = 0;
+                    for (gpu_heap_block * Block = Heap->Blocks;
+                                          Block;
+                                          Block = Block->Next)
+                    {
+                        vulkan_image * Image = &Block->Image;
+                        VH_DestroyImage(Heap->Device,Image);
+                        Image->Format    = {};
+                        Image->ImageView = VK_NULL_HANDLE;
+                        Image->Image     = VK_NULL_HANDLE;
+                        LastBlock = Block;
+                        ++SanityCount;
+                    }
+                    LastBlock->Next  = Heap->FreeBlocks;
+                    Heap->FreeBlocks = LastBlock;
+                    Heap->BlockCount = 0;
+
+                    Assert(SanityCount == Heap->BlockCount);
+
+                }
+            } break;
         case vulkan_destructor_type_vkDestroyArenaCustom:
             {
                 gpu_arena ** ArenaOwnerPtr = (gpu_arena **)VulkanObj->ID;
@@ -4107,6 +4375,7 @@ PFN_DELETE_NODE(VulkanOnTreeNodeDelete)
                 }
                 else
                 {
+                    Logn("Deallocating Images %i", Arena->ImageCount);
                     for (u32 ImageIndex = 0;
                             ImageIndex < Arena->ImageCount;
                             ++ImageIndex)
@@ -4315,7 +4584,9 @@ InitializeVulkan(i32 Width, i32 Height,
                  PFN_vkGetInstanceProcAddr GetInstanceProcAddr)
 {
 
+#pragma warning( disable : 4127 )
     Assert(ArrayCount(CTableDestructorDebugNames) == vulkan_destructortype_LAST);
+#pragma warning( default : 4127 )
 
     InitializeVulkanStruct(&GlobalVulkan);
 
@@ -4404,12 +4675,31 @@ InitializeVulkan(i32 Width, i32 Height,
         VULKAN_TREE_APPEND_WITH_ID(vkDestroyArenaCustom, GlobalVulkan.PrimaryDevice,GPUArena->Owner, GlobalVulkan.MemoryArenas + i);
     }
 
+    if (CreateUnallocatedHeaps(GlobalVulkan.HeapAlloc, ArrayCount(GlobalVulkan.HeapAlloc), &GlobalVulkan.HeapAllocCount, &GlobalVulkan.InitArena))
+    {
+        Logn("Unable to allocate reserve space for gpu heap allocators");
+        return 1;
+    }
+
+    for (u32 i = 0; i < GlobalVulkan.HeapAllocCount;++i)
+    {
+        gpu_heap * GPUHeap = GlobalVulkan.HeapAlloc + i;
+        VULKAN_TREE_APPEND_WITH_ID(vkDestroyHeapCustom, GlobalVulkan.PrimaryDevice,GPUHeap->Owner, GlobalVulkan.HeapAlloc + i);
+    }
+
     VULKAN_TREE_APPEND(vkDestroyUnknown,GlobalVulkan.PrimaryDevice,GlobalVulkan.MemoryArenasLabel);
     VULKAN_TREE_APPEND(vkDestroyUnknown,GlobalVulkan.PrimaryDevice,GlobalVulkan.DeviceMemoryPoolsLabel);
+    VULKAN_TREE_APPEND(vkDestroyUnknown,GlobalVulkan.PrimaryDevice,GlobalVulkan.MemoryHeapLabel);
 
     CommitArenasToMemory(&GlobalVulkan.MemoryArenas[0],
                          GlobalVulkan.MemoryArenaCount,
                          &GlobalVulkan.DeviceMemoryPools);
+
+    for (u32 i = 0; i < GlobalVulkan.MemoryArenaCount;++i)
+    {
+        gpu_arena * GPUArena = GlobalVulkan.MemoryArenas + i;
+        Logn("Arena %-25s(%-2i): %-2i (Memory Index) %-5i (Alignment) %-8i (MaxSize KB)",CTableArenaNames[i],i,GPUArena->MemoryIndexType,GPUArena->Alignment, (u32)(GPUArena->MaxSize / 1024));
+    }
 
     VULKAN_TREE_APPEND(vkDestroyUnknown, GlobalVulkan.PrimaryDevice,GlobalVulkan.DescriptorSetLayoutLabel);
 
@@ -4640,6 +4930,7 @@ InitializeVulkan(i32 Width, i32 Height,
     VK_CHECK(vkCreateSampler(GlobalVulkan.PrimaryDevice,&SamplerCreateInfo,0,&GlobalVulkan.TextureSampler));
     VULKAN_TREE_APPEND(vkDestroySampler, GlobalVulkan.PrimaryDevice, GlobalVulkan.TextureSampler);
 
+#if 0
     // TODO: how to properly handle dummy texture on initialization?
     // This is to force transition layouts?
     // Why did I do this?
@@ -4649,6 +4940,7 @@ InitializeVulkan(i32 Width, i32 Height,
                        (0xFF << 0 );
 
     PushTextureData(&DummyImgData, 1, 1, 4);
+#endif
 
     // Update descriptors once oit weight images are created
     {

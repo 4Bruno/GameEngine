@@ -36,12 +36,14 @@
  *   Meaning bind to the new memory
  *
  */
+
 #ifndef VULKAN_INITIALIZER_H
 #define VULKAN_INITIALIZER_H
 
 #include "hierarchy_tree.h"
 #include "game_math.h"
 #include "game_assets.h"
+#include "gpu_heap.h"
 
 #define MAX_PIPELINES 100
 #define GPU_TEXTURES_ARRAY_COUNT 10
@@ -79,6 +81,121 @@
         return 1; \
     } \
 
+#if 1
+extern PFN_vkGetInstanceProcAddr                     vkGetInstanceProcAddr;
+
+// INSTANCE VULKAN
+extern PFN_vkCreateInstance                          vkCreateInstance;
+extern PFN_vkEnumerateInstanceExtensionProperties    vkEnumerateInstanceExtensionProperties;
+extern PFN_vkEnumerateInstanceLayerProperties        vkEnumerateInstanceLayerProperties;
+
+
+// PHYSICAL DEVICES
+// SWAP CHAIN API
+extern PFN_vkDestroySurfaceKHR                       vkDestroySurfaceKHR;
+extern PFN_vkGetPhysicalDeviceSurfaceSupportKHR      vkGetPhysicalDeviceSurfaceSupportKHR;
+extern PFN_vkGetPhysicalDeviceSurfaceCapabilitiesKHR vkGetPhysicalDeviceSurfaceCapabilitiesKHR;
+extern PFN_vkGetPhysicalDeviceSurfaceFormatsKHR      vkGetPhysicalDeviceSurfaceFormatsKHR;
+extern PFN_vkGetPhysicalDeviceSurfacePresentModesKHR vkGetPhysicalDeviceSurfacePresentModesKHR;
+extern PFN_vkGetPhysicalDeviceMemoryProperties       vkGetPhysicalDeviceMemoryProperties;
+extern PFN_vkGetPhysicalDeviceFormatProperties       vkGetPhysicalDeviceFormatProperties;
+
+extern PFN_vkCreateSwapchainKHR                      vkCreateSwapchainKHR;
+extern PFN_vkDestroySwapchainKHR                     vkDestroySwapchainKHR;
+extern PFN_vkGetSwapchainImagesKHR                   vkGetSwapchainImagesKHR;
+extern PFN_vkAcquireNextImageKHR                     vkAcquireNextImageKHR;
+extern PFN_vkQueuePresentKHR                         vkQueuePresentKHR;
+
+
+extern PFN_vkEnumeratePhysicalDevices                vkEnumeratePhysicalDevices;
+extern PFN_vkEnumerateDeviceExtensionProperties      vkEnumerateDeviceExtensionProperties;
+extern PFN_vkGetPhysicalDeviceProperties             vkGetPhysicalDeviceProperties;
+extern PFN_vkGetPhysicalDeviceFeatures               vkGetPhysicalDeviceFeatures;
+extern PFN_vkGetPhysicalDeviceFeatures2              vkGetPhysicalDeviceFeatures2;
+extern PFN_vkGetPhysicalDeviceQueueFamilyProperties  vkGetPhysicalDeviceQueueFamilyProperties;
+extern PFN_vkCreateDevice                            vkCreateDevice;
+extern PFN_vkGetDeviceProcAddr                       vkGetDeviceProcAddr;
+extern PFN_vkDestroyInstance                         vkDestroyInstance;
+extern PFN_vkCreateCommandPool                       vkCreateCommandPool;
+extern PFN_vkDestroyCommandPool                      vkDestroyCommandPool;
+extern PFN_vkResetCommandPool                        vkResetCommandPool;
+extern PFN_vkResetCommandBuffer                      vkResetCommandBuffer;
+extern PFN_vkAllocateCommandBuffers                  vkAllocateCommandBuffers;  
+extern PFN_vkFreeCommandBuffers                      vkFreeCommandBuffers;  
+extern PFN_vkBeginCommandBuffer                      vkBeginCommandBuffer;
+extern PFN_vkEndCommandBuffer                        vkEndCommandBuffer;
+extern PFN_vkCmdPushConstants                        vkCmdPushConstants;
+extern PFN_vkCmdCopyBuffer                           vkCmdCopyBuffer;
+extern PFN_vkCmdCopyBufferToImage                    vkCmdCopyBufferToImage;
+extern PFN_vkCmdBeginRenderPass                      vkCmdBeginRenderPass;
+extern PFN_vkCmdEndRenderPass                        vkCmdEndRenderPass;
+extern PFN_vkCmdPipelineBarrier                      vkCmdPipelineBarrier;
+extern PFN_vkCmdClearColorImage                      vkCmdClearColorImage;
+extern PFN_vkCmdBindPipeline                         vkCmdBindPipeline;
+extern PFN_vkCmdDraw                                 vkCmdDraw;
+extern PFN_vkCmdDrawIndexed                          vkCmdDrawIndexed;
+extern PFN_vkCmdBindVertexBuffers                    vkCmdBindVertexBuffers;
+extern PFN_vkCmdBindIndexBuffer                      vkCmdBindIndexBuffer;
+extern PFN_vkQueueSubmit                             vkQueueSubmit;
+extern PFN_vkQueueWaitIdle                           vkQueueWaitIdle;
+extern PFN_vkCreateShaderModule                      vkCreateShaderModule;
+extern PFN_vkDestroyShaderModule                     vkDestroyShaderModule;
+extern PFN_vkCreateDebugUtilsMessengerEXT            vkCreateDebugUtilsMessengerEXT;
+extern PFN_vkDestroyDebugUtilsMessengerEXT           vkDestroyDebugUtilsMessengerEXT;
+extern PFN_vkSetDebugUtilsObjectNameEXT              vkSetDebugUtilsObjectNameEXT;
+
+//  LOGICAL DEVICE
+extern PFN_vkGetDeviceQueue                          vkGetDeviceQueue;
+extern PFN_vkDestroyDevice                           vkDestroyDevice;
+extern PFN_vkDeviceWaitIdle                          vkDeviceWaitIdle;
+extern PFN_vkCreateFence                             vkCreateFence;
+extern PFN_vkDestroyFence                            vkDestroyFence;
+extern PFN_vkWaitForFences                           vkWaitForFences;
+extern PFN_vkResetFences                             vkResetFences;
+extern PFN_vkCreateSemaphore                         vkCreateSemaphore;
+extern PFN_vkDestroySemaphore                        vkDestroySemaphore;
+extern PFN_vkCreateRenderPass                        vkCreateRenderPass;
+extern PFN_vkDestroyRenderPass                       vkDestroyRenderPass;
+extern PFN_vkCreateImageView                         vkCreateImageView;
+extern PFN_vkCreateImage                             vkCreateImage;
+extern PFN_vkCreateSampler                           vkCreateSampler;
+extern PFN_vkDestroySampler                          vkDestroySampler;
+extern PFN_vkDestroyImageView                        vkDestroyImageView;
+extern PFN_vkCreateFramebuffer                       vkCreateFramebuffer; 
+extern PFN_vkDestroyFramebuffer                      vkDestroyFramebuffer; 
+extern PFN_vkCreateGraphicsPipelines                 vkCreateGraphicsPipelines;
+extern PFN_vkCreatePipelineLayout                    vkCreatePipelineLayout;
+extern PFN_vkDestroyPipeline                         vkDestroyPipeline;
+extern PFN_vkDestroyPipelineLayout                   vkDestroyPipelineLayout;
+
+extern PFN_vkCreateDescriptorSetLayout               vkCreateDescriptorSetLayout;
+extern PFN_vkDestroyDescriptorSetLayout              vkDestroyDescriptorSetLayout;
+extern PFN_vkAllocateDescriptorSets                  vkAllocateDescriptorSets;  
+extern PFN_vkUpdateDescriptorSets                    vkUpdateDescriptorSets;
+extern PFN_vkCreateDescriptorPool                    vkCreateDescriptorPool;
+extern PFN_vkDestroyDescriptorPool                   vkDestroyDescriptorPool;
+extern PFN_vkCmdBindDescriptorSets                   vkCmdBindDescriptorSets;
+extern PFN_vkCmdSetViewport                          vkCmdSetViewport;
+extern PFN_vkCmdSetScissor                           vkCmdSetScissor;
+
+extern PFN_vkAllocateMemory                          vkAllocateMemory;
+extern PFN_vkFreeMemory                              vkFreeMemory;
+extern PFN_vkCreateBuffer                            vkCreateBuffer;
+extern PFN_vkDestroyBuffer                           vkDestroyBuffer;
+extern PFN_vkDestroyImage                            vkDestroyImage;
+extern PFN_vkGetBufferMemoryRequirements             vkGetBufferMemoryRequirements;
+extern PFN_vkGetDeviceImageMemoryRequirements        vkGetDeviceImageMemoryRequirements;
+extern PFN_vkGetImageMemoryRequirements              vkGetImageMemoryRequirements;
+extern PFN_vkMapMemory                               vkMapMemory;
+extern PFN_vkUnmapMemory                             vkUnmapMemory;
+extern PFN_vkBindBufferMemory                        vkBindBufferMemory;
+extern PFN_vkBindImageMemory                         vkBindImageMemory;
+
+extern PFN_vkCmdSetDepthTestEnable                   vkCmdSetDepthTestEnable;
+extern PFN_vkCmdNextSubpass                          vkCmdNextSubpass;
+
+#endif
+
 struct vk_version
 {
     u32 Major,Minor,Patch;
@@ -111,6 +228,7 @@ enum vulkan_destructor_type
     // CUSTOM DESTRUCTORS
     vulkan_destructor_type_vkDestroyArenaCustom,
     vulkan_destructor_type_vkDestroyMemoryPoolCustom,
+    vulkan_destructor_type_vkDestroyHeapCustom,
 
     vulkan_destructortype_LAST
 };
@@ -145,17 +263,6 @@ struct vulkan_buffer
     VkDevice             DeviceAllocator;
 };
 
-struct vulkan_image
-{
-    VkImage              Image;
-    VkImageView          ImageView;
-    VkFormat             Format;
-    VkImageUsageFlags    UsageFlags;
-    VkMemoryRequirements MemoryRequirements;
-    VkImageLayout        CurrentLayout;
-    VkImageAspectFlags   CurrentAccess;
-};
-
 typedef vulkan_image depth_buffer ;
 
 #if 0
@@ -170,21 +277,18 @@ struct gpu_arena
 };
 #else
 
-enum gpu_arena_type
-{
-    gpu_arena_type_buffer,
-    gpu_arena_type_image
-};
-
 struct gpu_arena
 {
+    // For hierarchy tree 
+    // This is a pointer to the struct vulkan arena pointer
     void * Owner;
-    i32 MemoryIndexType;
-    VkPhysicalDevice GPU;
-    VkDevice Device;
 
-    u32 MaxSize;
-    u32 CurrentSize;
+    i32                MemoryIndexType;
+    VkPhysicalDevice   GPU;
+    VkDevice           Device;
+
+    u64 MaxSize;
+    u64 CurrentSize;
     u32 Alignment;
 
     gpu_arena_type Type;
@@ -196,7 +300,7 @@ struct gpu_arena
     // this is only useful for images
     // where we need to bind to the memory
     // starting at the offset
-    u32 DeviceBindingOffsetBegin;
+    u64 DeviceBindingOffsetBegin;
     u32 ImageCount;
     vulkan_image Images[256];
 };
@@ -259,7 +363,7 @@ struct device_memory_pool
 {
     VkDevice Device;
     VkDeviceMemory DeviceMemory;
-    u32 Size;
+    u64 Size;
 };
 struct device_memory_pools
 {
@@ -278,7 +382,7 @@ struct mesh_push_constant
 struct gpu_memory_mapping_result
 {
     void * BeginAddress;
-    u32 Instance;
+    u64 Instance;
     b32 Success;
 };
 
@@ -309,7 +413,6 @@ struct render_unit
     v4 Color;
     i32 TextureID;
     u32 MaterialPipelineIndex[2];
-    mesh_group * MeshGroup;
 };
 
 struct render_units
@@ -331,17 +434,6 @@ struct render_controller
     u32 ScreenHeight;
     r32 WidthOverHeight;
     r32 OneOverWidthOverHeight;
-
-    mesh_group * Sphere;
-#if DEBUG
-    i32 DebugWireframeMaterialPipelineIndex;
-    void * DebugBoundingBoxVertexBuffer;
-    u32 DebugBoundingBoxVertexBufferSize;
-    render_units UnitsBBV;
-#endif
-
-    render_units UnitsOpaque;
-    render_units UnitsTransparent;
 };
 
 struct GPUSimulationData
@@ -357,7 +449,8 @@ struct GPUObjectData
     m4 ModelMatrix;
     m4 ViewMatrix;
     v4 Color;
-    int ImageIndex;
+    alignas(16) v2 TextSample;
+    alignas(4) int ImageIndex;
 };
 
 struct vulkan
@@ -375,42 +468,55 @@ struct vulkan
     const char * DeviceMemoryPoolsLabel;
     device_memory_pools DeviceMemoryPools;
 
+    // Nameless Heaps
+    const char * MemoryHeapLabel;
+    gpu_heap HeapAlloc[10];
+    u32 HeapAllocCount;
+
+    // Friendly heap pointer
+    gpu_heap * TextureHeap;
+    gpu_heap * VertexHeap;
+    gpu_heap * IndexHeap;
+    b32        TextureArenaDirty;
+
+    // Nameless Arenas
     const char * MemoryArenasLabel;
     gpu_arena MemoryArenas[10];
     u32 MemoryArenaCount;
 
-    gpu_arena * PrimaryDepthBufferArena;
+    // Friendly arena pointer
+    gpu_arena    * PrimaryDepthBufferArena;
     depth_buffer * PrimaryDepthBuffer;
+    gpu_arena    * TransferBitArena;
+    gpu_arena    * SimulationArena;
+#if 0 // heap now
+    gpu_arena * TextureArena;
+    gpu_arena * VertexArena;
+    gpu_arena * IndexArena;
+#endif
+
 
     // OIT_WEIGHTED
-    gpu_arena * WeightedColorArena;
-    vulkan_image * WeightedColorImage;
-    gpu_arena * WeightedRevealArena;
-    vulkan_image * WeightedRevealImage;
-    VkDescriptorSet _oit_WeightedColorSet;
-    VkDescriptorSet _oit_WeightedRevealSet;
+    gpu_arena       * WeightedColorArena;
+    vulkan_image    * WeightedColorImage;
+    gpu_arena       * WeightedRevealArena;
+    vulkan_image    * WeightedRevealImage;
+    VkDescriptorSet   _oit_WeightedColorSet;
+    VkDescriptorSet   _oit_WeightedRevealSet;
 
-    b32 TextureArenaDirty;
-    gpu_arena * TextureArena;
+    u32       GraphicsQueueFamilyIndex;
+    VkQueue   GraphicsQueue;
+    u32       PresentationQueueFamilyIndex;
+    VkQueue   PresentationQueue;
+    u32       TransferOnlyQueueFamilyIndex;
+    VkQueue   TransferOnlyQueue;
 
-    u32  GraphicsQueueFamilyIndex;
-    VkQueue GraphicsQueue;
-    u32  PresentationQueueFamilyIndex;
-    VkQueue PresentationQueue;
-    u32  TransferOnlyQueueFamilyIndex;
-    VkQueue TransferOnlyQueue;
-
-    const char * StagingBufferLabel;
-    VkCommandPool   CommandPoolTransferBit;
-    VkCommandBuffer TransferBitCommandBuffer;
-
-    gpu_arena * TransferBitArena;
+    const char        * StagingBufferLabel;
+    VkCommandPool     CommandPoolTransferBit;
+    VkCommandBuffer   TransferBitCommandBuffer;
 
     VkSampler     TextureSampler;
     VkDescriptorImageInfo ImageInfoArray[GPU_TEXTURES_ARRAY_COUNT];
-
-    gpu_arena * VertexArena;
-    gpu_arena * IndexArena;
 
     const char * RenderPassLabel;
     VkRenderPass  RenderPass;
@@ -427,8 +533,6 @@ struct vulkan
     VkDescriptorSet       _DebugTextureSet;
     VkDescriptorPool _DescriptorPool;
 
-    gpu_arena * SimulationArena;
-
     const char * FrameDataLabel;
     frame_data FrameData[FRAME_OVERLAP];
     i32 _CurrentFrameData;
@@ -438,26 +542,26 @@ struct vulkan
     VkDevice         SecondaryDevice;
 
     // Presentation
-    VkSurfaceKHR   Surface;
-    VkSwapchainKHR Swapchain;
-    VkFormat       SwapchainImageFormat;
-    VkExtent2D     WindowExtension;
-    VkImage        SwapchainImages[3];
-    VkImageView    SwapchainImageViews[3];
-    u32         SwapchainImageCount;
-    u32         CurrentSwapchainImageIndex;
+    VkSurfaceKHR     Surface;
+    VkSwapchainKHR   Swapchain;
+    VkFormat         SwapchainImageFormat;
+    VkExtent2D       WindowExtension;
+    VkImage          SwapchainImages[3];
+    VkImageView      SwapchainImageViews[3];
+    u32              SwapchainImageCount;
+    u32              CurrentSwapchainImageIndex;
 
     VkPipelineLayout PipelineLayout[2];
     VkPipelineLayout CurrentPipelineLayout;
 
-    const char * PipelinesLabel;
-    VkPipeline      Pipelines[MAX_PIPELINES];
-    vulkan_pipeline PipelinesDefinition[MAX_PIPELINES];
-    u32          PipelinesCount;
+    const char        * PipelinesLabel;
+    VkPipeline        Pipelines[MAX_PIPELINES];
+    vulkan_pipeline   PipelinesDefinition[MAX_PIPELINES];
+    u32               PipelinesCount;
 
-    const char * ShaderModulesLabel;
-    VkShaderModule ShaderModules[16];
-    u32         ShaderModulesCount;
+    const char       * ShaderModulesLabel;
+    VkShaderModule   ShaderModules[16];
+    u32              ShaderModulesCount;
 
 #if DEBUG
     VkDebugUtilsMessengerEXT DefaultDebugCb;
@@ -476,16 +580,25 @@ CloseVulkan();
 
 i32
 OnWindowResize(i32 Width,i32 Height);
+i32 
+WaitForRender();
+i32
+RenderBeginPass(v4 ClearColor);
+i32
+EndRenderPass();
 
 i32
 CreateShaderModule(void * Buffer, size_t Size);
-
-
 i32 
 PushTextureData(void * Data, u32 Width, u32 Height, u32 Channels);
 i32
 RenderBindTexture(u32 ImageIndex);
 i32
 RenderDrawObjectNTimes(u32 VertexSize, u32 NTimes, u32 FirstInstance);
+
+i32
+VH_FindSuitableMemoryIndex(VkPhysicalDevice PhysicalDevice, VkMemoryRequirements MemoryRequirements,VkMemoryPropertyFlags PropertyFlags);
+i32
+VH_FindSuitableMemoryIndex(VkPhysicalDevice PhysicalDevice, VkMemoryRequirements2 MemoryRequirements,VkMemoryPropertyFlags PropertyFlags);
 
 #endif

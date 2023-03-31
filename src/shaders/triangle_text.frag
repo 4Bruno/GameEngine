@@ -16,5 +16,5 @@ void main()
 {
     vec4 Color = texture(sampler2D(textures[ImageIndex], samp),IN.UV);
     //outFragColor = vec4(1.0f);//Color * IN.Color;
-    outFragColor = Color;
+    outFragColor = vec4(1.0f, 1.0f, 1.0f, Color.a);
 }

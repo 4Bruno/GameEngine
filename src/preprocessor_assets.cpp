@@ -3,8 +3,95 @@
 #include "win32_io.cpp"
 #include <inttypes.h>
 
+#pragma warning(disable:4244)
+#define STB_IMAGE_IMPLEMENTATION
+#include "stb_image.h"
+#pragma warning(default:4244)
+
 #define STB_TRUETYPE_IMPLEMENTATION
 #include "stb_truetype.h"
+
+/*extern*/        b32  GlobalAppRunning     = false;
+/*extern*/        b32 AllowMouseConfinement = false;
+/*extern*/        on_window_resize * GraphicsOnWindowResize = 0;
+
+struct file_read_result
+{
+    void * Data;
+    DWORD Size;
+    b32 Success;
+};
+
+internal b32
+ReadFromFile(HANDLE Handle, void * Buffer, u32 Size)
+{
+    DWORD BytesRead = 0;
+    ReadFile(Handle, Buffer, Size, &BytesRead, NULL);
+
+    Assert(BytesRead == Size);
+
+    return (BytesRead == Size);
+}
+
+internal file_read_result
+Win32OpenReadFile(const char * Filename)
+{
+    file_read_result Result = {};
+
+    HANDLE blob = 
+        CreateFile(Filename, 
+                    GENERIC_READ, 
+                    FILE_SHARE_READ | FILE_SHARE_WRITE,NULL,
+                    OPEN_EXISTING, 
+                    FILE_ATTRIBUTE_NORMAL, NULL);      
+
+    if (blob == INVALID_HANDLE_VALUE)
+    {
+        return Result;
+    }
+    
+    DWORD FileSizeHigh = 0;
+
+    DWORD FileSizeLow = GetFileSize(blob, &FileSizeHigh);
+
+    if (FileSizeLow == INVALID_FILE_SIZE)
+    {
+        CloseHandle(blob);
+        return Result;
+    }
+
+    void * data = malloc(FileSizeLow);
+
+    Result.Data = data;
+    Result.Size = FileSizeLow;
+    Result.Success = ReadFromFile(blob, data, FileSizeLow);
+
+    CloseHandle(blob);
+
+    return Result;
+}
+
+b32
+WriteToFile(HANDLE Handle, void * Data, u32 Size, u32 Offset)
+{
+    DWORD BytesWritten = 0;
+    DWORD Result = SetFilePointer(Handle, Offset, NULL,FILE_BEGIN);
+    Assert(Result == Offset);
+    WriteFile(Handle,Data, Size, &BytesWritten, NULL); 
+    Assert(BytesWritten == Size);
+
+    return (BytesWritten == Size);
+}
+
+b32
+AppendToFile(HANDLE Handle, void * Data, u32 Size)
+{
+    DWORD BytesWritten = 0;
+    WriteFile(Handle,Data, Size, &BytesWritten, NULL); 
+    Assert(BytesWritten == Size);
+
+    return (BytesWritten == Size);
+}
 
 void
 SetOccupancy(hash_table * Map, bucket ** Bucket)
@@ -75,16 +162,6 @@ GetBucketOrNext(hash_table * Map, i16 face[3], bucket ** BucketPtr)
     return Found;
 }
 
-u32 
-NextPowerOf2(u32 N)
-{
-    if (!(N & (N - 1)))
-        return N;
-    // else set only the left bit of most significant bit
-    //return 0x8000000000000000 >> (__builtin_clzll(N) - 1); // gnu
-    //return 0x80000000 >> (__lzcnt(N) - 1); // 32 bit
-    return 0x8000000000000000 >> (__lzcnt64(N) - 1);
-}
 
 void
 strcpy(char * dest, char * src)
@@ -100,22 +177,18 @@ strcpy(char * dest, char * src)
     dest[i] = 0;
 }
 
-asset_header
-CreateHeaderFromFile(const char * dir, WIN32_FIND_DATA ffd, LARGE_INTEGER filesize)
+asset_file_type
+GetAssetFileTypeFromName(const char * Filename)
 {
-    asset_header header = {};
+    u32 len = (u32)strlen(Filename) - 1;
 
-    filesize.LowPart = ffd.nFileSizeLow;
-    filesize.HighPart = ffd.nFileSizeHigh;
-    //Logn("  %s   %llu bytes", ffd.cFileName, filesize.QuadPart);
-    u32 len = (u32)strlen(ffd.cFileName) - 1;
     char FileExt[12];
     u32 CountChars = 0;
     for (u32 i = len; 
             (i > 0) || (CountChars < ArrayCount(FileExt)); 
             i--)
     {
-        char c = ffd.cFileName[i];
+        char c = Filename[i];
         if (c == '.') break;
         FileExt[CountChars++] = c;
     }
@@ -165,56 +238,45 @@ CreateHeaderFromFile(const char * dir, WIN32_FIND_DATA ffd, LARGE_INTEGER filesi
     {
         FileType = asset_file_type_unknown;
     }
+    else if (strcmp(FileExt, "ttf")  == 0)
+    {
+        FileType = asset_file_type_font;
+    }
+    else if (strcmp(FileExt, "mp3")  == 0)
+    {
+        FileType = asset_file_type_sound;
+    }
     else
     {
         Logn("No handler for %s", FileExt);
         Assert(0);
     }
 
-    if (FileType != asset_file_type_unknown)
-    {
-        Assert(len < ArrayCount(header.Filename));
-
-        header.LengthName = len;
-        header.DataBeginOffset = 0;
-        header.Size = (u32)filesize.LowPart;
-
-        strcpy_s(header.Filename, dir);
-        i32 DirLen = (i32)strlen(dir);
-        if (header.Filename[DirLen -1] != '\\')
-        {
-            header.Filename[DirLen] = '\\';
-            DirLen += 1;
-        }
-        strcpy(header.Filename + DirLen, ffd.cFileName);
-
-    }
-
-    header.FileType = FileType;
-
-    return header;
-
+    return FileType;
 }
 
-int
-CreateHeaders(const char ** dir,int NumberOfDirs, HANDLE blob)
+#if 0
+b32
+GetFileFullPath(const char * FindFileWithName, char * Buffer)
 {
+    b32 Found = false;
+
+    const char * path[2] = 
+    {
+        ".\\assets",
+        ".\\shaders"
+    };
+
     WIN32_FIND_DATA ffd;
-    LARGE_INTEGER filesize;
 
-    file_header FileHeader = {};
-    DWORD BytesWritten = 0;
-
-    WriteFile(blob, &FileHeader, sizeof(file_header), &BytesWritten, NULL);
-
-    for (int i = 0;
-             i < NumberOfDirs;
+    for (u32 i = 0;
+             i < ArrayCount(path);
              ++i)
     {
-        const char * Path = dir[i];
+        const char * Path = path[i];
         char PathWildChar[MAX_PATH];
         strcpy_s(PathWildChar, Path);
-        int PathLen = strlen(Path);
+        size_t PathLen = strlen(Path);
         PathWildChar[PathLen+0] = '\\';
         PathWildChar[PathLen+1] = '*';
         PathWildChar[PathLen+2] = 0;
@@ -228,20 +290,14 @@ CreateHeaders(const char ** dir,int NumberOfDirs, HANDLE blob)
 
         do
         {
-            if (ffd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
+            if (!(ffd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) &&
+                  strcmp(ffd.cFileName, FindFileWithName) == 0)
             {
-                //Logn("Directory %s", ffd.cFileName);
-            }
-            else
-            {
-                asset_header AssetHeader = CreateHeaderFromFile( Path, ffd, filesize);
-                if (AssetHeader.FileType != asset_file_type_unknown)
-                {
-                    WriteFile(blob, &AssetHeader, sizeof(asset_header), &BytesWritten, NULL);
-                    Assert(sizeof(asset_header) == BytesWritten);
-
-                    FileHeader.CountHeaders += 1;
-                }
+                strcpy(Buffer, path[i] );
+                Buffer[strlen(path[i])] = '\\';
+                strcpy(Buffer + strlen(path[i]), ffd.cFileName);
+                Found = true;
+                break;
             }
         }
         while (FindNextFile(hFind, &ffd) != 0);
@@ -249,24 +305,9 @@ CreateHeaders(const char ** dir,int NumberOfDirs, HANDLE blob)
         FindClose(hFind);
     }
 
-    if (Win32RewindFile(blob) == INVALID_SET_FILE_POINTER)
-    {
-        Logn("Failed to set file pointer");
-        return 1;
-    }
-
-    WriteFile(blob, &FileHeader, sizeof(file_header), &BytesWritten, NULL);
-
-    FlushFileBuffers(blob);
-
-    DWORD dwError = GetLastError();
-    if (dwError != ERROR_NO_MORE_FILES) 
-    {
-        Logn("Error during reading directory files %lu", dwError);
-    }
-
-    return 0;
+    return Found;
 }
+#endif
 
 
 void
@@ -476,7 +517,7 @@ PreprocessMesh(const char * Data, u32 Size)
             v2 * uv = UV + TextureUVCount++;
             uv->x = 1.0f * (r32)atof(Data + start_c);
             AdvanceAfterWs(Data, Size, &start_c);
-            uv->y = -1.0f * (r32)atof(Data + start_c);
+            uv->y = (1.0f - (r32)atof(Data + start_c));
         }
         else if (strcmp("vn",LineType) == 0)
         {
@@ -521,8 +562,9 @@ PreprocessMesh(const char * Data, u32 Size)
                     Vertex->N = Normals[Indices[2]];
                 }
 
+                Assert(Bucket->Index < (1 << 16));
                 // Point to the index of vertex in array
-                Faces[TrianglesCount++] = Bucket->Index;
+                Faces[TrianglesCount++] = (i16)Bucket->Index;
                 AdvanceAfterWs(Data, Size, &start_c);
             }
         }
@@ -531,7 +573,7 @@ PreprocessMesh(const char * Data, u32 Size)
     
     //Logn("Unique number of vertices %i", UniqueVertexPoints);
 
-    Logn("Ratio hash map lookup %i over %i = %i", Map.CountLookups, Map.CostFinding, (Map.CostFinding / Map.CountLookups));
+    //Logn("Ratio hash map lookup %i over %i = %i", Map.CountLookups, Map.CostFinding, (Map.CostFinding / Map.CountLookups));
     FreeHashTable(&Map);
     free(Vertices);
     free(UV);
@@ -582,122 +624,527 @@ TestHashTable()
     FreeHashTable(&Map);
 }
 
-struct file_read_result
+void
+GetDimBoxForCharInRange(stbtt_fontinfo * Font,r32 ScaleX, r32 ScaleY, i32 Start, i32 End, i32 * MaxW, i32 * MaxH)
 {
-    void * Data;
-    DWORD Size;
-    b32 Success;
-};
-
-file_read_result
-Win32ReadFile(const char * Filename)
-{
-    file_read_result Result = {};
-
-    HANDLE blob = 
-        CreateFile(Filename, 
-                    GENERIC_READ, 
-                    FILE_SHARE_READ | FILE_SHARE_WRITE,NULL,
-                    OPEN_EXISTING, 
-                    FILE_ATTRIBUTE_NORMAL, NULL);      
-
-    if (blob == INVALID_HANDLE_VALUE)
+    Assert(End >= Start);
+    for (i32 c = Start; c <= End; ++c)
     {
-        return Result;
+        int ix0, iy0, ix1, iy1;
+        stbtt_GetCodepointBitmapBox(Font, c, ScaleX, ScaleY, &ix0, &iy0, &ix1, &iy1);
+        i32 W = (ix1 - ix0);
+        //i32 H = (iy1 - iy0);
+        *MaxW = (W > *MaxW) ? W : *MaxW;
+        *MaxH = (W > *MaxH) ? W : *MaxH;
     }
-    
-    DWORD FileSizeHigh = 0;
-
-    DWORD FileSizeLow = GetFileSize(blob, &FileSizeHigh);
-
-    if (FileSizeLow == INVALID_FILE_SIZE)
-    {
-        CloseHandle(blob);
-        return Result;
-    }
-
-    void * data = malloc(FileSizeLow);
-
-    DWORD BytesRead = 0;
-    ReadFile(blob, data, FileSizeLow, &BytesRead, NULL);
-
-    if (BytesRead != FileSizeLow)
-    {
-        CloseHandle(blob);
-        return Result;
-    }
-
-
-    CloseHandle(blob);
-
-    Result.Data = data;
-    Result.Size = FileSizeLow;
-    Result.Success = true;
-
-    return Result;
 }
 
-platform_open_file_result
-Win32OpenFileReadOnly(const char * file)
+font_info
+CreateFontTexture(char * TTFBuffer, font_type FontType, u32 LOD)
 {
-    platform_open_file_result Result = {};
+    r32 LODToPixelHeight[2] = {
+        16.0f,
+        32.0f
+    };
 
-    HANDLE FileHandle = CreateFileA(file,GENERIC_READ,FILE_SHARE_READ,0,OPEN_EXISTING,FILE_ATTRIBUTE_NORMAL,0);
+    Assert(LOD <= ArrayCount(LODToPixelHeight));
+    r32 PixelHeight = LODToPixelHeight[LOD];
 
-    if (!FileHandle) return Result;
+    font_info FontInfo = {};
 
-    LARGE_INTEGER Size;
-    if (!GetFileSizeEx(FileHandle, &Size))
+    stbtt_fontinfo Font;
+    stbtt_InitFont(&Font, (u8 *)TTFBuffer, stbtt_GetFontOffsetForIndex((u8 *)TTFBuffer,0));
+
+    r32 TextHeight = PixelHeight;
+    i32 TotalWidth = 0;
+    i32 TotalHeight = 0;
+
+    r32 ScaleY = stbtt_ScaleForPixelHeight(&Font, TextHeight);
+    r32 ScaleX = ScaleY;
+    //i32 Width ,Height ,XOffset ,YOffset;
+
+    i32 MaxWidth = 0;
+    i32 MaxHeight = 0;
+
+
+    i32 CountChars = 0;
+    i32 CharsRanges[][2] = {
+        {' ','~'},
+    };
+
+    for (i32 i = 0; i < (i32)ArrayCount(CharsRanges); ++i)
     {
-        CloseHandle(FileHandle);
-        return Result;
+        i32 Start = CharsRanges[i][0];
+        i32 End = CharsRanges[i][1];
+        GetDimBoxForCharInRange(&Font,ScaleX, ScaleY, Start, End, &MaxWidth, &MaxHeight);
+        ++CountChars;
     }
-    
-    Result.Success = true;
-    Result.Size    = Size.LowPart;
-    Result.Handle  = FileHandle;
-       
-    return Result;
+
+    MaxWidth = NextPowerOf2(MaxWidth);
+    MaxHeight = NextPowerOf2(MaxHeight);
+
+    Logn("MaxWidth: %i MaxHeight:%i CountChars:%i PixelHeight:%f", MaxWidth, MaxHeight, CountChars, TextHeight);
+
+    i32 AtlasStride = 10;
+    TotalWidth = MaxWidth * AtlasStride;
+    TotalHeight = MaxHeight * AtlasStride;
+
+    Logn("TotalWidth: %i TotalHeight:%i CharsPerRow:%i", TotalWidth, TotalHeight, AtlasStride);
+
+    Assert(SQR(AtlasStride) >= CountChars);
+
+    u8 * AtlastBuffer = (u8 *)malloc(TotalWidth * TotalHeight * 1);
+    RtlZeroMemory(AtlastBuffer, TotalWidth * TotalHeight * 1);
+
+    u8 * Bitmap = (u8 *)malloc(MaxWidth * MaxHeight * 1);
+    i32 CopiedBitmapCount = 0;
+    for (i32 i = 0; i < (i32)ArrayCount(CharsRanges); ++i)
+    {
+        i32 Start = CharsRanges[i][0];
+        i32 End = CharsRanges[i][1];
+        for (i32 c = Start; c <= End; ++c)
+        {
+            int ix0, iy0, ix1, iy1;
+            stbtt_GetCodepointBitmapBox(&Font, c, ScaleX, ScaleY, &ix0, &iy0, &ix1, &iy1);
+            i32 AdvanceWidth, LeftSideBearing;
+            stbtt_GetCodepointHMetrics(&Font, c, &AdvanceWidth, &LeftSideBearing);
+            i32 W = (ix1 - ix0);
+            i32 H = (iy1 - iy0);
+            FontInfo.Chars[c - FONT_BEGIN_CHAR].OffsetY = (r32)iy0 / (r32)H;
+            i32 PaddingX = (MaxWidth - W) / 2;
+            i32 PaddingY = MaxHeight - H;
+            i32 Row = (CopiedBitmapCount / AtlasStride);
+            i32 Col = (CopiedBitmapCount % AtlasStride);
+            stbtt_MakeCodepointBitmapSubpixel(&Font, Bitmap, W, H, MaxWidth, ScaleX, ScaleY,0.0f, 0.0f, c);
+            u8 * Dst = AtlastBuffer + 
+                (Row * AtlasStride * MaxWidth * MaxHeight) + 
+                (Col * MaxWidth) + 
+                PaddingX + 
+                (PaddingY * AtlasStride * MaxWidth);
+            u8 * Src = Bitmap;
+            for (i32 Y = 0; Y < H; ++Y)
+            {
+                i32 OffsetY = Y * AtlasStride * MaxWidth;
+                memcpy(Dst + OffsetY, Src, W);
+                Src += MaxWidth;
+            }
+            CopiedBitmapCount += 1;
+        }
+    }
+    free(Bitmap);
+
+    i32 Ascent, Descent, Linegap;
+    stbtt_GetFontVMetrics(&Font, &Ascent, &Descent, &Linegap);
+    FontInfo.Ascent = (Ascent * ScaleY) / MaxWidth;
+    FontInfo.PixelHeight = (r32)MaxHeight;
+    FontInfo.Type = FontType;
+    FontInfo.LOD = LOD;
+    FontInfo.Bitmap = AtlastBuffer;
+    FontInfo.Width = TotalWidth;
+    FontInfo.Height = TotalHeight;
+
+    return FontInfo;
+}
+
+
+void
+BeginAssetType(bin_game_assets * Assets, game_asset_type Type)
+{
+    // check begin is always followed by end before starting new pack
+    Assert(Assets->DebugBinAssetType == 0);
+    Assets->DebugBinAssetType = Assets->AssetTypes + Type;
+
+    // has not been initialized. All struct must be ordered
+    Assert( (Assets->DebugBinAssetType->Begin == 0) &&
+            (Assets->DebugBinAssetType->End   == 0) );
+
+    Assets->DebugBinAssetType->ID     = Type;
+    Assets->DebugBinAssetType->Begin  = Assets->AssetsCount;
+    Assets->DebugBinAssetType->End    = Assets->AssetsCount;
+}
+void
+EndAssetType(bin_game_assets * Assets, game_asset_type Type)
+{
+    Assert(Assets->DebugBinAssetType);
+    Assert(Assets->DebugBinAssetType->ID == Type);
+
+    bin_asset_type * AssetType = Assets->AssetTypes + Type;
+
+    AssetType->End    = Assets->AssetsCount;
+
+    Assert(AssetType->End >= AssetType->Begin);
+
+    Assets->DebugBinAssetType = 0;
 }
 
 void
-CreateFontTexture()
+AddAsset(bin_game_assets * Assets, const char * Filename)
 {
+    Assert(Assets->DebugBinAssetType);
+    asset_source * Asset = Assets->AssetsSource + Assets->AssetsCount++;
 
-    DWORD BytesRead = 0;
-    platform_open_file_result file_ttf = Win32OpenFileReadOnly("c:/windows/fonts/times.ttf");
+    Asset->TagBegin       = Assets->TagsCount;
+    Asset->TagOnePastLast = Assets->TagsCount;
+    Asset->AssetType      = Assets->DebugBinAssetType->ID;
 
-    if (!file_ttf.Success) return;
+    Asset->FileType =  
+        GetAssetFileTypeFromName(Filename);
 
-    void * buffer = malloc(file_ttf.Size);
+    Asset->Name = (char *)Filename;
 
-    ReadFile(file_ttf.Handle, buffer, file_ttf.Size, &BytesRead, NULL);
-    Assert(BytesRead == file_ttf.Size);
+    //GetFileFullPath(Filename, Asset->Name);
+}
 
-    stbtt_fontinfo Font;
-    stbtt_InitFont(&Font, (u8 *)buffer, stbtt_GetFontOffsetForIndex((u8 *)buffer,0));
+asset_source *
+GetCurrentAsset(bin_game_assets * Assets)
+{
+    Assert(Assets->AssetsCount > 0);
+    return (Assets->AssetsSource + (Assets->AssetsCount - 1));
+}
+void
+AddTag(bin_game_assets * Assets, asset_tag Tag, r32 Value)
+{
+    asset_source * Asset = GetCurrentAsset(Assets);
+    bin_tag * TagSlot = Assets->Tags + Assets->TagsCount;
 
-    r32 ScaleY = 40.0f;
-    i32 Width ,Height ,XOffset ,YOffset;
-    for (i32 c = 'A'; c <= 'Z'; ++c)
-    {
-        u8 * bitmap = stbtt_GetCodepointBitmap(&Font, 
-                                           0,stbtt_ScaleForPixelHeight(&Font, ScaleY), 
-                                           c, &Width , &Height , &XOffset,&YOffset);
-        stbtt_FreeBitmap(bitmap, 0);
-    }
+    TagSlot->ID = Tag;
+    TagSlot->Value = Value;
 
-    free(buffer);
+    Asset->TagOnePastLast = ++Assets->TagsCount;
 }
 
 
+void
+WriteBinaryAssetsFile(bin_game_assets * Assets)
+{
+   bin_asset_file_header BAF; 
+
+   BAF.MagicNumber  = MAGIC_NUMBER_VALUE;
+   BAF.Version      = BIN_ASSETS_VERSION;
+
+   BAF.AssetsCount      = Assets->AssetsCount;
+   BAF.TagCount         = Assets->TagsCount;
+   BAF.AssetsTypeCount  = game_asset_type_count;
+
+   // begin addr offset
+   u32 ByteSizeTags       = BAF.TagCount        * sizeof(bin_tag);
+   u32 ByteSizeAssetType  = BAF.AssetsTypeCount * sizeof(bin_asset_type);
+   u32 ByteSizeAssets     = BAF.AssetsCount     * sizeof(bin_asset);
+
+   BAF.Tags       = sizeof(bin_asset_file_header);
+   BAF.AssetTypes = BAF.Tags + ByteSizeTags;
+   BAF.Assets     = BAF.AssetTypes + ByteSizeAssetType;
+
+   HANDLE blob = 
+       CreateFile("assets.bin", 
+               GENERIC_WRITE | GENERIC_READ, 
+               FILE_SHARE_READ | FILE_SHARE_WRITE,NULL,
+               CREATE_ALWAYS, 
+               FILE_ATTRIBUTE_NORMAL, NULL);      
+
+
+   // Reserve space
+   AppendToFile(blob,&BAF               , sizeof(bin_asset_file_header)); 
+   AppendToFile(blob,Assets->Tags       , ByteSizeTags); 
+   AppendToFile(blob,Assets->AssetTypes , ByteSizeAssetType); 
+   AppendToFile(blob,Assets->AssetsBin  , ByteSizeAssets); 
+
+   // Allocate/pre-process files
+   u32 DataBeginOffset = BAF.Assets + ByteSizeAssets;
+
+   u32 MaxDataSize = 0;
+   u32 MinDataSize = Megabytes(10);
+   u32 AssetIndexBegin = 1; // ignore first bucket 
+                            
+   Logn("|--------------------------------------------------|--MB--|");
+   for (u32 AssetIndex = AssetIndexBegin;
+           AssetIndex < Assets->AssetsCount;
+           ++AssetIndex)
+   {
+       asset_source * AssetSource = Assets->AssetsSource + AssetIndex;
+       bin_asset *AssetBin = Assets->AssetsBin + AssetIndex;
+
+       file_read_result File = Win32OpenReadFile(AssetSource->Name);
+
+       //Logn("Processing AssetIndex (%i)", AssetIndex);
+
+       u32 DataSize         = 0;
+
+       if (File.Success)
+       {
+            switch (AssetSource->FileType)
+            {
+                case asset_file_type_mesh:
+                {
+                    mesh_result Mesh = PreprocessMesh((const char *)File.Data, File.Size);
+                    Assert(Mesh.Success);
+
+                    AppendToFile(blob, Mesh.Vertices  , Mesh.Header.SizeVertices);
+                    AppendToFile(blob, Mesh.Indices   , Mesh.Header.SizeIndices);
+
+                    free(Mesh.Indices);
+                    free(Mesh.Vertices);
+
+                    AssetBin->Mesh.SizeVertices       = Mesh.Header.SizeVertices;
+                    AssetBin->Mesh.SizeIndices        = Mesh.Header.SizeIndices;
+                    AssetBin->Mesh.GPUIndecesOffset   = UINT32_MAX;
+                    AssetBin->Mesh.GPUVerticesOffset  = UINT32_MAX;
+
+                    DataSize = Mesh.Header.SizeIndices + 
+                               Mesh.Header.SizeVertices;
+
+                } break;
+
+                case asset_file_type_texture:
+                {
+                    int x,y,n;
+                    int desired_channels = 4;
+
+                    stbi_uc * Image = stbi_load_from_memory((const unsigned char *)File.Data, File.Size, &x, &y, &n, desired_channels);
+                    Assert(Image);
+
+                    u32 ImageSize = x * y * desired_channels;
+                    AppendToFile(blob,Image, ImageSize);
+                    stbi_image_free(Image);
+
+                    AssetBin->Text.Height         = y;
+                    AssetBin->Text.Width          = x;
+                    AssetBin->Text.Channels       = desired_channels;
+                    AssetBin->Text.GPUTextureID   = -1;
+
+                    DataSize = ImageSize;
+
+                } break;
+
+                case asset_file_type_shader:
+                {
+                    AppendToFile(blob,File.Data, File.Size);
+
+                    AssetBin->Shader.GPUShaderID = -1;
+
+                    DataSize = File.Size;
+                } break;
+
+                case asset_file_type_font:
+                {
+                    bin_font * Font = &AssetBin->Font;
+                    font_type FontType = font_type_unknown;
+                    for (u32 i = AssetSource->TagBegin;
+                             i < AssetSource->TagOnePastLast;
+                            ++i)
+                    {
+                        bin_tag * Tag = Assets->Tags + i;
+                        if (Tag->ID == asset_tag_font) 
+                        { 
+                            FontType = (font_type)Tag->Value; 
+                        }
+                        else if (Tag->ID == asset_tag_LOD)
+                        {
+                            Font->LOD = (i32)Tag->Value;
+                        }
+                    } 
+
+                    Assert( (FontType > font_type_unknown) &&
+                            (FontType < font_type_count));
+                    Assert(Font->LOD >= 0);
+
+                    font_info TimesFont = 
+                        CreateFontTexture((char *)File.Data,FontType, Font->LOD);
+
+                    AppendToFile(blob,TimesFont.Chars, ArrayCount(TimesFont.Chars) * sizeof(font_char_info));
+                    AppendToFile(blob,TimesFont.Bitmap, TimesFont.Width * TimesFont.Height);
+                    free(TimesFont.Bitmap);
+
+                    bin_font * BitmapText = &AssetBin->Font;
+                    BitmapText->Height        = TimesFont.Height;
+                    BitmapText->Width         = TimesFont.Width;
+                    BitmapText->Channels      = 1;
+                    BitmapText->GPUTextureID  = -1;
+
+                    DataSize = ArrayCount(TimesFont.Chars) * sizeof(font_char_info) +
+                               (TimesFont.Width * TimesFont.Height);
+                } break;
+                case asset_file_type_sound:
+                {
+                    AppendToFile(blob,File.Data, File.Size);
+
+                    DataSize = File.Size;
+                } break;
+
+                case asset_file_type_unknown: break;
+                case asset_file_type_shader_vertex: break;
+                case asset_file_type_shader_fragment: break;
+                case asset_file_type_shader_geometry: break;
+                case asset_file_type_mesh_material: break;
+            };
+       }
+
+       free(File.Data);
+       Assert(DataSize > 0);
+       Logn("|%-50s|%-5f|", AssetSource->Name,((r32)DataSize / 1024.0f ));
+       if (DataSize > MaxDataSize) MaxDataSize = DataSize;
+       if (DataSize < MinDataSize) MinDataSize = DataSize;
+       AssetBin->Size             = DataSize;
+       AssetBin->DataBeginOffset  = DataBeginOffset;
+       AssetBin->AssetType        = AssetSource->AssetType;
+       AssetBin->FileType         = AssetSource->FileType;
+       AssetBin->TagBegin         = AssetSource->TagBegin;
+       AssetBin->TagOnePastLast   = AssetSource->TagOnePastLast;
+
+       DataBeginOffset += DataSize;
+   }
+
+   Logn("Uncompressed MAX data file in KB %f", ((r32)MaxDataSize / 1024.0f ));
+   Logn("Uncompressed MIN data file in KB %f", ((r32)MinDataSize / 1024.0f ));
+
+   // Commit updates on binary assets array
+   WriteToFile(blob, Assets->Tags         , ByteSizeTags      , BAF.Tags);
+   WriteToFile(blob, Assets->AssetTypes   , ByteSizeAssetType , BAF.AssetTypes);
+   WriteToFile(blob, Assets->AssetsBin    , ByteSizeAssets    , BAF.Assets);
+}
+
+void
+CreateAssetsMeta(bin_game_assets * Assets)
+{
+   BeginAssetType(Assets, game_asset_type_texture_ground);
+   AddAsset(Assets, "assets\\ground_stone_01.jpg");
+   AddTag(Assets, asset_tag_rocky,1.0f);
+
+   AddAsset(Assets, "assets\\ground_stone_02.jpg");
+   AddTag(Assets, asset_tag_rocky,0.1f);
+   EndAssetType(Assets, game_asset_type_texture_ground);
+
+   BeginAssetType(Assets, game_asset_type_mesh_humanoid);
+   AddAsset(Assets, "assets\\human_male_triangles.obj");
+   AddTag(Assets, asset_tag_male, 1.0f);
+   AddTag(Assets, asset_tag_adult, 0.4f);
+   EndAssetType(Assets, game_asset_type_mesh_humanoid);
+
+   BeginAssetType(Assets, game_asset_type_mesh_vegetation);
+   AddAsset(Assets, "assets\\palm_tree.obj");
+   AddTag(Assets, asset_tag_tree, 1.0f);
+   EndAssetType(Assets, game_asset_type_mesh_vegetation);
+
+   BeginAssetType(Assets, game_asset_type_mesh_shape);
+   AddAsset(Assets, "assets\\cube_triangles.obj");
+   AddTag(Assets, asset_tag_cube, 1.0f);
+
+   AddAsset(Assets, "assets\\sphere.obj");
+   AddTag(Assets, asset_tag_sphere, 1.0f);
+
+   AddAsset(Assets, "assets\\quad.obj");
+   AddTag(Assets, asset_tag_quad, 1.0f);
+   EndAssetType(Assets, game_asset_type_mesh_shape);
+
+
+   BeginAssetType(Assets, game_asset_type_shader_vertex);
+   AddAsset(Assets, "shaders\\test.vert.spv");
+   AddTag(Assets, asset_tag_noperspective, 1.0f);
+   EndAssetType(Assets, game_asset_type_shader_vertex);
+
+   BeginAssetType(Assets, game_asset_type_shader_fragment);
+   AddAsset(Assets, "shaders\\triangle_text.frag.spv");
+   AddTag(Assets, asset_tag_texturesampling, 1.0f);
+   EndAssetType(Assets, game_asset_type_shader_fragment);
+
+   BeginAssetType(Assets, game_asset_type_sound);
+   AddAsset(Assets, "assets\\letter_a.mp3");
+   AddTag(Assets, asset_tag_char, 'a');
+   EndAssetType(Assets, game_asset_type_sound);
+
+    const char * FontsToLoad[] = {
+        "c:/windows/fonts/times.ttf"
+    };
+    font_type FontsToLoadType[] = {
+        font_type_times
+    };
+
+   BeginAssetType(Assets, game_asset_type_font);
+   for (u32 LOD = 0;
+           LOD < 1;
+           ++LOD)
+   {
+       for (u32 FontIndex = 0;
+               FontIndex < ArrayCount(FontsToLoad);
+               ++FontIndex)
+       {
+           char * Filename = (char *)FontsToLoad[FontIndex];
+           AddAsset(Assets,Filename);
+           AddTag(Assets,asset_tag_font, (r32)FontsToLoadType[FontIndex]);
+           AddTag(Assets,asset_tag_LOD, (r32)LOD);
+       }
+   }
+   EndAssetType(Assets, game_asset_type_font);
+
+   WriteBinaryAssetsFile(Assets);
+}
+
+
+void
+TestAssets(bin_game_assets * Assets)
+{
+#pragma warning(disable:4127)
+    Assert(ArrayCount(CTAssetTypeNames) == game_asset_type_count);
+    Assert(ArrayCount(CTTagNames)       == asset_tag_count);
+#pragma warning(default:4127)
+
+    Logn("%s","--------------------------------------------------");
+    for (u32 i = 0;
+             i < game_asset_type_count;
+             ++i)
+    {
+        bin_asset_type * AssetType = Assets->AssetTypes + i;
+        Logn("%-50s:%i", CTAssetTypeNames[i],(AssetType->End - AssetType->Begin));    
+    }
+    Logn("%s","--------------------------------------------------");
+
+    for (u32 i = 0;
+             i < Assets->AssetsCount;
+             ++i)
+    {
+        asset_source * Asset = Assets->AssetsSource + i;
+        u32 TagCount = Asset->TagOnePastLast - Asset->TagBegin;
+        Logn("Asset %s(%i) (Tags: %i)", Asset->Name, i, TagCount);
+        for (u32 TagI = Asset->TagBegin;
+                 TagI < Asset->TagOnePastLast;
+                 ++ TagI)
+        {
+            bin_tag * Tag = Assets->Tags + TagI;
+            Logn("Tag %i with k:%s v:%f", TagI, CTTagNames[Tag->ID], Tag->Value);
+        }
+        Logn("%s","--------------------------------------------------");
+    }
+}
+
+
+
+void
+InitializeAssets(bin_game_assets * Assets)
+{
+    // initialize to 1 to have index 0 as invalid asset
+    Assets->AssetsCount = 1;
+    Assets->TagsCount   = 1;
+    Assets->Tags[0].ID = (asset_tag)0;
+    Assets->Tags[0].Value= 10000.0f;
+    Assets->AssetsBin[0].AssetType = (game_asset_type)0;
+    Assets->AssetsBin[0].DataBeginOffset = 0;
+}
+
+#if 1
 int
 main()
 {
-#if 0
-    TestHashTable();
+    bin_game_assets Assets_;
+    bin_game_assets * Assets = &Assets_;
+    InitializeAssets(Assets);
+    CreateAssetsMeta(Assets);
+    TestAssets(Assets);
     return 0;
-#endif
+}
+#else
+int
+main()
+{
     const char * path[2] = 
     {
         ".\\assets",
@@ -711,38 +1158,23 @@ main()
                     CREATE_ALWAYS, 
                     FILE_ATTRIBUTE_NORMAL, NULL);      
 
-    CreateHeaders(path, ArrayCount(path), blob);
+    asset_header Headers[200];
 
-    file_header FileHeader;
+    asset_file_header AFH = CreateHeaders(path, ArrayCount(path), Headers, ArrayCount(Headers));
 
-    DWORD BytesRead = 0;
-    DWORD BytesWritten = 0;
+    u32 SizeAssetsHeaders = sizeof(asset_header) * ArrayCount(Headers);
 
-    if (Win32RewindFile(blob) == INVALID_SET_FILE_POINTER)
-    {
-        Logn("Failed to set file pointer");
-        return 1;
-    }
-    ReadFile(blob, &FileHeader, sizeof(file_header), &BytesRead, NULL);
-    Assert(BytesRead == sizeof(file_header));
-    Logn("Total header %i",FileHeader.CountHeaders); 
-
-    u32 SizeAssetsHeaders = sizeof(asset_header) * FileHeader.CountHeaders;
-    asset_header * Headers = (asset_header *)malloc(SizeAssetsHeaders);
-    ReadFile(blob, Headers, SizeAssetsHeaders, &BytesRead, NULL);
-    Assert(BytesRead == SizeAssetsHeaders);
-
-    u32 FileBufferOffset = sizeof(file_header) + 
+    u32 FileBufferOffset = sizeof(asset_file_header) + 
                            SizeAssetsHeaders;
 
-    for (u32 i = 0;
-             i < FileHeader.CountHeaders;
-             ++i)
+    for (u32 HeaderIndex = 0;
+             HeaderIndex < AFH.CountHeaders;
+             ++HeaderIndex)
     {
-        asset_header * header = Headers + i;
+        asset_header * header = Headers + HeaderIndex;
         Logn("File: %-50s FileType:%i Size: %i", header->Filename, header->FileType, header->Size);
 
-        file_read_result ReadResult = Win32ReadFile(header->Filename);
+        file_read_result ReadResult = Win32OpenReadFile(header->Filename);
 
         if (ReadResult.Success)
         {
@@ -754,12 +1186,10 @@ main()
                         mesh_result Mesh = PreprocessMesh((const char *)ReadResult.Data, header->Size);
                         if (Mesh.Success)
                         {
-                            WriteFile(blob, &Mesh.Header, sizeof(mesh_header), &BytesWritten, NULL);
+                            AppendToFile(blob, &Mesh.Header, sizeof(mesh_header));
+                            AppendToFile(blob, Mesh.Vertices, Mesh.Header.SizeVertices);
+                            AppendToFile(blob, Mesh.Indices, Mesh.Header.SizeIndices);
 
-                            WriteFile(blob, Mesh.Vertices, Mesh.Header.SizeVertices, &BytesWritten, NULL);
-                            Assert(Mesh.Header.SizeVertices == BytesWritten);
-                            WriteFile(blob, Mesh.Indices, Mesh.Header.SizeIndices, &BytesWritten, NULL);
-                            Assert(Mesh.Header.SizeIndices == BytesWritten);
                             free(Mesh.Indices);
                             free(Mesh.Vertices);
 
@@ -771,15 +1201,13 @@ main()
                     } break;
                 case asset_file_type_texture:
                 {
-                    WriteFile(blob,ReadResult.Data, ReadResult.Size, &BytesWritten, NULL); 
-                    Assert(BytesWritten == ReadResult.Size);
+                    AppendToFile(blob,ReadResult.Data, ReadResult.Size);
                     header->DataBeginOffset = FileBufferOffset;
                     FileBufferOffset += ReadResult.Size;
                 } break;
                 case asset_file_type_shader:
                 {
-                    WriteFile(blob,ReadResult.Data, ReadResult.Size, &BytesWritten, NULL); 
-                    Assert(BytesWritten == ReadResult.Size);
+                    AppendToFile(blob,ReadResult.Data, ReadResult.Size);
                     header->DataBeginOffset = FileBufferOffset;
                     FileBufferOffset += ReadResult.Size;
                 } break;
@@ -816,19 +1244,37 @@ main()
         }
     }
 
-    if (FileHeader.CountHeaders)
-    {
-        if (Win32RewindFile(blob, sizeof(file_header)) == INVALID_SET_FILE_POINTER)
-        {
-            Logn("Failed to set file pointer");
-            return 1;
-        }
+    char * FontsToLoad[] = {
+        "c:/windows/fonts/times.ttf"
+    };
+    font_type FontsToLoadType[] = {
+        font_type_times
+    };
 
-        WriteFile(blob, Headers, SizeAssetsHeaders, &BytesWritten, NULL);
+    for (u32 LOD = 0;
+             LOD < 1;
+             ++LOD)
+    {
+        for (u32 FontIndex = 0;
+                FontIndex < ArrayCount(FontsToLoad);
+                ++FontIndex)
+        {
+            char * Filename = FontsToLoad[FontIndex];
+            font_type FontType = FontsToLoadType[FontIndex];
+            font_info TimesFont = 
+                CreateFontTexture(Filename,FontType, LOD);
+            AppendToFile(blob,TimesFont.Bitmap, TimesFont.Width * TimesFont.Height);
+            free(TimesFont.Bitmap);
+        }
     }
 
-    free(Headers);
+    if (AFH.CountHeaders)
+    {
+        WriteToFile(blob, Headers, SizeAssetsHeaders, 0);
+    }
+
     CloseHandle(blob);
 
     return 0;   
 }
+#endif

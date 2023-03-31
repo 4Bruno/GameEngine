@@ -2,8 +2,12 @@
 
 #define DEFAULT_WORLD_UP V3(0,1,0)
 #include "game_math.h"
-#include "game_entity.h"
-#include "graphics_api.h"
+#include "game_assets.h"
+#include "game_platform.h"
+//#include "graphics_api.h"
+//
+
+struct assets_handler;
 
 enum projection_mode
 {
@@ -11,78 +15,52 @@ enum projection_mode
     projection_orthographic
 };
 
-GAME_API void
-PushDrawSimulation(render_controller * Renderer,world * World, simulation * Sim);
+enum entry_type
+{
+    entry_type_unknown,
+    entry_type_entry_push_texture,
+    entry_type_entry_push_mesh,
+    entry_type_entry_push_shader_vertex,
+    entry_type_entry_push_shader_fragment
+};
 
-GAME_API void
-BeginRenderPass(v4 ClearColor, v4 AmbientLight, v4 SunlightDirection, v4 SunlightColor);
+struct entry_header
+{
+    entry_type Type;
+};
 
-GAME_API void
-BeginRender(render_controller * Renderer,i32 ScreenWidth, i32 ScreenHeight);
+struct entry_push_mesh
+{
+    v4 Color;
+    m4 Model;
+    u32 IndicesSize;
+    i32 GPUTextureIndex;
+    i32 MeshIndex;
+    i32 GPUPipeline;
+};
 
-GAME_API void
-RenderDraw(render_controller * Renderer);
+struct entry_push_to_gpu
+{
+    u32             Size;
+    void          * Data;
+    bin_asset     * Asset;
+    asset_state   * State;
 
-GAME_API void
-EndRender();
-
-#if DEBUG
-GAME_API void
-PushDrawDebug(render_controller * Renderer,entity * Entity);
-#endif
-
-GAME_API void
-PushDrawEntity(render_controller * Renderer,entity * Entity);
-GAME_API void
-PushDraw(render_controller * Renderer, game_asset_id Material, m4 * ModelT, game_asset_id MeshID, game_asset_id TextureID, v3 Color, r32 Transparency);
-GAME_API void
-PushDrawParticle(render_controller * Renderer, m4 * ModelT, mesh_group * MeshGroup, game_asset_id TextureID, v3 Color, r32 Transparency);
-
-GAME_API render_controller
-NewRenderController(memory_arena * Arena, u32 RenderUnitLimits,
-                    v3 WorldUp,
-                    r32 FOV,
-                    i32 ScreenWidth, i32 ScreenHeight, 
-                    r32 n, r32 f,
-                    v3 StartP,
-                    projection_mode ProjectionMode);
-
-GAME_API void 
-RotateFill(m4 * M, r32 AngleX, r32 AngleY, r32 AngleZ);
-
-GAME_API void
-MoveViewRight(render_controller * Renderer,r32 N);
-
-GAME_API void
-MoveViewForward(render_controller * Renderer,r32 N);
+    volatile u32  * CommandBufferEntry;
+};
 
 
-GAME_API inline v3
-GetViewPos(render_controller * Renderer);
+struct renderer
+{
+    render_commands_buffer * CommandBuffer;
+    assets_handler * AssetsManager;
+};
 
-GAME_API inline v3
-GetMatrixRight(m4 &RotationMatrix);
+void
+PushText(renderer * Renderer, const char * Text, font_type Font);
+void
+InitializeRenderer(renderer * Renderer, assets_handler * Assets, render_commands_buffer * CommandBuffer);
 
-GAME_API inline v3
-GetMatrixPos(m4 &M);
-
-GAME_API inline v3
-GetMatrixDirection(m4 &RotationMatrix);
-
-i32
-ViewLookAt(render_controller * Renderer, v3 P, v3 TargetP);
-i32
-LookAt(Quaternion * Q, v3 P, v3 TargetP, v3 WorldUp);
-i32
-LookAt(m4 * M, v3 P, v3 TargetP, v3 WorldUp);
-
-GAME_API void
-EntityLookAt(render_controller * Renderer,entity Entity, v3 P);
-
-m4
-ProjectionMatrix(r32 FOV,r32 AspectRatio, r32 n, r32 f);
-
-//GAME_API void TestGroundGPU(game_memory * Memory,memory_arena * TempArena);
 
 #define GAME_RENDER_H
 #endif

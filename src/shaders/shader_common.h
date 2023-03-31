@@ -40,6 +40,7 @@ struct objects_data
     mat4 ModelMatrix;
     mat4 ViewMatrix;
     vec4 Color;
+    vec2 TextSample;
     int ImageIndex;
 };
 

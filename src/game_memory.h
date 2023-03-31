@@ -93,5 +93,8 @@ Memset(u8 * Dest,u8 c,u32 Size);
 GAME_API memory_aligned_result
 AlignMemoryAddress(void * Addr,u32 Align);
 
+GAME_API memory_arena *
+AllocateSubArena(memory_arena * ParentArena, u32 Size);
+
 #define GAME_MEMORY_H
 #endif
