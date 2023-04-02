@@ -9,6 +9,7 @@
 
 #if DEBUG
 extern "C" debug_cycle * DebugCycles;
+extern "C" debug_release_gpu_memory * DebugReleaseGPUMemory;
 #endif
 
 extern "C" platform_api * PlatformAPI;

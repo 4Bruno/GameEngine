@@ -6,32 +6,6 @@
 #include "game_memory.h"
 #include "game_math.h"
 
-const char * CTAssetTypeNames[] = {
-    "game_asset_type_texture_ground",
-    "game_asset_type_mesh_humanoid",
-    "game_asset_type_mesh_vegetation",
-    "game_asset_type_mesh_shape",
-    "game_asset_type_shader_vertex",
-    "game_asset_type_shader_fragment",
-    "game_asset_type_font",
-    "game_asset_type_sound"
-};
-
-const char * CTTagNames[] = {
-    "asset_tag_rocky",
-    "asset_tag_male",
-    "asset_tag_adult",
-    "asset_tag_tree",
-    "asset_tag_quad",
-    "asset_tag_sphere",
-    "asset_tag_cube",
-    "asset_tag_noperspective",
-    "asset_tag_texturesampling",
-    "asset_tag_font",
-    "asset_tag_char",
-    "asset_tag_LOD"
-};
-
 enum asset_tag
 {
     asset_tag_rocky,
@@ -142,7 +116,6 @@ struct bin_text
     u32 Height;
     u32 Channels;
     i32 LOD;
-    i32 GPUTextureID;
 };
 typedef bin_text bin_font;
 
@@ -251,16 +224,6 @@ struct bucket
 {
     i16 Coord[3];
     u32 Index;
-};
-
-struct hash_table
-{
-    bucket * Bucket;
-    u64 * Occupancy;
-    u32 BucketCount;
-
-    u32 CountLookups;
-    u32 CostFinding;
 };
 
 struct mesh_header

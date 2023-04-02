@@ -9,7 +9,7 @@
 
 /*extern*/        b32  GlobalAppRunning     = false;
 /*extern*/        b32 AllowMouseConfinement = false;
-/*extern*/        on_window_resize * GraphicsOnWindowResize = 0;
+/*extern*/        on_window_resize * GraphicsOnWindowResize = OnWindowResize; // vulkan_initializer.cpp
 global_variable   RECT GlobalOldRectClip;
 global_variable   RECT GlobalNewRectClip;
 
@@ -91,8 +91,8 @@ THREAD_DO_WORK_ON_QUEUE(VulkanMemoryTransferHandler)
                 case entry_type_entry_push_texture:
                 {
                     bin_text * Texture = &Asset->Text;
-                    Texture->GPUTextureID = PushTextureData(Data, Texture->Width, Texture->Height, Texture->Channels);
-                    Assert(Texture->GPUTextureID >= 0);
+                    i32 GPUIndex = PushTextureData(Asset->ID, Data, Texture->Width, Texture->Height, Texture->Channels);
+                    Assert(GPUIndex >= 0);
                     *State = asset_loaded;
 
                 } break;
@@ -121,7 +121,7 @@ THREAD_DO_WORK_ON_QUEUE(VulkanMemoryTransferHandler)
                 };
             };
 
-            InterlockedIncrement((LONG volatile *)&EntryPushToGPU->CommandBufferEntry);
+            InterlockedIncrement((LONG volatile *)EntryPushToGPU->CommandBufferEntry);
             InterlockedIncrement((LONG volatile *)&Queue->ThingsDone);
         }
     }
@@ -136,7 +136,8 @@ THREAD_DO_WORK_ON_QUEUE(VulkanMemoryTransferHandler)
 
 
 //int main( HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow )
-int main()
+int 
+main()
 {
     /* ------------------------- THREADS ----------------------------------- */
     thread_work_queue HighPriorityWorkQueue = {};
@@ -171,7 +172,7 @@ int main()
     FARPROC VulkanProcAddr = GetProcAddress(VulkanLib, "vkGetInstanceProcAddr");
 
     i32 VulkanErrorOnInitialization = 
-        InitializeVulkan(APP_WINDOW_WIDTH,APP_WINDOW_HEIGHT, PlatformWindow, DEBUG, (PFN_vkGetInstanceProcAddr)VulkanProcAddr);
+        InitializeVulkan(APP_WINDOW_WIDTH,APP_WINDOW_HEIGHT, PlatformWindow, ENABLED_DEBUG_VULKAN_VALIDATION_LAYER, (PFN_vkGetInstanceProcAddr)VulkanProcAddr);
 
     if (VulkanErrorOnInitialization)
     {
@@ -297,7 +298,7 @@ int main()
 
             RenderBeginPass(ClearColor);
             
-            GameState.pfnGameUpdateAndRender(&GameMemory,&Input, &CommandBuffer, WinDim.Width, WinDim.Height);
+            GameState.pfnGameUpdateAndRender(&GameMemory,&Input, &CommandBuffer, WinDim.Width, WinDim.Height, ReleaseGPUMemory);
 
             u8 * EntryBegin = CommandBuffer.Buffer;
             for (u32 EntryIndex = 0;

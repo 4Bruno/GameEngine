@@ -1,6 +1,7 @@
 #include "preprocessor_assets.h"
 
 #include "win32_io.cpp"
+#include "hash_table.h"
 #include <inttypes.h>
 
 #pragma warning(disable:4244)
@@ -14,6 +15,33 @@
 /*extern*/        b32  GlobalAppRunning     = false;
 /*extern*/        b32 AllowMouseConfinement = false;
 /*extern*/        on_window_resize * GraphicsOnWindowResize = 0;
+
+const char * CTAssetTypeNames[] = {
+    "game_asset_type_texture_ground",
+    "game_asset_type_mesh_humanoid",
+    "game_asset_type_mesh_vegetation",
+    "game_asset_type_mesh_shape",
+    "game_asset_type_shader_vertex",
+    "game_asset_type_shader_fragment",
+    "game_asset_type_font",
+    "game_asset_type_sound"
+};
+
+const char * CTTagNames[] = {
+    "asset_tag_rocky",
+    "asset_tag_male",
+    "asset_tag_adult",
+    "asset_tag_tree",
+    "asset_tag_quad",
+    "asset_tag_sphere",
+    "asset_tag_cube",
+    "asset_tag_noperspective",
+    "asset_tag_texturesampling",
+    "asset_tag_font",
+    "asset_tag_char",
+    "asset_tag_LOD"
+};
+
 
 struct file_read_result
 {
@@ -887,8 +915,6 @@ WriteBinaryAssetsFile(bin_game_assets * Assets)
 
                     AssetBin->Mesh.SizeVertices       = Mesh.Header.SizeVertices;
                     AssetBin->Mesh.SizeIndices        = Mesh.Header.SizeIndices;
-                    AssetBin->Mesh.GPUIndecesOffset   = UINT32_MAX;
-                    AssetBin->Mesh.GPUVerticesOffset  = UINT32_MAX;
 
                     DataSize = Mesh.Header.SizeIndices + 
                                Mesh.Header.SizeVertices;
@@ -910,7 +936,6 @@ WriteBinaryAssetsFile(bin_game_assets * Assets)
                     AssetBin->Text.Height         = y;
                     AssetBin->Text.Width          = x;
                     AssetBin->Text.Channels       = desired_channels;
-                    AssetBin->Text.GPUTextureID   = -1;
 
                     DataSize = ImageSize;
 
@@ -959,7 +984,6 @@ WriteBinaryAssetsFile(bin_game_assets * Assets)
                     BitmapText->Height        = TimesFont.Height;
                     BitmapText->Width         = TimesFont.Width;
                     BitmapText->Channels      = 1;
-                    BitmapText->GPUTextureID  = -1;
 
                     DataSize = ArrayCount(TimesFont.Chars) * sizeof(font_char_info) +
                                (TimesFont.Width * TimesFont.Height);
@@ -990,6 +1014,7 @@ WriteBinaryAssetsFile(bin_game_assets * Assets)
        AssetBin->FileType         = AssetSource->FileType;
        AssetBin->TagBegin         = AssetSource->TagBegin;
        AssetBin->TagOnePastLast   = AssetSource->TagOnePastLast;
+       AssetBin->ID               = AssetIndex; 
 
        DataBeginOffset += DataSize;
    }

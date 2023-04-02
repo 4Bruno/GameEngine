@@ -33,7 +33,8 @@ struct gpu_heap_block
 
     vulkan_image Image;
 
-    u32 ID;
+    u32 ExternalID;
+    u32 InternalID;
 };
 
 struct gpu_heap
@@ -45,6 +46,7 @@ struct gpu_heap
     u32 BlockMinSize; // must be power of 2
 
     memory_arena   * HeapBlockHeaderArena;
+    // TODO: Do first not a pointer
     gpu_heap_block * Blocks;
     u32              BlockCount;
     gpu_heap_block * FreeBlocks;

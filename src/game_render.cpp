@@ -46,7 +46,7 @@ PushText(renderer * Renderer, const char * Text, font_type Font)
 
         Entry->MeshIndex = Quad.Asset->ID; 
         Entry->IndicesSize        = Quad.Asset->Mesh.SizeIndices;
-        Entry->GPUTextureIndex    = FontAsset.Asset->Text.GPUTextureID;
+        Entry->GPUTextureIndex    = FontAsset.Asset->ID;
     }
 }
 

@@ -17,12 +17,18 @@ set IgnoreWarnings=%IWPadding% %IWInitializedNotReferenced% %IWUnusedParam% %IWN
 
 set compilation_vars=%WarningLevel% %IgnoreWarnings% %GenerateCompleteDebuggingInfo% %CompilationFlags% %IncludePaths%
 
-set dllname=test_assets_to_gpu
-erase %dllname%*
-cl /nologo %compilation_vars% ..\%dllname%.cpp  /Fm%dllname%.map /link /PDB:%dllname%.pdb /SUBSYSTEM:CONSOLE %WinLibs%
 
-rem set dllname=win32_platform
-rem erase %dllname%*
-rem cl /nologo %compilation_vars% ..\%dllname%.cpp ..\hierarchy_tree.cpp ..\game_memory.cpp  ..\gpu_heap.cpp /Fm%dllname%.map /link /PDB:%dllname%.pdb /SUBSYSTEM:CONSOLE %WinLibs%
+set dllname=preprocessor_assets
+erase %dllname%*
+cl /nologo %compilation_vars% ..\%dllname%.cpp ..\game_memory.cpp  /Fm%dllname%.map /link /PDB:%dllname%.pdb /SUBSYSTEM:CONSOLE %WinLibs%
+
+set dllname=game_2
+erase %dllname%*
+set other_dll=..\game_memory.cpp ..\game_render.cpp ..\game_assets.cpp ..\heap.cpp
+cl /nologo %compilation_vars% ..\%dllname%.cpp  %other_dll% /Fm%dllname%.map /link /DLL /OUT:game_temp.dll /PDB:%dllname%.pdb /SUBSYSTEM:CONSOLE %WinLibs%
+
+set dllname=win32_platform
+erase %dllname%*
+cl /nologo %compilation_vars% ..\%dllname%.cpp ..\hierarchy_tree.cpp ..\game_memory.cpp  ..\gpu_heap.cpp /Fm%dllname%.map /link /PDB:%dllname%.pdb /SUBSYSTEM:CONSOLE %WinLibs%
 
 popd

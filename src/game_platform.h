@@ -292,7 +292,12 @@ CompareAndExchangeIfMatches(volatile u32 * This, u32 IfMatchesThis, u32 UpdateTo
 // defined in game.h used across all headers
 struct game_state;
 
-#define GAME_UPDATE_AND_RENDER(name) void name(game_memory * Memory,game_input * Input, render_commands_buffer * CommandBuffer,  i32 ScreenWidth, i32 ScreenHeight)
+
+#define DEBUG_RELEASE_GPU_MEMORY(name) i32 name(i32 AssetID)
+typedef DEBUG_RELEASE_GPU_MEMORY(debug_release_gpu_memory);
+
+
+#define GAME_UPDATE_AND_RENDER(name) void name(game_memory * Memory,game_input * Input, render_commands_buffer * CommandBuffer,  i32 ScreenWidth, i32 ScreenHeight, debug_release_gpu_memory * ReleaseGPUMemory)
 typedef GAME_UPDATE_AND_RENDER(game_update_and_render);
 
 #define GAME_PLATFORM_H

@@ -44,6 +44,7 @@
 #include "game_math.h"
 #include "game_assets.h"
 #include "gpu_heap.h"
+#include "hash_table.h"
 
 #define MAX_PIPELINES 100
 #define GPU_TEXTURES_ARRAY_COUNT 10
@@ -453,6 +454,12 @@ struct GPUObjectData
     alignas(4) int ImageIndex;
 };
 
+struct vulkan_hash_table_entry
+{
+    gpu_heap_block * Block;
+    u32 AssetID;
+};
+
 struct vulkan
 {
     b32 Initialized;
@@ -467,6 +474,9 @@ struct vulkan
 
     const char * DeviceMemoryPoolsLabel;
     device_memory_pools DeviceMemoryPools;
+
+    // Hash Table for heap assets
+    hash_table HeapAssetsHashTable;
 
     // Nameless Heaps
     const char * MemoryHeapLabel;

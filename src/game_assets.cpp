@@ -32,26 +32,6 @@ InitializeAssets(assets_handler * GameAssets, memory_arena * Arena, memory_arena
     PlatformAPI->ReadHandle(File, GameAssets->AssetType , ByteSizeAssetType ,BAF.AssetTypes);
     PlatformAPI->ReadHandle(File, GameAssets->Assets    , ByteSizeAssets    ,BAF.Assets);
 
-    for (u32 AssetIndex = 1;
-            AssetIndex  < GameAssets->AssetsCount;
-            ++AssetIndex)
-    {
-        bin_asset * Asset = GameAssets->Assets + AssetIndex;
-        
-        Asset->ID = AssetIndex;
-
-        switch (Asset->FileType)
-        {
-            case asset_file_type_shader:
-            {
-                Asset->Shader.GPUShaderID     = -1;
-            } break;
-        }
-        Asset->Mesh.GPUIndecesOffset  = UINT64_MAX;
-        Asset->Mesh.GPUVerticesOffset = UINT64_MAX;
-        Asset->Text.GPUTextureID      = -1;
-    }
-
     GameAssets->Heap = &GameAssets->Heap_;
     InitializeHeap(GameAssets->Heap, HeapArena->Base, HeapArena->MaxSize, 4096);
     GameAssets->HeapArena = HeapArena;
@@ -72,6 +52,15 @@ InitializeAssets(assets_handler * GameAssets, memory_arena * Arena, memory_arena
 
     GameAssets->Arena           = Arena;
     GameAssets->PlatformHandle  = File;
+
+    /* Any check to ensure data is good */
+    for (u32 AssetIndex = 1;
+            AssetIndex  < GameAssets->AssetsCount;
+            ++AssetIndex)
+    {
+        bin_asset * Asset = GameAssets->Assets + AssetIndex;
+        Asset->ID = AssetIndex;
+    }
 
     return GameAssets;
 }
@@ -108,6 +97,7 @@ ReleaseAsset(assets_handler * Assets, game_asset * Asset)
         ReleaseBlock(Assets->Heap, Block);
         *Asset->Memory = 0;
         Asset->Memory = 0;
+        DebugReleaseGPUMemory(Asset->Asset->ID);
     }
 }
 
@@ -127,6 +117,8 @@ LoadAsset(assets_handler * Assets, game_asset * Asset, b32 Async)
     if ( CompareAndExchangeIfMatches((volatile u32 *)Asset->State, asset_unloaded, asset_load_inprogress) )
     {
         thread_memory_arena * ThreadArena = 0;
+
+        Assert(Asset->Asset->ID != 0);
 
         if (Async)
         {
@@ -164,6 +156,8 @@ LoadAsset(assets_handler * Assets, game_asset * Asset, b32 Async)
                     CommandBufferOldSize = CommandBuffer->CurrentSize;
                     CommandBufferNewSize = ((CommandBuffer->CurrentSize + ReqSize) % (CommandBuffer->MaximumSize));
                 }
+
+                Logn("CurrentEntry: %i Next entry: %i", Assets->CommandBufferEntry, CommandBuffer->CurrentSize / ReqSize);
 
                 entry_header      * Header          = (entry_header *)      (CommandBuffer->Buffer  + CommandBufferOldSize);
                 entry_push_to_gpu * EntryPushToGPU  = (entry_push_to_gpu *) ((u8 *)Header           + sizeof(entry_header));
@@ -204,6 +198,7 @@ LoadAsset(assets_handler * Assets, game_asset * Asset, b32 Async)
                             Assert(0);
                         };
                 }
+
                 EntryPushToGPU->Asset = Asset->Asset;
                 EntryPushToGPU->Size  = TotalSize;
                 EntryPushToGPU->State = Asset->State;

@@ -1,33 +1,75 @@
 #include <Windows.h>
 #include "game_platform.h"
-#include "game_assets.cpp" 
-#include "game_render.cpp"
-#include "game_memory.cpp"
-#include "hierarchy_tree.cpp"
-#include "heap.cpp"
-#include "gpu_heap.cpp"
 #include "win32_io.cpp"
-
-#define GAME_MULTITHREAD 0
 #include "win32_threading.cpp"
 #include "vulkan_initializer.cpp"
+#include "game_render.cpp"
+#include "game_assets.cpp"
 
-/*extern*/ platform_api * PlatformAPI;
-/*extern*/ b32  GlobalAppRunning     = false;
-/*extern*/ b32 AllowMouseConfinement = false;
-/*extern*/ on_window_resize * GraphicsOnWindowResize = OnWindowResize;
+#ifdef GAME_MULTITHREAD 0
 
-memory_arena
-VirtualAllocArena(u32 Size)
+#define ENABLED_DEBUG_VULKAN_VALIDATION_LAYER 1
+
+/*extern*/        b32  GlobalAppRunning     = false;
+/*extern*/        b32 AllowMouseConfinement = false;
+/*extern*/        on_window_resize * GraphicsOnWindowResize = 0;
+global_variable   RECT GlobalOldRectClip;
+global_variable   RECT GlobalNewRectClip;
+
+
+
+struct game_state
 {
-    memory_arena Arena = {};
-    void * Addr = Win32AllocateMemory(Size);
-    InitializeArena(&Arena, Addr, Size);
-    return Arena;
-}
+    HMODULE                  GameLib;
+    game_update_and_render * pfnGameUpdateAndRender;
+    FILETIME                 CurrentLibLastModified;
+    FILETIME                 ShaderVertexLastModified;
+};
+
+
 
 b32
-VulkanMemoryTransferHandler(thread_work_queue * Queue)
+LoadGameDll(game_state * GameState)
+{
+    if (GameState->GameLib)
+    {
+        FreeLibrary(GameState->GameLib);
+        GameState->GameLib = 0;
+    }
+
+
+#if DEBUG
+    if (!Win32FileExists(GAME_DLL_TEMP))
+    {
+        return false;
+    }
+
+    if (!Win32CopyFile(GAME_DLL_TEMP, GAME_DLL))
+    {
+        return false;
+    }
+#endif
+
+    GameState->GameLib = LoadLibrary(GAME_DLL); // HMODULE   Lib;
+
+    if (GameState->GameLib)
+    {
+        GameState->pfnGameUpdateAndRender = 
+            (game_update_and_render *)GetProcAddress(GameState->GameLib, "GameUpdateAndRender"); // game_update_and_render   pfnGameUpdateAndRender;
+        GameState->CurrentLibLastModified = Win32GetLastWriteTime((char *)GAME_DLL_TEMP);
+        if (!GameState->pfnGameUpdateAndRender)
+        {
+            FreeLibrary(GameState->GameLib);
+            GameState->GameLib = 0;
+        }
+    }
+
+    b32 Result = (GameState->GameLib && GameState->pfnGameUpdateAndRender);
+
+    return Result;
+}
+
+THREAD_DO_WORK_ON_QUEUE(VulkanMemoryTransferHandler)
 {
     b32 GoToSleep = false;
 
@@ -95,8 +137,9 @@ VulkanMemoryTransferHandler(thread_work_queue * Queue)
     return GoToSleep;
 }
 
-int
-main()
+
+//int main( HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow )
+int main()
 {
     /* ------------------------- THREADS ----------------------------------- */
     thread_work_queue HighPriorityWorkQueue = {};
@@ -139,146 +182,143 @@ main()
         return 0;
     }
 
-    platform_api PlatformAPI_;
-    PlatformAPI_.OpenHandle            = Win32OpenFile; // platform_open_handle * OpenHandle
-    PlatformAPI_.OpenFileReadOnly      = Win32OpenFileReadOnly; // platform_open_handle * OpenHandle
-    PlatformAPI_.CloseHandle           = Win32CloseFile; // platform_close_handle * CloseHandle
-    PlatformAPI_.ReadHandle            = Win32ReadFile; // platform_read_handle * ReadHandle
+    GraphicsOnWindowResize = OnWindowResize;
 
-    PlatformAPI_.AddWorkToWorkQueue    = AddWorkToQueue;
-    PlatformAPI_.CompleteWorkQueue     = CompleteWorkQueue;
-    PlatformAPI_.HighPriorityWorkQueue = &HighPriorityWorkQueue;
-    PlatformAPI_.LowPriorityWorkQueue  = &LowPriorityWorkQueue;
-    PlatformAPI_.RenderWorkQueue       = &RenderWorkQueue;
+    /* ------------------------- END VULKAN ------------------------- */
 
-    PlatformAPI = &PlatformAPI_;
 
-    assets_handler Assets_ = {};
-    assets_handler * Assets = &Assets_;
-   
-    memory_arena AssetsArena = VirtualAllocArena(Megabytes(30));
-    InitializeAssets(Assets,&AssetsArena, &AssetsArena);
+    game_state GameState = {};
 
-    render_commands_buffer CommandBuffer_ = {};
-    render_commands_buffer * CommandBuffer = &CommandBuffer_;
-    CommandBuffer->CurrentSize = 0;
-    CommandBuffer->MaximumSize = Megabytes(5);
-    CommandBuffer->Buffer = (u8 *)Win32AllocateMemory(CommandBuffer->MaximumSize);
-    CommandBuffer->ElementCount = 0;
-
-    renderer Renderer_ = {};
-    renderer * Renderer = &Renderer_;
-    InitializeRenderer(Renderer, Assets, CommandBuffer);
-
-#if 0
-    game_asset FontAsset = GetFont(Renderer->AssetsManager,font_type_times);
-    game_asset Quad = GetMesh(Renderer->AssetsManager, game_asset_type_mesh_shape, asset_tag_quad);
-
-    if (AssetHasState(&FontAsset, asset_unloaded)) { LoadAsset(Renderer->AssetsManager, &FontAsset, false); }
-    if (AssetHasState(&Quad, asset_unloaded))      { LoadAsset(Renderer->AssetsManager, &Quad, false); }
-#else
-    for (u32 AssetIndex = 1;
-            AssetIndex  < Assets->AssetsCount;
-            ++AssetIndex)
+    if (LoadGameDll(&GameState))
     {
-        bin_asset * Asset = Assets->Assets + AssetIndex;
-        game_asset GameAsset = {};
-        GameAsset.Asset = Asset;
-        GameAsset.State = Assets->States + AssetIndex;
-        GameAsset.Memory = Assets->AssetsMemory + AssetIndex;
+        /* ------------------------- BEGIN GAME MEMORY ------------------------- */
 
-        if (AssetHasState(&GameAsset, asset_unloaded))
-        {
-            LoadAsset(Assets, &GameAsset, false);
-        }
+        u32 PermanentMemorySize = Megabytes(30);
+        void * PermanentMemory = Win32AllocateMemory(PermanentMemorySize);
+        u32 TransientMemorySize = Gigabytes(1);
+        void * TransientMemory = Win32AllocateMemory(TransientMemorySize);
 
-        switch (Asset->FileType)
+        game_memory GameMemory     = {};
+
+        platform_api PlatformAPI;
+        PlatformAPI.OpenHandle            = Win32OpenFile; // platform_open_handle * OpenHandle
+        PlatformAPI.OpenFileReadOnly      = Win32OpenFileReadOnly; // platform_open_handle * OpenHandle
+        PlatformAPI.CloseHandle           = Win32CloseFile; // platform_close_handle * CloseHandle
+        PlatformAPI.ReadHandle            = Win32ReadFile; // platform_read_handle * ReadHandle
+                                                           
+        PlatformAPI.AddWorkToWorkQueue    = AddWorkToQueue;
+        PlatformAPI.CompleteWorkQueue     = CompleteWorkQueue;
+        PlatformAPI.HighPriorityWorkQueue = &HighPriorityWorkQueue;
+        PlatformAPI.LowPriorityWorkQueue  = &LowPriorityWorkQueue;
+        PlatformAPI.RenderWorkQueue       = &RenderWorkQueue;
+
+
+        GameMemory.PlatformAPI = PlatformAPI;
+        GameMemory.PermanentMemory     = PermanentMemory;     // Void * PermanentMemory;
+        GameMemory.PermanentMemorySize = PermanentMemorySize; // u32 PermanentMemorySize;
+        GameMemory.TransientMemory     = TransientMemory;     // Void * TransientMemory;
+        GameMemory.TransientMemorySize = TransientMemorySize; // u32 TransientMemorySize;
+
+        /* ------------------------- END GAME MEMORY ------------------------- */
+
+        game_input Input = {};
+
+        i32 ExpectedFramesPerSecond = 30;
+        r32 ExpectedMillisecondsPerFrame = (1.0f / (r32)ExpectedFramesPerSecond) * 1000.0f;
+        GlobalAppRunning = true;
+        Input.DtFrame = ExpectedMillisecondsPerFrame / 1000.0f;
+
+        win32_frame_timer FrameTimer = NewFrameTimer();
+
+        Win32RegisterRawInput(WindowHandle);
+
+        // Main loop
+        while (GlobalAppRunning)
         {
-            case asset_file_type_mesh:
+            BeginFrameTimer(&FrameTimer);
+
+            Input.TimeElapsed = CalculateTimeElapsed(&FrameTimer);
+
+            ResetInput(&Input);
+
+            if (AllowMouseConfinement)
+            {
+                Win32ConfineCursor(WindowHandle);
+            }
+
+            win32_window_dim WinDim = Win32GetWindowSize(WindowHandle);
+
+            Input.Controller.RelMouseX = 0;
+            Input.Controller.RelMouseY = 0;
+
+            HandleInput(&Input.Controller,WindowHandle, WinDim.Width, WinDim.Height);
+
+            if (Input.Controller.Lock.IsPressed && !Input.Controller.Lock.WasPressed)
+            {
+                if (AllowMouseConfinement) Win32ReleaseCursor();
+                AllowMouseConfinement = !AllowMouseConfinement;
+            }
+
+            // TODO: having multiple command buffers to pass to GPU
+            //       and continue on the CPU side
+            render_commands_buffer CommandBuffer = {};
+            CommandBuffer.CurrentSize = 0;
+            CommandBuffer.MaximumSize = Megabytes(5);
+            CommandBuffer.Buffer = (u8 *)Win32AllocateMemory(CommandBuffer.MaximumSize);
+            CommandBuffer.ElementCount = 0;
+
+            WaitForRender();
+
+            v4 ClearColor = V4(0,0,0,1);
+
+            RenderBeginPass(ClearColor);
+            
+            GameState.pfnGameUpdateAndRender(&GameMemory,&Input, &CommandBuffer, WinDim.Width, WinDim.Height);
+
+            u8 * EntryBegin = CommandBuffer.Buffer;
+            for (u32 EntryIndex = 0;
+                     EntryIndex < CommandBuffer.ElementCount;
+                     ++EntryIndex)
+            {
+                entry_header * Header = (entry_header *)EntryBegin;
+                EntryBegin += sizeof(entry_header);
+
+                switch (Header->Type)
                 {
-                    vertex_point * Vertices = (vertex_point *)(*GameAsset.Memory);
-
-                    u32 CountVertices = Asset->Mesh.SizeVertices / sizeof(vertex_point);
-#if 1
-                    //for (int i = 0; i < CountVertices;++i)
-                    for (u32 vertex_index = 0; vertex_index < min(CountVertices, 5);++vertex_index)
+                    case entry_type_entry_push_mesh:
                     {
-                        vertex_point * vertex = Vertices + vertex_index;
-                        Logn("x:%f y:%f z:%f u:%f v:%f nx:%f ny:%f nz:%f",
-                                vertex->P.x,vertex->P.y,vertex->P.z,
-                                vertex->UV.x,vertex->UV.y,
-                                vertex->N.x,vertex->N.y,vertex->N.z);
-                    }
-#endif
-                } break;
+                        entry_push_mesh * EntryMesh = (entry_push_mesh *)EntryBegin;
+                        EntryBegin += sizeof(entry_push_mesh);
+                        RenderPushMeshIndexedAndDraw(1,EntryMesh->MeshIndex);
+                    } break;
+                    default:
+                    {
+                        Logn("GPU render command not implemented");
+                        Assert(0);
+                    };
+                }
+            }
 
-            case asset_file_type_texture:
-                {
-#if 1
-                    bin_text * Text = &Asset->Text;
-                    Logn("Texture: width: %i height: %i channels:%i",Text->Height , Text->Width , Text->Channels);
-#endif
-                } break;
+            Win32DeallocMemory(CommandBuffer.Buffer);
 
-            case asset_file_type_font:
-                {
-                    bin_text * Text = &Asset->Text;
-                    Logn("Font Texture: width: %i height: %i channels:%i",Text->Height , Text->Width , Text->Channels);
-                }break;
+            EndRenderPass();
 
-            case asset_file_type_unknown: break;
-            case asset_file_type_sound: break;
-            case asset_file_type_shader: 
-                {
-                    Logn("%s to load shader %i", (Asset->Shader.GPUShaderID >= 0) ? "Success" : "Unsuccessful",AssetIndex);
-                } break;
-            case asset_file_type_shader_vertex: break;
-            case asset_file_type_shader_fragment: break;
-            case asset_file_type_shader_geometry: break;
-            case asset_file_type_mesh_material: break;
-        };
+            WaitForFrameTimer(&FrameTimer, ExpectedMillisecondsPerFrame);
 
+        } // AppRunning loop
+
+        Win32ReleaseCursor();
+
+        EndFrameTimer();
+
+    } // Game Dll found
+
+    if (VulkanLib)
+    {
+        CloseVulkan();
+        FreeLibrary(VulkanLib);
     }
 
     return 0;
-#endif
-
-    game_input Input = {};
-
-    i32 ExpectedFramesPerSecond = 30;
-    r32 ExpectedMillisecondsPerFrame = (1.0f / (r32)ExpectedFramesPerSecond) * 1000.0f;
-    GlobalAppRunning = true;
-    Input.DtFrame = ExpectedMillisecondsPerFrame / 1000.0f;
-
-    win32_frame_timer FrameTimer = NewFrameTimer();
-
-    b32 GameInit = false;
-    while (GlobalAppRunning)
-    {
-        BeginFrameTimer(&FrameTimer);
-        Input.TimeElapsed = CalculateTimeElapsed(&FrameTimer);
-        ResetInput(&Input);
-        win32_window_dim WinDim = Win32GetWindowSize(WindowHandle);
-        HandleInput(&Input.Controller,WindowHandle, WinDim.Width, WinDim.Height);
-
-        if (!GameInit)
-        {
-            GameInit = true;
-        }
-
-        WaitForRender();
-
-        v4 ClearColor = V4(0,0,0,1);
-
-        RenderBeginPass(ClearColor);
-        
-        EndRenderPass();
-        //Win32DeallocMemory(CommandBuffer->Buffer);
-
-        WaitForFrameTimer(&FrameTimer, ExpectedMillisecondsPerFrame);
-    }
-
-    EndFrameTimer();
-
 
 }

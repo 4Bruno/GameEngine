@@ -288,6 +288,11 @@ FindHeapBlock(gpu_heap * Heap, u32 Size)
         {
             PrevBlock->Next = Block;
         }
+        else
+        {
+            Assert(Heap->Blocks == 0);
+            Heap->Blocks = Block;
+        }
     }
     else
     {
@@ -311,7 +316,8 @@ FindHeapBlock(gpu_heap * Heap, u32 Size)
         Block->InUse = true;
     }
 
-    Block->ID = ++Heap->BlockCount;
+    // default caller can overwrite
+    Block->InternalID = ++Heap->BlockCount;
 
     return Block;
 }
@@ -327,7 +333,7 @@ FindHeapBlockByID(gpu_heap * Heap, u32 ID)
             (Block);
             Block = Block->Next)
     {
-        if (Block->ID == ID)
+        if (Block->ExternalID == ID)
         {
             break;
         }

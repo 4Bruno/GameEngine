@@ -48,32 +48,6 @@ set IgnoreWarnings=%IWPadding% %IWInitializedNotReferenced% %IWUnusedParam% %IWN
 
 set BuildThis=Y
 if "%BuildDllID%" NEQ "All" (
-    if "%BuildDllID%" NEQ "1" (
-        set BuildThis=N
-    )
-)
-if "%BuildThis%"=="Y"  (
-
-    set graphicsDllName=graphics_api
-    set graphicsOutput=!graphicsDllName!!Dllreload!
-    set GraphicsLib=graphics_api
-    set dllname=!GraphicsLib!
-
-    echo Building graphics DLL !dllname!
-    erase !dllname!*
-
-    cl /nologo ^
-     /LD !WarningLevel! !IgnoreWarnings! !GenerateCompleteDebuggingInfo! !CompilationFlags! !IncludePaths! ^
-     ..\!dllname!.cpp   ..\hierarchy_tree.cpp ..\game_memory.cpp ^
-     /Fe:!graphicsOutput!.dll ^
-     /link /DLL ^
-      /incremental:no /opt:ref /PDB:!graphicsOutput!_!random!.pdb ^
-      !ExternalLibs!
-
-)
-
-set BuildThis=Y
-if "%BuildDllID%" NEQ "All" (
     if "%BuildDllID%" NEQ "2" (
         set BuildThis=N
     )

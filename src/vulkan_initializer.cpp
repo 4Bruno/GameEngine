@@ -161,6 +161,7 @@ void
 InitializeVulkanStruct(vulkan * V)
 {
     V->MemoryArenasLabel        = "MEM ARENAS";
+    V->MemoryHeapLabel          = "MEM HEAPS";
     V->DeviceMemoryPoolsLabel   = "MEMORY POOLS";
     V->StagingBufferLabel       = "STAGING BUFFERS";
     V->RenderPassLabel          = "RENDER PASSES";
@@ -2061,7 +2062,7 @@ PushTextureData(void * Data, u32 Width, u32 Height, u32 Channels)
 #endif
 
 i32 
-PushTextureData(void * Data, u32 Width, u32 Height, u32 Channels)
+PushTextureData(u32 ID, void * Data, u32 Width, u32 Height, u32 Channels)
 {
 
     i32 ResultImageIndex = -1;
@@ -2213,13 +2214,52 @@ PushTextureData(void * Data, u32 Width, u32 Height, u32 Channels)
 
     VK_CHECK(vkCreateImageView( GlobalVulkan.PrimaryDevice, &ImageViewCreateInfo, 0, &VulkanImage->ImageView));
 
-    ResultImageIndex = Block->ID;
+    ResultImageIndex = Block->InternalID;
+
+    Block->ExternalID = ID;
+
+    vulkan_hash_table_entry * Entry = 
+        (vulkan_hash_table_entry *)AddEntryToTable(&GlobalVulkan.HeapAssetsHashTable, &ID);
+    Entry->Block    = Block;
+    Entry->AssetID  = ID;
 
     GlobalVulkan.TextureArenaDirty = true;
 
     return ResultImageIndex;
 }
 
+HASH_TABLE_MAP_FUNCTION(HeapHashTableMap)
+{
+    u32 * ID = (u32 *)Data;
+
+    u32 HashKey = *ID;
+
+    return HashKey;
+}
+
+HASH_TABLE_COMPARE_FUNCTION(HeapHashTableCompare)
+{
+    vulkan_hash_table_entry * EntryA = (vulkan_hash_table_entry *)Entry;
+    vulkan_hash_table_entry * EntryB = (vulkan_hash_table_entry *)EntryLookup;
+
+    i32 Result = (i32)(EntryA->AssetID - EntryB->AssetID);
+
+    return Result;
+}
+
+void
+InitializeVulanHashTable(memory_arena * Arena)
+{
+    u32 EntriesCount = 5;
+    u32 HashBucketCount = 200;
+    
+    GlobalVulkan.HeapAssetsHashTable = 
+        InitializeHashTable(Arena, 
+                            vulkan_hash_table_entry, EntriesCount,
+                            HeapHashTableMap,
+                            HeapHashTableCompare,
+                            HashBucketCount);
+}
 
 internal i32 
 PushVertexData(void * Data, u32 DataSize, i32 MeshID)
@@ -2227,9 +2267,11 @@ PushVertexData(void * Data, u32 DataSize, i32 MeshID)
     gpu_heap       * HeapAlloc = GlobalVulkan.VertexHeap;
     gpu_heap_block * Block     = FindHeapBlock(HeapAlloc, DataSize);
 
-    VkDeviceSize Offset = HeapAlloc->DeviceBindingOffsetBegin + Block->Begin;
+    // buffers are binded to offset location
+    //VkDeviceSize Offset = HeapAlloc->DeviceBindingOffsetBegin + Block->Begin;
+    VkDeviceSize Offset = Block->Begin;
 
-    Assert(GlobalVulkan.TransferBitArena->MaxSize <= Block->Size);
+    Assert(GlobalVulkan.TransferBitArena->MaxSize >= Block->Size);
 
     VulkanWriteDataToArena(GlobalVulkan.TransferBitArena,Data, DataSize);
 
@@ -2240,7 +2282,7 @@ PushVertexData(void * Data, u32 DataSize, i32 MeshID)
         return 1;
     }
 
-    Block->ID = MeshID;
+    Block->ExternalID = MeshID;
 
     return 0;
 }
@@ -2248,12 +2290,12 @@ PushVertexData(void * Data, u32 DataSize, i32 MeshID)
 internal i32
 PushIndexData(void * Data,u32 DataSize, i32 MeshID)
 {
-    gpu_heap       * HeapAlloc = GlobalVulkan.VertexHeap;
+    gpu_heap       * HeapAlloc = GlobalVulkan.IndexHeap;
     gpu_heap_block * Block     = FindHeapBlock(HeapAlloc, DataSize);
 
-    VkDeviceSize Offset = HeapAlloc->DeviceBindingOffsetBegin + Block->Begin;
+    VkDeviceSize Offset = Block->Begin;
 
-    Assert(GlobalVulkan.TransferBitArena->MaxSize <= Block->Size);
+    Assert(GlobalVulkan.TransferBitArena->MaxSize >= Block->Size);
 
     VulkanWriteDataToArena(GlobalVulkan.TransferBitArena,Data, DataSize);
 
@@ -2264,7 +2306,7 @@ PushIndexData(void * Data,u32 DataSize, i32 MeshID)
         return 1;
     }
 
-    Block->ID = MeshID;
+    Block->ExternalID = MeshID;
 
     return 0;
 }
@@ -2279,6 +2321,35 @@ PushMeshData(i32 CustomMeshID, void * VertexData, u32 VertexSize, void * Indices
     }
 
     return ErrorCode;
+}
+
+i32
+ReleaseGPUMemory(i32 AssetID)
+{
+    gpu_heap * Heap = GlobalVulkan.VertexHeap;
+    gpu_heap_block * Block = FindHeapBlockByID(Heap  , AssetID);
+    if (Block)
+    {
+        ReleaseBlock(Heap, Block);
+        Heap = GlobalVulkan.IndexHeap;
+        Block  = FindHeapBlockByID(Heap   , AssetID);
+        Assert(Block);
+        ReleaseBlock(Heap, Block);
+    }
+    else
+    {
+        Heap = GlobalVulkan.TextureHeap;
+        Block  = FindHeapBlockByID(Heap   , AssetID);
+        Assert(Block);
+        vulkan_image * Image = &Block->Image;
+        VH_DestroyImage(Heap->Device,Image);
+        Image->Format    = {};
+        Image->ImageView = VK_NULL_HANDLE;
+        Image->Image     = VK_NULL_HANDLE;
+    }
+
+
+    return 0;
 }
 
 
@@ -4356,10 +4427,9 @@ PFN_DELETE_NODE(VulkanOnTreeNodeDelete)
                     }
                     LastBlock->Next  = Heap->FreeBlocks;
                     Heap->FreeBlocks = LastBlock;
-                    Heap->BlockCount = 0;
 
                     Assert(SanityCount == Heap->BlockCount);
-
+                    Heap->BlockCount = 0;
                 }
             } break;
         case vulkan_destructor_type_vkDestroyArenaCustom:
@@ -4593,7 +4663,7 @@ InitializeVulkan(i32 Width, i32 Height,
     // Memory leak fix this
     // get memory from os
     // or clean up on exit
-    void * Addr = malloc(Megabytes(5));
+    void * Addr = malloc(Megabytes(10));
 
     GlobalVulkan.InitArena.Base = (u8 *)Addr;
     GlobalVulkan.InitArena.MaxSize = Megabytes(5);
@@ -4675,7 +4745,10 @@ InitializeVulkan(i32 Width, i32 Height,
         VULKAN_TREE_APPEND_WITH_ID(vkDestroyArenaCustom, GlobalVulkan.PrimaryDevice,GPUArena->Owner, GlobalVulkan.MemoryArenas + i);
     }
 
-    if (CreateUnallocatedHeaps(GlobalVulkan.HeapAlloc, ArrayCount(GlobalVulkan.HeapAlloc), &GlobalVulkan.HeapAllocCount, &GlobalVulkan.InitArena))
+    if (CreateUnallocatedHeaps(GlobalVulkan.HeapAlloc, 
+                               ArrayCount(GlobalVulkan.HeapAlloc), 
+                               &GlobalVulkan.HeapAllocCount, 
+                               &GlobalVulkan.InitArena))
     {
         Logn("Unable to allocate reserve space for gpu heap allocators");
         return 1;
@@ -4702,6 +4775,10 @@ InitializeVulkan(i32 Width, i32 Height,
     }
 
     VULKAN_TREE_APPEND(vkDestroyUnknown, GlobalVulkan.PrimaryDevice,GlobalVulkan.DescriptorSetLayoutLabel);
+
+
+    memory_arena * HeapHashTableArena = AllocateSubArena(&GlobalVulkan.InitArena, Megabytes(1));
+    InitializeVulanHashTable(HeapHashTableArena);
 
     VkDescriptorPoolSize DescriptorPoolSizes[] =
 	{
